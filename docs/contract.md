@@ -28,7 +28,7 @@ With the handler API, the output schema is generated from the canonical handler'
 
 Argument transport maps semantic object properties to deterministic Clap argv representations. Structured transport represents a complete JSON value supplied through a path/source argument, optionally including stdin.
 
-Clap groups and explicit conflicts are reflected into semantic constraints where the stable Clap metadata is sufficient to do so safely.
+Groups and explicit conflicts that Clap exposes through its public reflection API are represented. Other parser-specific and conditional validation, including custom value-parser behavior and conditional requirements, may still be enforced only by Clap at invocation time.
 
 ## Errors are outside the contract
 

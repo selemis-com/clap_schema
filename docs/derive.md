@@ -39,7 +39,7 @@ From these declarations, `clap_schema` derives:
 - description from Clap/doc comments;
 - semantic input from `CreateArgs: JsonSchema` by default;
 - successful output from the handler's `Result<Item, _>`;
-- argv transports and constraints from Clap.
+- argv transports plus groups and explicit conflicts exposed by Clap reflection.
 
 There is no normal-path `output = T` or handler registration on the enum. The output type already exists in the handler signature. The handler's error type is outside the schema contract.
 

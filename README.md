@@ -4,7 +4,7 @@ Agent-facing, machine-readable contracts for Clap applications.
 
 `clap_schema` avoids a parallel hand-maintained CLI schema. Instead it joins facts that already exist in the Rust program:
 
-- **Clap** owns command names, hierarchy, argv syntax, help, and constraints.
+- **Clap** owns command names, hierarchy, argv syntax, help, and parser validation.
 - **`#[clap_schema::handler]`** marks the canonical implementation for each leaf payload type.
 - **Rust** owns the handler's successful `Result<Output, _>` type.
 - **Schemars** owns the JSON Schema for semantic input and successful output types.
