@@ -165,4 +165,4 @@ let contract = clap_schema::ContractBuilder::new(cli())
 
 The builder is the explicit escape hatch. The derive + handler path is the intended ergonomic API.
 
-See [`docs/derive.md`](docs/derive.md), [`docs/handler.md`](docs/handler.md), and [`docs/contract.md`](docs/contract.md) for the details. The `full_application` example shows a larger intended application shape.
+The crate-level API documentation is the authoritative reference for the contract model, derive attributes, handler rules, reflection boundaries, and builder API. The `full_application` example shows a larger intended application shape.

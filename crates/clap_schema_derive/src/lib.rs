@@ -10,13 +10,72 @@ use syn::{
 };
 
 /// Derives the root `clap_schema::CliSchema` implementation.
+///
+/// The derive reflects the root Clap parser and locates its
+/// `#[command(subcommand)]` field. Root arguments become invocation context;
+/// executable operations come from the associated `CommandSchema` enum.
+///
+/// # `#[schema(...)]` options
+///
+/// - `#[schema(include_hidden)]` includes Clap-hidden commands in the contract.
+/// - `#[schema(json_output = "json")]` names a root argument that enables JSON
+///   output. The argument may be a boolean flag or a value-taking option.
+/// - `#[schema(json_output = "format", json_value = "json")]` selects JSON by
+///   assigning a particular value to the named option. `json_value` is invalid
+///   without `json_output`.
+///
+/// When Clap exposes a finite value set for a value-taking output selector,
+/// contract construction validates the configured `json_value` against it.
+/// Without an explicit `json_output`, the runtime defaults to the library's
+/// `JsonOutput::Auto` policy.
+///
+/// Root-only executable operations are outside the 0.1 contract model: root
+/// arguments are reserved for invocation context and contract-visible
+/// operations are subcommand leaves.
 #[proc_macro_derive(CliSchema, attributes(schema, command))]
 pub fn derive_cli_schema(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     expand_cli_schema(input).unwrap_or_else(syn::Error::into_compile_error).into()
 }
 
-/// Derives typed leaf command registration for a clap subcommand enum.
+/// Derives typed leaf command registration for a Clap subcommand enum.
+///
+/// `CommandSchema` recursively follows normal Clap nesting and flattening while
+/// preserving canonical command names, paths, help text, and argument syntax.
+/// A contract-visible executable leaf must be a one-field tuple variant such as
+/// `Create(CreateArgs)`. Its payload type is the key that joins the Clap leaf to
+/// the canonical `#[clap_schema::handler]` for that operation.
+///
+/// Intermediate command groups and variants marked `#[schema(skip)]` do not need
+/// handlers. Flattened subcommand enums use Clap's `#[command(flatten)]` and do
+/// not add a path component.
+///
+/// # `#[schema(...)]` options
+///
+/// The following options are valid on executable leaf variants:
+///
+/// - `skip` — omit a runtime-only variant from the contract.
+/// - `input = Request` — use `Request: JsonSchema` as semantic input instead of
+///   the Clap payload type.
+/// - `deprecated = "guidance"` — attach deprecation or migration guidance.
+/// - `structured = "input"` — treat the named Clap argument as a complete JSON
+///   source transport.
+/// - `stdin = "-"` — declare the exact structured-source token representing
+///   standard input. Requires `structured`.
+/// - `structured_only` — suppress ordinary property-by-property argv transport.
+///   Requires `structured`.
+/// - `json(metadata, filters)` — serialize the named semantic properties as
+///   complete JSON argv tokens.
+/// - `bind(query = "q")` — bind a semantic property to a differently named Clap
+///   argument.
+///
+/// Leaf-only metadata is invalid on intermediate or flattened command groups.
+/// A property named by both `bind(...)` and `json(...)` keeps the explicit Clap
+/// binding and uses JSON value encoding.
+///
+/// By default the leaf payload type supplies the semantic input schema. An
+/// `input = Request` override changes only the machine-facing semantic schema;
+/// the original payload remains the runtime Clap carrier and handler key.
 #[proc_macro_derive(CommandSchema, attributes(schema, command))]
 pub fn derive_command_schema(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -27,8 +86,56 @@ pub fn derive_command_schema(input: TokenStream) -> TokenStream {
 ///
 /// Free handlers use their first argument as the command payload type. Inherent
 /// methods use an owned `self` receiver. The generated metadata uses the
-/// function signature as a compile-time type witness, so the successful output
-/// schema always follows the real `Result<T, E>`. The error type is ignored.
+/// function signature only as a compile-time type witness: the handler is never
+/// called while a contract is constructed.
+///
+/// Rust resolves either `Result<T, E>` or `Future<Output = Result<T, E>>`, and
+/// Schemars generates the successful schema for `T`. The error type `E` is
+/// deliberately ignored and needs no `JsonSchema` implementation.
+/// `Result<(), E>` means the command has no successful payload.
+///
+/// # Supported forms
+///
+/// The 0.1 handler model supports synchronous and asynchronous free functions,
+/// and synchronous or asynchronous inherent methods with owned `self`.
+/// Synchronous handlers may also be `const fn`.
+///
+/// ```text
+/// #[clap_schema::handler]
+/// fn create(command: CreateArgs, ctx: &Context) -> Result<Item, Error> { ... }
+///
+/// #[clap_schema::handler]
+/// async fn fetch(command: FetchArgs, ctx: &Context) -> Result<Item, Error> { ... }
+///
+/// impl UpdateArgs {
+///     #[clap_schema::handler]
+///     fn run(self, ctx: &Context) -> Result<Item, Error> { ... }
+/// }
+///
+/// impl DeleteArgs {
+///     #[clap_schema::handler]
+///     async fn run(self, ctx: &Context) -> Result<(), Error> { ... }
+/// }
+/// ```
+///
+/// Handlers are intentionally plain and non-generic. Free handlers must own a
+/// named local payload in their first argument. Method handlers must own `self`.
+/// Borrowed payloads, `&self`, `&mut self`, generic handlers, associated
+/// functions without `self`, and trait-object registration are unsupported.
+/// Additional arguments are runtime context only and do not participate in the
+/// input schema.
+///
+/// One payload type has one canonical handler. Contract-visible subcommand
+/// variants therefore use distinct one-field tuple payloads; reusable Clap
+/// argument groups should be flattened inside those payloads instead of sharing
+/// one payload across multiple executable leaves.
+///
+/// # Runtime dispatch
+///
+/// `clap_schema` does not own execution. Applications continue to dispatch with
+/// ordinary matches and call the same functions or methods directly. The
+/// attribute only exposes the handler's successful type-level contract to the
+/// `CommandSchema` derive.
 #[proc_macro_attribute]
 pub fn handler(attribute: TokenStream, input: TokenStream) -> TokenStream {
     if !attribute.is_empty() {
