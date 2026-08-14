@@ -51,7 +51,7 @@ Nested enums remain ordinary Clap:
 #[derive(clap::Subcommand, clap_schema::CommandSchema)]
 enum Commands {
     #[command(subcommand)]
-    Objects(ObjectCommands),
+    Jobs(JobCommands),
 }
 ```
 
@@ -68,4 +68,4 @@ Attributes remain only for semantics that cannot be derived from Clap or the han
 - explicit property bindings and JSON-token encoding;
 - deprecation guidance.
 
-See [`handler.md`](handler.md) for the handler contract and [`contract.md`](contract.md) for the emitted wire model.
+See [`handler.md`](handler.md) for the handler contract. Public Rust types in `clap_schema` document the serialized contract model.

@@ -12,11 +12,11 @@ struct Cli {
 #[derive(Subcommand, CommandSchema)]
 enum Commands {
     #[command(subcommand)]
-    Objects(ObjectCommands),
+    Jobs(JobCommands),
 }
 
 #[derive(Subcommand, CommandSchema)]
-enum ObjectCommands {
+enum JobCommands {
     Get(GetArgs),
 }
 
@@ -26,7 +26,7 @@ struct GetArgs {
 }
 
 #[derive(JsonSchema)]
-struct Object {
+struct Job {
     id: String,
 }
 
@@ -36,7 +36,7 @@ enum GetError {
 }
 
 #[clap_schema::handler]
-async fn get(_command: GetArgs) -> Result<Object, GetError> {
+async fn get(_command: GetArgs) -> Result<Job, GetError> {
     Err(GetError::NotFound)
 }
 

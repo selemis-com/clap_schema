@@ -1,5 +1,5 @@
-//! A larger application-style CLI where handler attributes make leaf contracts follow the
-//! real async function signatures while runtime dispatch remains ordinary Rust.
+//! A larger application-style CLI with nested commands, structured input, constraints, and typed
+//! handler outputs while runtime dispatch remains ordinary Rust.
 #![expect(dead_code, reason = "example data types are reflected rather than executed")]
 
 use std::path::PathBuf;
@@ -8,17 +8,17 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use clap_schema::{CliSchema, CommandSchema, JsonSchema};
 use serde_json::Value;
 
-/// Top-level arguments shared by the collaborative knowledge CLI.
+/// Top-level arguments shared by the example build-service CLI.
 #[derive(Debug, Parser, CliSchema)]
-#[command(name = "knowledge", version, about = "Collaborative knowledge CLI")]
+#[command(name = "forge", version, about = "Example build-service CLI")]
 struct Cli {
-    /// Server URL.
-    #[arg(long, global = true, default_value = "http://127.0.0.1:3000")]
-    url: String,
+    /// Service endpoint.
+    #[arg(long, global = true, default_value = "http://127.0.0.1:8080")]
+    endpoint: String,
 
-    /// API key used for authentication.
-    #[arg(long, global = true, env = "KNOWLEDGE_API_KEY")]
-    api_key: Option<String>,
+    /// Authentication token.
+    #[arg(long, global = true, env = "FORGE_TOKEN")]
+    token: Option<String>,
 
     /// Emit machine-readable JSON.
     #[arg(long, global = true)]
@@ -29,232 +29,210 @@ struct Cli {
     command: Commands,
 }
 
-/// Top-level commands exposed by the collaborative knowledge CLI.
+/// Top-level commands exposed by the example CLI.
 #[derive(Debug, Subcommand, CommandSchema)]
 enum Commands {
-    /// Workspace operations.
+    /// Repository operations.
     #[command(subcommand)]
-    Workspaces(WorkspaceCommands),
+    Repositories(RepositoryCommands),
 
-    /// Object operations.
+    /// Build operations.
     #[command(subcommand)]
-    Objects(ObjectCommands),
+    Builds(BuildCommands),
 
     /// Print the CLI contract.
     #[schema(skip)]
     Schema,
 }
 
-/// Commands that operate on workspaces.
+/// Commands that operate on repositories.
 #[derive(Debug, Subcommand, CommandSchema)]
-enum WorkspaceCommands {
-    /// List visible workspaces.
-    List(ListWorkspacesArgs),
+enum RepositoryCommands {
+    /// List repositories.
+    List(ListRepositoriesArgs),
 
-    /// Create a workspace.
-    Create(CreateWorkspaceArgs),
+    /// Create a repository.
+    Create(CreateRepositoryArgs),
 }
 
-/// Commands that operate on knowledge objects and their direct grants.
+/// Commands that operate on builds and their artifacts.
 #[derive(Debug, Subcommand, CommandSchema)]
-enum ObjectCommands {
-    /// Fetch an object.
-    Get(ObjectKeyArgs),
+enum BuildCommands {
+    /// Fetch a build.
+    Get(BuildKeyArgs),
 
-    /// Create an object using argv fields or a complete JSON request.
-    #[schema(input = CreateObjectInput, structured = "input", json(metadata))]
-    Create(CreateObjectArgs),
+    /// Run a build using argv fields or a complete JSON request.
+    #[schema(input = RunBuildInput, structured = "input", json(variables))]
+    Run(RunBuildArgs),
 
-    /// Direct object grants.
+    /// Artifact operations.
     #[command(subcommand)]
-    Grants(ObjectGrantCommands),
+    Artifacts(ArtifactCommands),
 }
 
-/// The available `knowledge objects grants` commands.
+/// Commands that operate on build artifacts.
 #[derive(Debug, Subcommand, CommandSchema)]
-enum ObjectGrantCommands {
-    /// List active direct object grants, newest first.
-    List(ObjectGrantsListArgs),
+enum ArtifactCommands {
+    /// List artifacts produced by a build.
+    List(ListArtifactsArgs),
 
-    /// Grant a user or linked group a role on an object.
-    Create(ObjectGrantsCreateArgs),
+    /// Download one artifact.
+    Download(DownloadArtifactArgs),
 
-    /// Revoke a direct object grant without deleting its historical record.
-    Revoke(ObjectGrantsRevokeArgs),
+    /// Remove one artifact.
+    Remove(RemoveArtifactArgs),
 }
 
-/// Pagination arguments accepted by workspace listing.
+/// Pagination arguments accepted by repository listing.
 #[derive(Debug, Args, JsonSchema)]
-struct ListWorkspacesArgs {
+struct ListRepositoriesArgs {
     /// Opaque cursor from the previous page, when continuing a listing.
     #[arg(long)]
     cursor: Option<String>,
 
-    /// Maximum number of workspaces to return.
+    /// Maximum number of repositories to return.
     #[arg(long, default_value_t = 50)]
     limit: u16,
 }
 
-/// Arguments accepted by workspace creation.
+/// Arguments accepted by repository creation.
 #[derive(Debug, Args, JsonSchema)]
-struct CreateWorkspaceArgs {
-    /// Human-readable name assigned to the workspace.
+struct CreateRepositoryArgs {
+    /// Human-readable repository name.
     #[arg(long)]
     name: String,
+
+    /// Repository visibility.
+    #[arg(long, value_enum)]
+    visibility: Visibility,
 }
 
-/// Composite key used to identify an object within a workspace.
+/// Composite key used to identify a build.
 #[derive(Debug, Args, JsonSchema)]
-struct ObjectKeyArgs {
-    /// Workspace containing the object.
-    workspace_id: String,
-    /// Object identifier within the workspace.
-    object_id: String,
+struct BuildKeyArgs {
+    /// Repository containing the build.
+    repository_id: String,
+    /// Build identifier within the repository.
+    build_id: String,
 }
 
-/// Semantic object-creation request represented by argv fields or structured input.
+/// Semantic build-run request represented by argv fields or structured JSON input.
 #[derive(Debug, JsonSchema)]
-struct CreateObjectInput {
-    /// Workspace in which to create the object.
-    workspace_id: String,
-    /// Human-readable title assigned to the object.
-    title: String,
-    /// Optional textual body stored with the object.
-    body: Option<String>,
-    /// Arbitrary structured metadata stored with the object.
-    metadata: Value,
+struct RunBuildInput {
+    /// Repository to build.
+    repository_id: String,
+    /// Branch, tag, or commit to build.
+    reference: String,
+    /// Arbitrary build variables.
+    variables: Value,
 }
 
-/// Clap transport arguments used to construct an object-creation request.
+/// Clap transport arguments used to construct a build-run request.
 #[derive(Debug, Args)]
-struct CreateObjectArgs {
-    /// Workspace in which to create the object.
-    workspace_id: String,
+struct RunBuildArgs {
+    /// Repository to build.
+    repository_id: String,
 
-    /// Object title supplied directly on the command line.
+    /// Branch, tag, or commit supplied directly on the command line.
     #[arg(long)]
-    title: Option<String>,
+    reference: Option<String>,
 
-    /// Object body supplied directly on the command line.
+    /// JSON build variables supplied directly on the command line.
     #[arg(long)]
-    body: Option<String>,
-
-    /// JSON metadata supplied directly on the command line.
-    #[arg(long)]
-    metadata: Option<String>,
+    variables: Option<String>,
 
     /// Path to a complete JSON request used instead of individual transport fields.
     #[arg(long)]
     input: Option<PathBuf>,
 }
 
-/// Arguments accepted when listing direct grants on an object.
+/// Arguments accepted when listing artifacts for a build.
 #[derive(Debug, Args, JsonSchema)]
-struct ObjectGrantsListArgs {
-    /// Workspace containing the object.
-    workspace_id: String,
-    /// Object whose direct grants should be listed.
-    object_id: String,
+struct ListArtifactsArgs {
+    /// Build whose artifacts should be listed.
+    #[command(flatten)]
+    #[schemars(flatten)]
+    build: BuildKeyArgs,
 
     /// Opaque cursor from the previous page, when continuing a listing.
     #[arg(long)]
     cursor: Option<String>,
 }
 
-/// Arguments accepted when creating a direct object grant.
+/// Arguments accepted when downloading an artifact.
 #[derive(Debug, Args, JsonSchema)]
-struct ObjectGrantsCreateArgs {
-    /// Workspace containing the object.
-    workspace_id: String,
-    /// Object to which direct access is granted.
-    object_id: String,
-
-    /// Exactly one user or group principal receiving the grant.
+struct DownloadArtifactArgs {
+    /// Build that produced the artifact.
     #[command(flatten)]
     #[schemars(flatten)]
-    principal: PrincipalArgs,
+    build: BuildKeyArgs,
 
-    /// Role assigned by the direct grant.
-    #[arg(long, value_enum)]
-    role: Role,
-}
+    /// Artifact identifier.
+    artifact_id: String,
 
-/// Mutually exclusive user or group selector for a direct object grant.
-#[derive(Debug, Args, JsonSchema)]
-#[group(id = "principal", required = true, multiple = false)]
-struct PrincipalArgs {
-    /// User receiving the direct grant.
+    /// Destination path.
     #[arg(long)]
-    user_id: Option<String>,
-
-    /// Linked group receiving the direct grant.
-    #[arg(long)]
-    group_id: Option<String>,
+    output: PathBuf,
 }
 
-/// Arguments accepted when revoking a direct object grant.
+/// Arguments accepted when removing an artifact.
 #[derive(Debug, Args, JsonSchema)]
-struct ObjectGrantsRevokeArgs {
-    /// Workspace containing the object.
-    workspace_id: String,
-    /// Object from which the direct grant is revoked.
-    object_id: String,
-    /// Identifier of the direct grant to revoke.
-    grant_id: String,
+struct RemoveArtifactArgs {
+    /// Build that produced the artifact.
+    #[command(flatten)]
+    #[schemars(flatten)]
+    build: BuildKeyArgs,
+
+    /// Artifact identifier.
+    artifact_id: String,
 }
 
-/// Access level assigned by a direct object grant.
+/// Repository visibility accepted by repository creation.
 #[derive(Debug, Clone, ValueEnum, JsonSchema)]
 #[value(rename_all = "kebab-case")]
 #[schemars(rename_all = "kebab-case")]
-enum Role {
-    /// Read-only access to the object.
-    Viewer,
-    /// Permission to modify the object.
-    Editor,
-    /// Administrative control over the object.
-    Admin,
+enum Visibility {
+    /// Visible to everyone with service access.
+    Public,
+    /// Visible only to authorized callers.
+    Private,
 }
 
-/// Workspace returned by workspace operations.
+/// Repository returned by repository operations.
 #[derive(Debug, JsonSchema)]
-struct Workspace {
-    /// Stable workspace identifier.
+struct Repository {
+    /// Stable repository identifier.
     id: String,
-    /// Human-readable workspace name.
+    /// Human-readable repository name.
     name: String,
+    /// Repository visibility.
+    visibility: Visibility,
 }
 
-/// Knowledge object returned by object operations.
+/// Build returned by build operations.
 #[derive(Debug, JsonSchema)]
-struct Object {
-    /// Stable object identifier.
+struct Build {
+    /// Stable build identifier.
     id: String,
-    /// Workspace containing the object.
-    workspace_id: String,
-    /// Human-readable object title.
-    title: String,
-    /// Optional textual object body.
-    body: Option<String>,
-    /// Arbitrary structured metadata associated with the object.
-    metadata: Value,
+    /// Repository that owns the build.
+    repository_id: String,
+    /// Branch, tag, or commit used by the build.
+    reference: String,
+    /// Current build state.
+    state: String,
 }
 
-/// Direct access grant returned by grant operations.
+/// Artifact returned by artifact operations.
 #[derive(Debug, JsonSchema)]
-struct ObjectGrant {
-    /// Stable grant identifier.
+struct Artifact {
+    /// Stable artifact identifier.
     id: String,
-    /// Object to which the grant applies.
-    object_id: String,
-    /// User principal when the grant targets a user.
-    user_id: Option<String>,
-    /// Group principal when the grant targets a linked group.
-    group_id: Option<String>,
-    /// Role conferred by the grant.
-    role: Role,
-    /// Whether the grant has been revoked.
-    revoked: bool,
+    /// Build that produced the artifact.
+    build_id: String,
+    /// Artifact file name.
+    name: String,
+    /// Artifact size in bytes.
+    size: u64,
 }
 
 /// Cursor-paginated response used by list operations.
@@ -266,211 +244,120 @@ struct ListResponse<T> {
     next_cursor: Option<String>,
 }
 
-/// Errors returned while listing workspaces.
+/// Example command failure.
 #[derive(Debug)]
-enum WorkspaceListError {
-    /// Workspace listing is temporarily unavailable.
-    Unavailable,
-}
-
-/// Errors returned while creating a workspace.
-#[derive(Debug)]
-enum WorkspaceCreateError {
-    /// A workspace already uses the requested name.
-    NameConflict {
-        /// Conflicting workspace name.
-        name: String,
-    },
-}
-
-/// Errors returned while fetching an object.
-#[derive(Debug)]
-enum ObjectGetError {
-    /// No object exists for the requested identifier.
-    NotFound {
-        /// Object identifier that could not be found.
-        object_id: String,
-    },
-}
-
-/// Errors returned while creating an object.
-#[derive(Debug)]
-enum ObjectCreateError {
-    /// The supplied creation request is invalid.
-    InvalidInput,
-}
-
-/// Errors returned while listing direct object grants.
-#[derive(Debug)]
-enum ObjectGrantListError {
-    /// The target object does not exist.
-    ObjectNotFound,
-}
-
-/// Errors returned while creating a direct object grant.
-#[derive(Debug)]
-enum ObjectGrantCreateError {
-    /// The target object does not exist.
-    ObjectNotFound,
-    /// The selected user or group principal does not exist.
-    PrincipalNotFound,
-    /// An equivalent direct grant already exists.
-    AlreadyExists,
-    /// The current caller may not create the grant.
-    PermissionDenied,
-}
-
-/// Errors returned while revoking a direct object grant.
-#[derive(Debug)]
-enum ObjectGrantRevokeError {
-    /// The requested grant does not exist.
-    GrantNotFound,
-    /// The current caller may not revoke the grant.
-    PermissionDenied,
-}
+struct CommandError;
 
 /// Shared runtime state passed to command handlers during ordinary dispatch.
 #[derive(Debug)]
 struct CliContext;
 
-/// Unified runtime error used by the example dispatch layer.
-#[derive(Debug)]
-struct CliError;
-
-/// Implements conversion from command-specific errors into the dispatch-layer error.
-macro_rules! into_cli_error {
-    ($($error:ty),+ $(,)?) => {
-        $(
-            impl From<$error> for CliError {
-                fn from(_error: $error) -> Self {
-                    Self
-                }
-            }
-        )+
-    };
-}
-
-into_cli_error!(
-    WorkspaceListError,
-    WorkspaceCreateError,
-    ObjectGetError,
-    ObjectCreateError,
-    ObjectGrantListError,
-    ObjectGrantCreateError,
-    ObjectGrantRevokeError,
-);
-
-/// Lists visible workspaces and exposes a paginated workspace output schema.
+/// Lists repositories and exposes a paginated repository output schema.
 #[clap_schema::handler]
-async fn list_workspaces(
-    _command: ListWorkspacesArgs,
+async fn list_repositories(
+    _command: ListRepositoriesArgs,
     _ctx: &CliContext,
-) -> Result<ListResponse<Workspace>, WorkspaceListError> {
-    Err(WorkspaceListError::Unavailable)
+) -> Result<ListResponse<Repository>, CommandError> {
+    Err(CommandError)
 }
 
-/// Creates a workspace and exposes the created workspace as successful output.
+/// Creates a repository and exposes the created repository as successful output.
 #[clap_schema::handler]
-async fn create_workspace(
-    command: CreateWorkspaceArgs,
+async fn create_repository(
+    _command: CreateRepositoryArgs,
     _ctx: &CliContext,
-) -> Result<Workspace, WorkspaceCreateError> {
-    Err(WorkspaceCreateError::NameConflict { name: command.name })
+) -> Result<Repository, CommandError> {
+    Err(CommandError)
 }
 
-/// Fetches one object and exposes the object output schema.
+/// Fetches one build and exposes the build output schema.
 #[clap_schema::handler]
-async fn get_object(command: ObjectKeyArgs, _ctx: &CliContext) -> Result<Object, ObjectGetError> {
-    Err(ObjectGetError::NotFound { object_id: command.object_id })
+async fn get_build(_command: BuildKeyArgs, _ctx: &CliContext) -> Result<Build, CommandError> {
+    Err(CommandError)
 }
 
-/// Creates an object from transport arguments and exposes the semantic object output.
+/// Runs a build and exposes the semantic build output.
 #[clap_schema::handler]
-async fn create_object(
-    _command: CreateObjectArgs,
+async fn run_build(_command: RunBuildArgs, _ctx: &CliContext) -> Result<Build, CommandError> {
+    Err(CommandError)
+}
+
+/// Lists build artifacts and exposes a paginated artifact output schema.
+#[clap_schema::handler]
+async fn list_artifacts(
+    _command: ListArtifactsArgs,
     _ctx: &CliContext,
-) -> Result<Object, ObjectCreateError> {
-    Err(ObjectCreateError::InvalidInput)
+) -> Result<ListResponse<Artifact>, CommandError> {
+    Err(CommandError)
 }
 
-/// Lists direct object grants and exposes a paginated grant output schema.
+/// Downloads an artifact and returns no machine-readable success payload.
 #[clap_schema::handler]
-async fn list_object_grants(
-    _command: ObjectGrantsListArgs,
+async fn download_artifact(
+    _command: DownloadArtifactArgs,
     _ctx: &CliContext,
-) -> Result<ListResponse<ObjectGrant>, ObjectGrantListError> {
-    Err(ObjectGrantListError::ObjectNotFound)
+) -> Result<(), CommandError> {
+    Err(CommandError)
 }
 
-/// Creates a direct object grant and exposes the resulting grant schema.
+/// Removes an artifact and exposes the removed artifact metadata.
 #[clap_schema::handler]
-async fn create_object_grant(
-    _command: ObjectGrantsCreateArgs,
+async fn remove_artifact(
+    _command: RemoveArtifactArgs,
     _ctx: &CliContext,
-) -> Result<ObjectGrant, ObjectGrantCreateError> {
-    Err(ObjectGrantCreateError::PermissionDenied)
+) -> Result<Artifact, CommandError> {
+    Err(CommandError)
 }
 
-/// Revokes a direct object grant and exposes the updated grant schema.
-#[clap_schema::handler]
-async fn revoke_object_grant(
-    _command: ObjectGrantsRevokeArgs,
-    _ctx: &CliContext,
-) -> Result<ObjectGrant, ObjectGrantRevokeError> {
-    Err(ObjectGrantRevokeError::GrantNotFound)
+/// Dispatches artifact commands to their ordinary Rust handlers.
+async fn dispatch_artifacts(command: ArtifactCommands, ctx: &CliContext) -> Result<(), CommandError> {
+    match command {
+        ArtifactCommands::List(command) => {
+            let _ = list_artifacts(command, ctx).await?;
+        }
+        ArtifactCommands::Download(command) => download_artifact(command, ctx).await?,
+        ArtifactCommands::Remove(command) => {
+            let _ = remove_artifact(command, ctx).await?;
+        }
+    }
+    Ok(())
 }
 
-/// Dispatches commands in the nested direct-grant command group.
-async fn dispatch_object_grants(
-    command: ObjectGrantCommands,
+/// Dispatches build commands and delegates nested artifact operations.
+async fn dispatch_builds(command: BuildCommands, ctx: &CliContext) -> Result<(), CommandError> {
+    match command {
+        BuildCommands::Get(command) => {
+            let _ = get_build(command, ctx).await?;
+        }
+        BuildCommands::Run(command) => {
+            let _ = run_build(command, ctx).await?;
+        }
+        BuildCommands::Artifacts(command) => dispatch_artifacts(command, ctx).await?,
+    }
+    Ok(())
+}
+
+/// Dispatches repository commands to their ordinary Rust handlers.
+async fn dispatch_repositories(
+    command: RepositoryCommands,
     ctx: &CliContext,
-) -> Result<(), CliError> {
+) -> Result<(), CommandError> {
     match command {
-        ObjectGrantCommands::List(command) => {
-            let _ = list_object_grants(command, ctx).await?;
+        RepositoryCommands::List(command) => {
+            let _ = list_repositories(command, ctx).await?;
         }
-        ObjectGrantCommands::Create(command) => {
-            let _ = create_object_grant(command, ctx).await?;
-        }
-        ObjectGrantCommands::Revoke(command) => {
-            let _ = revoke_object_grant(command, ctx).await?;
-        }
-    }
-    Ok(())
-}
-
-/// Dispatches object commands and delegates nested grant operations.
-async fn dispatch_objects(command: ObjectCommands, ctx: &CliContext) -> Result<(), CliError> {
-    match command {
-        ObjectCommands::Get(command) => {
-            let _ = get_object(command, ctx).await?;
-        }
-        ObjectCommands::Create(command) => {
-            let _ = create_object(command, ctx).await?;
-        }
-        ObjectCommands::Grants(command) => dispatch_object_grants(command, ctx).await?,
-    }
-    Ok(())
-}
-
-/// Dispatches workspace commands to their ordinary Rust handlers.
-async fn dispatch_workspaces(command: WorkspaceCommands, ctx: &CliContext) -> Result<(), CliError> {
-    match command {
-        WorkspaceCommands::List(command) => {
-            let _ = list_workspaces(command, ctx).await?;
-        }
-        WorkspaceCommands::Create(command) => {
-            let _ = create_workspace(command, ctx).await?;
+        RepositoryCommands::Create(command) => {
+            let _ = create_repository(command, ctx).await?;
         }
     }
     Ok(())
 }
 
 /// Dispatches the selected top-level command group.
-async fn dispatch(command: Commands, ctx: &CliContext) -> Result<(), CliError> {
+async fn dispatch(command: Commands, ctx: &CliContext) -> Result<(), CommandError> {
     match command {
-        Commands::Workspaces(command) => dispatch_workspaces(command, ctx).await?,
-        Commands::Objects(command) => dispatch_objects(command, ctx).await?,
+        Commands::Repositories(command) => dispatch_repositories(command, ctx).await?,
+        Commands::Builds(command) => dispatch_builds(command, ctx).await?,
         Commands::Schema => {}
     }
     Ok(())
@@ -483,7 +370,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "{}",
         serde_json::to_string_pretty(
-            contract.command(&["objects", "grants", "create"]).expect("grant command")
+            contract.command(&["builds", "artifacts", "list"]).expect("artifact list command")
         )?
     );
     Ok(())

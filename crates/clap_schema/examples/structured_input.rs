@@ -31,8 +31,8 @@ enum Commands {
 /// Semantic request represented by either argv fields or structured JSON input.
 #[derive(Debug, JsonSchema)]
 struct CreateDocumentInput {
-    /// Workspace in which to create the document.
-    workspace_id: String,
+    /// Collection in which to create the document.
+    collection: String,
     /// Title assigned to the document.
     title: String,
     /// Arbitrary structured metadata stored with the document.
@@ -42,8 +42,8 @@ struct CreateDocumentInput {
 /// Clap transport arguments used to construct a document creation request.
 #[derive(Debug, Args)]
 struct CreateDocumentArgs {
-    /// Workspace in which to create the document.
-    workspace_id: String,
+    /// Collection in which to create the document.
+    collection: String,
 
     /// Document title supplied directly on the command line.
     #[arg(long)]
@@ -53,7 +53,7 @@ struct CreateDocumentArgs {
     #[arg(long)]
     metadata: Option<String>,
 
-    /// Path to a complete JSON request, or `-` to read it from standard input.
+    /// Path to a complete JSON request used instead of individual transport fields.
     #[arg(long, value_name = "PATH|-")]
     input: Option<PathBuf>,
 }
@@ -63,8 +63,8 @@ struct CreateDocumentArgs {
 struct Document {
     /// Stable document identifier.
     id: String,
-    /// Workspace containing the document.
-    workspace_id: String,
+    /// Collection containing the document.
+    collection: String,
     /// Human-readable document title.
     title: String,
     /// Arbitrary structured metadata stored with the document.

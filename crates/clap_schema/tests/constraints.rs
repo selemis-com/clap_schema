@@ -7,21 +7,21 @@ mod tests {
     use clap_schema::{CommandSpec, ContractBuilder, InputConstraint, InputTransport, JsonSchema};
 
     #[derive(Debug, JsonSchema)]
-    struct GrantInput {
-        object_id: String,
-        user_id: Option<String>,
-        group_id: Option<String>,
+    struct PublishInput {
+        package_id: String,
+        registry_id: Option<String>,
+        mirror_id: Option<String>,
     }
 
     fn cli() -> Command {
-        Command::new("grants").subcommand(
+        Command::new("packages").subcommand(
             Command::new("create")
-                .arg(Arg::new("object_id").required(true))
-                .arg(Arg::new("user_id").long("user-id").action(ArgAction::Set))
-                .arg(Arg::new("group_id").long("group-id").action(ArgAction::Set))
+                .arg(Arg::new("package_id").required(true))
+                .arg(Arg::new("registry_id").long("user-id").action(ArgAction::Set))
+                .arg(Arg::new("mirror_id").long("group-id").action(ArgAction::Set))
                 .group(
-                    ArgGroup::new("principal")
-                        .args(["user_id", "group_id"])
+                    ArgGroup::new("destination")
+                        .args(["registry_id", "mirror_id"])
                         .required(true)
                         .multiple(false),
                 ),
@@ -31,7 +31,7 @@ mod tests {
     #[test]
     fn clap_argument_groups_become_semantic_input_constraints() -> clap_schema::Result<()> {
         let contract = ContractBuilder::new(cli())
-            .command(["create"], CommandSpec::new::<GrantInput>())
+            .command(["create"], CommandSpec::new::<PublishInput>())
             .build()?;
         let command = contract.command(&["create"]).ok_or_else(|| {
             clap_schema::Error::UnknownCommand { path: vec!["create".to_owned()] }
@@ -42,7 +42,7 @@ mod tests {
         assert!(constraints.iter().any(|constraint| matches!(
             constraint,
             InputConstraint::ExactlyOne { properties }
-                if properties == &["group_id".to_owned(), "user_id".to_owned()]
+                if properties == &["mirror_id".to_owned(), "registry_id".to_owned()]
         )));
         Ok(())
     }
