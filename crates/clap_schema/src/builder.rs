@@ -44,10 +44,11 @@ impl ContractBuilder {
         }
     }
 
-    /// Registers one executable command by canonical path.
+    /// Registers one executable subcommand leaf by canonical path.
     ///
-    /// The path excludes the executable name. Use an empty path for a CLI whose
-    /// root command itself is the executable operation.
+    /// The path excludes the executable name and must contain at least one
+    /// subcommand component. Root-only operations are outside the 0.1 contract
+    /// model because root arguments are represented as invocation context.
     #[must_use]
     pub fn command<I, S>(mut self, path: I, spec: CommandSpec) -> Self
     where
@@ -89,10 +90,14 @@ impl ContractBuilder {
 
         let mut commands = Vec::with_capacity(self.commands.len());
         for (path, spec) in self.commands {
+            if path.is_empty() {
+                return Err(Error::RootCommandUnsupported);
+            }
             let resolved = reflect::command_at(&self.root, &path)?;
             if resolved.hidden && !self.include_hidden {
                 continue;
             }
+            reject_intermediate_arguments(&self.root, &path, &reserved)?;
             commands.push(build_command(
                 &path,
                 resolved.command,
@@ -203,6 +208,35 @@ fn reflect_context(
     }
     context.sort_by(|left, right| left.id.cmp(&right.id));
     Ok((context, reserved))
+}
+
+/// Rejects command paths whose intermediate nodes own non-root invocation arguments.
+fn reject_intermediate_arguments(
+    root: &Command,
+    path: &[String],
+    root_context: &BTreeSet<String>,
+) -> Result<()> {
+    let mut command = root;
+    let mut prefix = Vec::with_capacity(path.len().saturating_sub(1));
+
+    for component in &path[..path.len() - 1] {
+        command = command
+            .get_subcommands()
+            .find(|candidate| candidate.get_name() == component)
+            .ok_or_else(|| Error::UnknownCommand { path: path.to_vec() })?;
+        prefix.push(component.clone());
+
+        if let Some(argument) = command.get_arguments().find(|argument| {
+            reflect::agent_argument(argument) && !root_context.contains(argument.get_id().as_str())
+        }) {
+            return Err(Error::IntermediateArgument {
+                path: prefix.clone(),
+                argument: argument.get_id().as_str().to_owned(),
+            });
+        }
+    }
+
+    Ok(())
 }
 
 /// Builds and validates one executable command contract.

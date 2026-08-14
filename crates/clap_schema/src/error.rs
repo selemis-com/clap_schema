@@ -21,6 +21,22 @@ pub enum Error {
         path: Vec<String>,
     },
 
+    /// The 0.1 contract model requires executable operations to be subcommand leaves.
+    #[error("root command cannot be registered as an executable operation")]
+    RootCommandUnsupported,
+
+    /// An intermediate subcommand owns invocation state the 0.1 model cannot represent.
+    #[error(
+        "intermediate command {path} has unsupported argument `{argument}`",
+        path = format_path(.path)
+    )]
+    IntermediateArgument {
+        /// Canonical intermediate command path.
+        path: Vec<String>,
+        /// Clap argument identifier owned by the intermediate command.
+        argument: String,
+    },
+
     /// A referenced clap argument does not exist.
     #[error(
         "unknown clap argument `{argument}` for command {path}",
