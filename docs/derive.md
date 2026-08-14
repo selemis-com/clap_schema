@@ -69,3 +69,30 @@ Attributes remain only for semantics that cannot be derived from Clap or the han
 - deprecation guidance.
 
 See [`handler.md`](handler.md) for the handler contract. Public Rust types in `clap_schema` document the serialized contract model.
+
+## `#[schema(...)]` attribute reference
+
+### Root `CliSchema`
+
+| Option | Form | Meaning |
+| --- | --- | --- |
+| `include_hidden` | `#[schema(include_hidden)]` | Include hidden Clap commands in the contract. |
+| `json_output` | `#[schema(json_output = "json")]` | Name the root argument that enables machine-readable JSON output. |
+| `json_value` | `#[schema(json_output = "format", json_value = "json")]` | Require a specific value on `json_output`; invalid without `json_output`. |
+
+`json_output` may identify either a flag or a value-taking argument. When `json_value` is present, contract construction validates that the configured value is accepted when Clap exposes a finite value set.
+
+### Leaf `CommandSchema`
+
+| Option | Form | Meaning |
+| --- | --- | --- |
+| `skip` | `#[schema(skip)]` | Omit a runtime-only variant from the contract. |
+| `input` | `#[schema(input = Request)]` | Use a semantic input type different from the Clap payload. |
+| `deprecated` | `#[schema(deprecated = "use create-v2")]` | Attach deprecation guidance to the emitted command. |
+| `structured` | `#[schema(structured = "input")]` | Treat the named Clap argument as a complete structured JSON source. This does not imply stdin support. |
+| `stdin` | `#[schema(structured = "input", stdin = "-")]` | Declare the exact structured-source token that means stdin. Requires `structured`. |
+| `structured_only` | `#[schema(structured = "input", structured_only)]` | Emit only the structured transport. Requires `structured`. |
+| `json(...)` | `#[schema(json(metadata, filters))]` | Encode the named semantic properties as JSON argv values rather than plain text. |
+| `bind(...)` | `#[schema(bind(query = "q"))]` | Bind a semantic property to a differently named Clap argument. |
+
+Leaf-only metadata is valid only on executable leaf variants, not intermediate or flattened command groups. `stdin` and `structured_only` both require `structured`. A property named in both `bind(...)` and `json(...)` uses the explicit binding and JSON value encoding together.
