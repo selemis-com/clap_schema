@@ -24,6 +24,10 @@ enum Commands {
     Inspect(InspectArgs),
     /// Use an asynchronous inherent handler.
     Update(UpdateArgs),
+    /// Use an immutable borrowed inherent handler.
+    InspectRef(InspectRefArgs),
+    /// Use a mutable borrowed asynchronous inherent handler.
+    Refresh(RefreshArgs),
 }
 
 /// Arguments accepted by the local command.
@@ -41,6 +45,14 @@ struct InspectArgs {}
 /// Arguments accepted by the update command.
 #[derive(Debug, Args, JsonSchema)]
 struct UpdateArgs {}
+
+/// Arguments accepted by the borrowed inspect command.
+#[derive(Debug, Args, JsonSchema)]
+struct InspectRefArgs {}
+
+/// Arguments accepted by the mutable refresh command.
+#[derive(Debug, Args, JsonSchema)]
+struct RefreshArgs {}
 
 /// Successful result returned by every demonstration command.
 #[derive(Debug, JsonSchema)]
@@ -85,6 +97,27 @@ impl UpdateArgs {
     }
 }
 
+impl InspectRefArgs {
+    /// Handles a command with an immutable borrowed-self method.
+    #[expect(
+        clippy::missing_const_for_fn,
+        reason = "example intentionally demonstrates a non-const synchronous borrowed receiver"
+    )]
+    #[clap_schema::handler]
+    fn run(&self, _ctx: &Context) -> Result<Item, CommandError> {
+        Err(CommandError)
+    }
+}
+
+impl RefreshArgs {
+    /// Handles a command with a mutable borrowed-self asynchronous method.
+    #[clap_schema::handler]
+    async fn run(&mut self, _ctx: &Context) -> Result<Item, CommandError> {
+        *self = Self {};
+        Err(CommandError)
+    }
+}
+
 /// Dispatches commands using ordinary Rust while preserving each handler form.
 async fn dispatch(command: Commands, context: &Context) -> Result<(), CommandError> {
     match command {
@@ -98,6 +131,12 @@ async fn dispatch(command: Commands, context: &Context) -> Result<(), CommandErr
             let _ = command.run()?;
         }
         Commands::Update(command) => {
+            let _ = command.run(context).await?;
+        }
+        Commands::InspectRef(command) => {
+            let _ = command.run(context)?;
+        }
+        Commands::Refresh(mut command) => {
             let _ = command.run(context).await?;
         }
     }

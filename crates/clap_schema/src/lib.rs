@@ -4,10 +4,8 @@
 //! serialization of Clap's complete parser state. It joins four sources of
 //! truth already present in a Rust CLI:
 //!
-//! - [`clap::Command`] owns invocation syntax, command structure, help, and
-//!   parser validation.
-//! - [`handler`] marks the canonical implementation for each executable leaf
-//!   payload.
+//! - [`clap::Command`] owns invocation syntax, command structure, help, and parser validation.
+//! - [`handler`] marks the canonical implementation for each executable leaf payload.
 //! - Rust owns each handler's successful `Result<Output, _>` type.
 //! - [`JsonSchema`] owns the semantic input and successful output shapes.
 //!
@@ -73,15 +71,15 @@
 //! # Handler contract
 //!
 //! Handlers may be synchronous or asynchronous free functions, or inherent
-//! methods with an owned `self` receiver. Synchronous handlers may also be
-//! `const fn`. Free handlers use their first argument as the payload key;
-//! inherent methods use `Self`.
+//! methods with `self`, `&self`, or `&mut self` receivers. Synchronous handlers
+//! may also be `const fn`. Free handlers use their first argument as the payload
+//! key; inherent methods use `Self`.
 //!
 //! The supported handler model is intentionally narrow:
 //!
 //! - handlers are plain, non-generic functions or inherent methods;
 //! - free handlers own a named local command payload as their first argument;
-//! - method handlers use an owned `self` receiver;
+//! - method handlers use `self`, `&self`, or `&mut self`;
 //! - the return type resolves to `Result<T, E>`;
 //! - `T` implements [`JsonSchema`];
 //! - `E` has no schema bound and is not part of the contract;
@@ -89,9 +87,9 @@
 //! - one payload type has one canonical handler;
 //! - contract-visible leaves use exactly one tuple payload.
 //!
-//! Additional handler arguments are runtime context only. Borrowed payloads,
-//! `&self`, `&mut self`, generic handlers, associated functions without `self`,
-//! and trait-object registration are outside the 0.1 handler model. The
+//! Additional handler arguments are runtime context only. Borrowed free-function
+//! payloads, generic handlers, associated functions without `self`, and
+//! trait-object registration are outside the 0.1 handler model. The
 //! [`handler`] macro documents the supported signatures and dispatch model in
 //! detail.
 //!
@@ -104,11 +102,10 @@
 //!
 //! Input can be transported in two ways:
 //!
-//! - [`InputTransport::Arguments`] maps semantic object properties to
-//!   deterministic Clap argv representations.
-//! - [`InputTransport::Structured`] serializes the complete semantic value and
-//!   supplies it through one path/source argument, optionally with a standard
-//!   input token.
+//! - [`InputTransport::Arguments`] maps semantic object properties to deterministic Clap argv
+//!   representations.
+//! - [`InputTransport::Structured`] serializes the complete semantic value and supplies it through
+//!   one path/source argument, optionally with a standard input token.
 //!
 //! A transport is emitted only when contract construction can map the semantic
 //! value to that invocation shape. [`CommandSpec`] exposes the same semantics
@@ -162,19 +159,16 @@
 //!     name: String,
 //! }
 //!
-//! let cli = Command::new("example").subcommand(
-//!     Command::new("create").arg(Arg::new("name").long("name")),
-//! );
-//! let contract = ContractBuilder::new(cli)
-//!     .command(["create"], CommandSpec::new::<CreateInput>())
-//!     .build()?;
+//! let cli = Command::new("example")
+//!     .subcommand(Command::new("create").arg(Arg::new("name").long("name")));
+//! let contract =
+//!     ContractBuilder::new(cli).command(["create"], CommandSpec::new::<CreateInput>()).build()?;
 //! assert!(contract.command(&["create"]).is_some());
 //! # Ok::<(), clap_schema::Error>(())
 //! ```
 //!
 //! The derive + handler API is the normal path; the builder is the explicit
 //! counterpart for programmatic Clap trees.
-//!
 #[expect(
     unused_extern_crates,
     reason = "proc-macro expansions refer to this crate through `::clap_schema`"

@@ -57,7 +57,7 @@ input  = CreateArgs
 output = Item
 ```
 
-The handler signature is the source of truth for the successful output type. The handler's error type is irrelevant to `clap_schema`. Handlers may be synchronous or asynchronous, and may be free functions or inherent methods with an owned `self` receiver.
+The handler signature is the source of truth for the successful output type. The handler's error type is irrelevant to `clap_schema`. Handlers may be synchronous or asynchronous, and may be free functions or inherent methods with `self`, `&self`, or `&mut self` receivers. Synchronous handlers may also be `const fn`.
 
 ## Runtime dispatch stays ordinary Rust
 
@@ -112,7 +112,7 @@ match command {
 }
 ```
 
-An owned `self` receiver is the payload key. Synchronous `run(self, ...) -> Result<T, E>` methods are supported as well.
+The enclosing `Self` type is the payload key. Methods may use `self`, `&self`, or `&mut self`; synchronous methods may also be `const fn`.
 
 ## Semantic input can differ from the Clap carrier
 

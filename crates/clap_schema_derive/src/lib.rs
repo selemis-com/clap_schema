@@ -18,11 +18,10 @@ use syn::{
 /// # `#[schema(...)]` options
 ///
 /// - `#[schema(include_hidden)]` includes Clap-hidden commands in the contract.
-/// - `#[schema(json_output = "json")]` names a root argument that enables JSON
-///   output. The argument may be a boolean flag or a value-taking option.
-/// - `#[schema(json_output = "format", json_value = "json")]` selects JSON by
-///   assigning a particular value to the named option. `json_value` is invalid
-///   without `json_output`.
+/// - `#[schema(json_output = "json")]` names a root argument that enables JSON output. The argument
+///   may be a boolean flag or a value-taking option.
+/// - `#[schema(json_output = "format", json_value = "json")]` selects JSON by assigning a
+///   particular value to the named option. `json_value` is invalid without `json_output`.
 ///
 /// When Clap exposes a finite value set for a value-taking output selector,
 /// contract construction validates the configured `json_value` against it.
@@ -55,19 +54,17 @@ pub fn derive_cli_schema(input: TokenStream) -> TokenStream {
 /// The following options are valid on executable leaf variants:
 ///
 /// - `skip` — omit a runtime-only variant from the contract.
-/// - `input = Request` — use `Request: JsonSchema` as semantic input instead of
-///   the Clap payload type.
+/// - `input = Request` — use `Request: JsonSchema` as semantic input instead of the Clap payload
+///   type.
 /// - `deprecated = "guidance"` — attach deprecation or migration guidance.
-/// - `structured = "input"` — treat the named Clap argument as a complete JSON
-///   source transport.
-/// - `stdin = "-"` — declare the exact structured-source token representing
-///   standard input. Requires `structured`.
-/// - `structured_only` — suppress ordinary property-by-property argv transport.
+/// - `structured = "input"` — treat the named Clap argument as a complete JSON source transport.
+/// - `stdin = "-"` — declare the exact structured-source token representing standard input.
 ///   Requires `structured`.
-/// - `json(metadata, filters)` — serialize the named semantic properties as
-///   complete JSON argv tokens.
-/// - `bind(query = "q")` — bind a semantic property to a differently named Clap
-///   argument.
+/// - `structured_only` — suppress ordinary property-by-property argv transport. Requires
+///   `structured`.
+/// - `json(metadata, filters)` — serialize the named semantic properties as complete JSON argv
+///   tokens.
+/// - `bind(query = "q")` — bind a semantic property to a differently named Clap argument.
 ///
 /// Leaf-only metadata is invalid on intermediate or flattened command groups.
 /// A property named by both `bind(...)` and `json(...)` keeps the explicit Clap
@@ -85,7 +82,8 @@ pub fn derive_command_schema(input: TokenStream) -> TokenStream {
 /// Marks the canonical handler for a contract-visible command payload.
 ///
 /// Free handlers use their first argument as the command payload type. Inherent
-/// methods use an owned `self` receiver. The generated metadata uses the
+/// methods use their enclosing `Self` type as the payload key. The generated
+/// metadata uses the
 /// function signature only as a compile-time type witness: the handler is never
 /// called while a contract is constructed.
 ///
@@ -97,8 +95,9 @@ pub fn derive_command_schema(input: TokenStream) -> TokenStream {
 /// # Supported forms
 ///
 /// The 0.1 handler model supports synchronous and asynchronous free functions,
-/// and synchronous or asynchronous inherent methods with owned `self`.
-/// Synchronous handlers may also be `const fn`.
+/// and synchronous or asynchronous inherent methods with `self`, `&self`, or
+/// `&mut self` receivers. Synchronous handlers may also be `const fn`. Rust does
+/// not permit `async const fn`, so const and async are separate forms.
 ///
 /// ```text
 /// #[clap_schema::handler]
@@ -116,12 +115,24 @@ pub fn derive_command_schema(input: TokenStream) -> TokenStream {
 ///     #[clap_schema::handler]
 ///     async fn run(self, ctx: &Context) -> Result<(), Error> { ... }
 /// }
+///
+/// impl InspectArgs {
+///     #[clap_schema::handler]
+///     fn run(&self, ctx: &Context) -> Result<Item, Error> { ... }
+/// }
+///
+/// impl RefreshArgs {
+///     #[clap_schema::handler]
+///     async fn run(&mut self, ctx: &Context) -> Result<Item, Error> { ... }
+/// }
 /// ```
 ///
 /// Handlers are intentionally plain and non-generic. Free handlers must own a
-/// named local payload in their first argument. Method handlers must own `self`.
-/// Borrowed payloads, `&self`, `&mut self`, generic handlers, associated
-/// functions without `self`, and trait-object registration are unsupported.
+/// named local payload in their first argument. Method handlers may use any
+/// ordinary inherent receiver form (`self`, `&self`, or `&mut self`); the
+/// enclosing `Self` type remains the command payload key. Borrowed free-function
+/// payloads, generic handlers, associated functions without `self`, and
+/// trait-object registration are unsupported.
 /// Additional arguments are runtime context only and do not participate in the
 /// input schema.
 ///
@@ -228,31 +239,21 @@ fn expand_free_handler(function: &ItemFn) -> syn::Result<TokenStream2> {
     })
 }
 
-/// Expands an inherent handler method with an owned `self` receiver.
+/// Expands an inherent handler method with a `self` receiver.
 fn expand_method_handler(method: &ImplItemFn) -> syn::Result<TokenStream2> {
     let crate_path = clap_schema_path();
     let signature = &method.sig;
     validate_handler_signature(signature)?;
 
     let first = signature.inputs.first().ok_or_else(|| {
-        syn::Error::new_spanned(
-            signature,
-            "clap_schema handler methods require an owned self receiver",
-        )
+        syn::Error::new_spanned(signature, "clap_schema handler methods require a self receiver")
     })?;
     let FnArg::Receiver(receiver) = first else {
         return Err(syn::Error::new_spanned(
             first,
-            "associated clap_schema handlers without self are not supported; use a free function or an owned-self method",
+            "associated clap_schema handlers without self are not supported; use a free function or a method with self, &self, or &mut self",
         ));
     };
-    if receiver.reference.is_some() || receiver.colon_token.is_some() {
-        return Err(syn::Error::new_spanned(
-            receiver,
-            "#[clap_schema::handler] methods must own self",
-        ));
-    }
-
     let mut argument_types = Vec::new();
     for argument in signature.inputs.iter().skip(1) {
         let FnArg::Typed(argument) = argument else {
@@ -264,9 +265,10 @@ fn expand_method_handler(method: &ImplItemFn) -> syn::Result<TokenStream2> {
         argument_types.push(argument.ty.as_ref());
     }
     let name = &signature.ident;
+    let receiver_ty = receiver.ty.as_ref();
     let invocation = quote! {
         Self::#name(
-            #crate_path::__private::type_witness::<Self>(),
+            #crate_path::__private::type_witness::<#receiver_ty>(),
             #(#crate_path::__private::type_witness::<#argument_types>()),*
         )
     };
