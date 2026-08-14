@@ -1,0 +1,16 @@
+name: Feature request
+description: Propose an agent-contract capability
+labels: ["enhancement", "needs triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the agent/CLI problem this would solve and why clap plus Schemars do not already express it.
+    validations:
+      required: true
+  - type: textarea
+    id: surface
+    attributes:
+      label: Proposed contract or API shape
+      description: Include an example if the proposal changes derive syntax, Rust APIs, or the wire contract.

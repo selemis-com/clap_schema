@@ -1,0 +1,10 @@
+name: Documentation
+description: Suggest a documentation or example improvement
+labels: ["documentation", "needs triage"]
+body:
+  - type: textarea
+    id: change
+    attributes:
+      label: Describe the change
+    validations:
+      required: true

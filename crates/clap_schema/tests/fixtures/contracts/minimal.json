@@ -1,0 +1,81 @@
+{
+  "contract_version": "0.1",
+  "json_schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+  "program": {
+    "name": "fixture",
+    "version": "1.2.3",
+    "description": "Fixture CLI"
+  },
+  "commands": [
+    {
+      "path": [
+        "create"
+      ],
+      "description": "Create one resource",
+      "input": {
+        "schema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "properties": {
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "title": "CreateInput",
+          "type": "object"
+        },
+        "transports": [
+          {
+            "kind": "arguments",
+            "bindings": {
+              "name": {
+                "argument": "name",
+                "invocation": {
+                  "kind": "option",
+                  "long": "name",
+                  "value": {
+                    "min": 1,
+                    "max": 1,
+                    "repeat": false
+                  },
+                  "require_equals": false
+                },
+                "encoding": "text"
+              }
+            }
+          }
+        ]
+      },
+      "output": {
+        "format": "json",
+        "schema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name"
+          ],
+          "title": "Created",
+          "type": "object"
+        },
+        "selector": {
+          "kind": "flag",
+          "argument": {
+            "kind": "flag",
+            "long": "json",
+            "present_value": true
+          }
+        }
+      }
+    }
+  ]
+}

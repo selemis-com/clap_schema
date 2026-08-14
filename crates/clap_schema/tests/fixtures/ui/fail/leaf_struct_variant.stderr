@@ -1,0 +1,4 @@
+error: contract-visible leaf commands require a one-field tuple payload so #[clap_schema::handler] can attach the handler contract
+ --> fail/leaf_struct_variant.rs:7:5
+  |
+7 |     Create { name: String },

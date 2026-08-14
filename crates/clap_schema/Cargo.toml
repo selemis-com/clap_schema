@@ -1,0 +1,40 @@
+[package]
+name = "clap_schema"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Agent-facing CLI contracts for clap applications"
+license.workspace = true
+readme = "../../README.md"
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/clap_schema"
+keywords = ["clap", "agents", "cli", "schema", "json-schema"]
+categories = ["command-line-interface", "development-tools"]
+
+[lints]
+workspace = true
+
+[dependencies]
+# Vendor
+clap.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+# Crates
+clap_schema_derive = { workspace = true, optional = true }
+
+[dev-dependencies]
+# Vendor
+clap = { workspace = true, features = ["derive", "env"] }
+snapbox.workspace = true
+
+[features]
+default = ["derive"]
+derive = ["dep:clap_schema_derive"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

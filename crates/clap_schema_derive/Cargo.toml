@@ -1,0 +1,26 @@
+[package]
+name = "clap_schema_derive"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Proc macros for clap_schema"
+license.workspace = true
+readme = "../../README.md"
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/clap_schema"
+keywords = ["clap", "agents", "cli", "schema", "derive"]
+categories = ["command-line-interface", "development-tools"]
+
+[lib]
+proc-macro = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Vendor
+proc-macro-crate.workspace = true
+proc-macro2.workspace = true
+quote.workspace = true
+syn.workspace = true

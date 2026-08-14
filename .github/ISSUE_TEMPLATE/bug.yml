@@ -1,0 +1,35 @@
+name: Bug report
+description: Report incorrect contract generation or derive behavior
+labels: ["bug", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If this is a security issue, report it privately to security@selemis.com.
+  - type: textarea
+    id: bug
+    attributes:
+      label: Describe the bug
+      description: Include the clap definition, schema annotations, and observed contract or compiler output where practical.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      render: rust
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: clap_schema version or commit
+    validations:
+      required: true
+  - type: input
+    id: rust
+    attributes:
+      label: Rust version
+      description: Output of `rustc --version`.
+    validations:
+      required: true

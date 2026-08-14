@@ -1,0 +1,4 @@
+error: the first #[clap_schema::handler] argument must own the command payload
+  --> fail/handler_borrowed_payload.rs:[..]
+   |
+11 | async fn create(_command: &CreateArgs) -> Result<(), CreateError> {

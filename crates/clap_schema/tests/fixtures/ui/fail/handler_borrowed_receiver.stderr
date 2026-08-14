@@ -1,0 +1,4 @@
+error: #[clap_schema::handler] methods must own self
+  --> fail/handler_borrowed_receiver.rs:[..]
+   |
+12 |     async fn run(&self) -> Result<(), CreateError> {

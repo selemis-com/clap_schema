@@ -1,0 +1,6 @@
+[files]
+extend-exclude = [
+    ".git",
+    "target",
+    "crates/clap_schema/tests/fixtures/ui/fail/*.stderr",
+]
