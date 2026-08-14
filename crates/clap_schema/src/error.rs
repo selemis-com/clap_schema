@@ -132,7 +132,7 @@ pub enum Error {
     },
 
     /// Derive metadata and clap's generated subcommand sequence disagree.
-    #[error("derived command schema disagrees with clap for `{type_name}`")]
+    #[error("derived CommandSchema metadata does not match clap subcommands for `{type_name}`")]
     DerivedCommandMismatch {
         /// Rust subcommand type being registered.
         type_name: &'static str,

@@ -1,0 +1,4 @@
+error: clap_schema handler arguments cannot use impl Trait; use a concrete type or trait object
+  --> fail/handler_impl_trait_context.rs:[..]
+   |
+17 |     _context: impl RuntimeContext,

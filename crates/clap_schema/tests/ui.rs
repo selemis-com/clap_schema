@@ -40,4 +40,5 @@ mod tests {
     ui_fail!(stdin_requires_structured_input => "stdin_without_structured");
     ui_fail!(handlers_own_their_payload => "handler_borrowed_payload");
     ui_fail!(handler_methods_own_self => "handler_borrowed_receiver");
+    ui_fail!(handler_context_rejects_impl_trait => "handler_impl_trait_context");
 }

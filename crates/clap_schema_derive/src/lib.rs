@@ -111,7 +111,7 @@ fn expand_free_handler(function: &ItemFn) -> syn::Result<TokenStream2> {
         impl #payload_ty {
             #[doc(hidden)]
             #[doc = "Builds clap_schema metadata for this command payload."]
-            pub(crate) fn __clap_schema_command_spec<Input>() -> #crate_path::CommandSpec
+            pub(crate) fn __clap_schema_handler_contract<Input>() -> #crate_path::CommandSpec
             where
                 Input: ?Sized + #crate_path::JsonSchema,
             {
@@ -171,7 +171,7 @@ fn expand_method_handler(method: &ImplItemFn) -> syn::Result<TokenStream2> {
 
         #[doc(hidden)]
         #[doc = "Builds clap_schema metadata for this command payload."]
-        pub(crate) fn __clap_schema_command_spec<Input>() -> #crate_path::CommandSpec
+        pub(crate) fn __clap_schema_handler_contract<Input>() -> #crate_path::CommandSpec
         where
             Input: ?Sized + #crate_path::JsonSchema,
         {
@@ -182,6 +182,17 @@ fn expand_method_handler(method: &ImplItemFn) -> syn::Result<TokenStream2> {
 
 /// Validates signature properties shared by free and inherent handlers.
 fn validate_handler_signature(signature: &syn::Signature) -> syn::Result<()> {
+    for argument in &signature.inputs {
+        if let FnArg::Typed(argument) = argument
+            && matches!(argument.ty.as_ref(), Type::ImplTrait(_))
+        {
+            return Err(syn::Error::new_spanned(
+                &argument.ty,
+                "clap_schema handler arguments cannot use impl Trait; use a concrete type or trait object",
+            ));
+        }
+    }
+
     if signature.unsafety.is_some()
         || signature.abi.is_some()
         || signature.variadic.is_some()
@@ -333,7 +344,11 @@ fn expand_command_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
                         .get_subcommands()
                         .count();
                     for _ in 0..__count {
-                        let _ = __clap_schema_commands.next();
+                        if __clap_schema_commands.next().is_none() {
+                            return Err(#crate_path::Error::DerivedCommandMismatch {
+                                type_name: ::core::any::type_name::<Self>(),
+                            });
+                        }
                     }
                 }
             });
@@ -439,7 +454,7 @@ fn expand_command_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
                 #consume
                 prefix.push(__clap_schema_command.get_name().to_owned());
                 let mut __spec =
-                    <#handler_ty>::__clap_schema_command_spec::<#input_ty>();
+                    <#handler_ty>::__clap_schema_handler_contract::<#input_ty>();
                 #(#modifiers)*
                 registry.command(prefix, __spec);
                 prefix.pop();
@@ -459,6 +474,11 @@ fn expand_command_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
                     );
                 let mut __clap_schema_commands = __clap_schema_probe.get_subcommands();
                 #(#steps)*
+                if __clap_schema_commands.next().is_some() {
+                    return Err(#crate_path::Error::DerivedCommandMismatch {
+                        type_name: ::core::any::type_name::<Self>(),
+                    });
+                }
                 Ok(())
             }
         }
