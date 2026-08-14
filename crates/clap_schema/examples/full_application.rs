@@ -310,7 +310,10 @@ async fn remove_artifact(
 }
 
 /// Dispatches artifact commands to their ordinary Rust handlers.
-async fn dispatch_artifacts(command: ArtifactCommands, ctx: &CliContext) -> Result<(), CommandError> {
+async fn dispatch_artifacts(
+    command: ArtifactCommands,
+    ctx: &CliContext,
+) -> Result<(), CommandError> {
     match command {
         ArtifactCommands::List(command) => {
             let _ = list_artifacts(command, ctx).await?;
