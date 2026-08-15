@@ -210,6 +210,33 @@ jobs:
       - name: Run cargo-deny
         run: make deny
 
+  compliance-about:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
+        with:
+          toolchain: stable
+
+      - name: Install cargo-about
+        uses: taiki-e/install-action@cb33e69fad06166ca28a42b2575e4dadabf62ee8 # v2.85.8
+        with:
+          tool: cargo-about
+
+      - name: Regenerate THIRD_PARTY_NOTICES
+        run: |
+          set -euo pipefail
+          make about
+          git diff --exit-code -- THIRD_PARTY_NOTICES.md
+
   package:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -245,6 +272,7 @@ jobs:
       - lint-fmt
       - lint-typos
       - compliance-deny
+      - compliance-about
       - package
     timeout-minutes: 10
     steps:
