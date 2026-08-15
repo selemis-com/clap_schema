@@ -13,9 +13,7 @@ use crate::Operation;
 /// produce the canonical serializable discovery representation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliContract {
-    /// Canonical operation records, including Clap-hidden registrations.
-    pub(crate) operations: Vec<OperationEntry>,
-    /// Visible command topology reflected from the same Clap tree.
+    /// Visible command topology with operation data attached to executable nodes.
     pub(crate) discovery: DiscoveryNode,
     /// Optional application-defined schema extension.
     pub(crate) extended_schema: Option<Value>,
@@ -35,8 +33,7 @@ impl CliContract {
     where
         T: Operation,
     {
-        let path = self.unique_path_for::<T>()?;
-        let node = self.discovery.resolve_canonical(path)?;
+        let node = self.unique_operation_node::<T>()?;
         Some(self.command_info(node))
     }
 
@@ -115,7 +112,7 @@ impl CliContract {
     /// to avoid repeating its canonical command path.
     pub fn extended_schema_for(&self, path: &[&str]) -> crate::Result<Option<&Value>> {
         let node = self.discovery.resolve(path)?;
-        Ok(self.extended_schema_for_canonical_path(&node.path))
+        Ok(self.extended_schema_for_node(node))
     }
 
     /// Returns the effective extended schema for a visible Rust operation type.
@@ -129,8 +126,8 @@ impl CliContract {
     where
         T: Operation,
     {
-        let path = self.unique_path_for::<T>()?;
-        self.extended_schema_for_canonical_path(path)
+        let node = self.unique_operation_node::<T>()?;
+        self.extended_schema_for_node(node)
     }
 
     /// Resolves one schema-discovery request.
@@ -168,7 +165,6 @@ impl CliContract {
 
     /// Builds a shallow public view of one internal discovery node.
     fn command_info(&self, node: &DiscoveryNode) -> CommandInfo {
-        let (operation, has_subcommands) = self.command_state(node);
         CommandInfo {
             name: node.name.clone(),
             path: node.path.clone(),
@@ -177,9 +173,9 @@ impl CliContract {
             usage: node.usage.clone(),
             arguments: node.arguments.clone(),
             options: node.options.clone(),
-            executable: operation.is_some(),
-            output: operation.and_then(|operation| operation.output.clone()),
-            has_subcommands,
+            executable: node.operation.is_some(),
+            output: node.operation.as_ref().and_then(|operation| operation.output.clone()),
+            has_subcommands: !node.children.is_empty(),
         }
     }
 
@@ -202,42 +198,27 @@ impl CliContract {
 
     /// Builds a compact public reference from the same command state as full discovery.
     fn schema_command_summary(&self, node: &DiscoveryNode) -> SchemaCommandSummary {
-        let (operation, has_subcommands) = self.command_state(node);
         SchemaCommandSummary {
             path: node.path.clone(),
             description: node.description.clone(),
-            executable: operation.is_some(),
-            has_subcommands,
+            executable: node.operation.is_some(),
+            has_subcommands: !node.children.is_empty(),
         }
     }
 
-    /// Returns the operation and child state shared by command projections.
-    fn command_state<'a>(&'a self, node: &DiscoveryNode) -> (Option<&'a OperationEntry>, bool) {
-        (self.operation_for_owned_path(&node.path), !node.children.is_empty())
-    }
-
     /// Resolves an operation identity only when it names one visible command unambiguously.
-    fn unique_path_for<T>(&self) -> Option<&[String]>
+    fn unique_operation_node<T>(&self) -> Option<&DiscoveryNode>
     where
         T: Operation,
     {
-        let operation = TypeId::of::<T>();
-        let mut matches = self.operations.iter().filter_map(|entry| {
-            (entry.visible && entry.id == operation).then_some(entry.path.as_slice())
-        });
-        let path = matches.next()?;
-        matches.next().is_none().then_some(path)
-    }
-
-    /// Finds a schema-visible operation using an already-canonical path.
-    fn operation_for_owned_path(&self, path: &[String]) -> Option<&OperationEntry> {
-        self.operations.iter().find(|entry| entry.visible && entry.path == path)
+        self.discovery.unique_operation(TypeId::of::<T>())
     }
 
     /// Applies operation-local extension precedence over the application-wide extension.
-    fn extended_schema_for_canonical_path(&self, path: &[String]) -> Option<&Value> {
-        self.operation_for_owned_path(path)
-            .and_then(|entry| entry.extended_schema.as_ref())
+    fn extended_schema_for_node(&self, node: &DiscoveryNode) -> Option<&Value> {
+        node.operation
+            .as_ref()
+            .and_then(|operation| operation.extended_schema.as_ref())
             .or(self.extended_schema.as_ref())
     }
 }
@@ -332,19 +313,15 @@ pub enum SchemaSubcommand {
     Resolved(Box<SchemaDocument>),
 }
 
-/// Canonical internal record for one registered operation.
+/// Internal operation data attached directly to one schema-visible command node.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct OperationEntry {
+pub(crate) struct OperationData {
     /// Stable in-process Rust operation identity.
     pub(crate) id: TypeId,
-    /// Canonical subcommand path excluding the executable name.
-    pub(crate) path: Vec<String>,
     /// JSON Schema for the successful value, absent for `Result<(), E>`.
     pub(crate) output: Option<Value>,
     /// Effective operation-specific extension schema, when one is declared.
     pub(crate) extended_schema: Option<Value>,
-    /// Whether this operation is visible through schema discovery.
-    pub(crate) visible: bool,
 }
 
 /// Shallow discovery information for one visible command or command group.
@@ -457,18 +434,40 @@ pub(crate) struct DiscoveryNode {
     pub(crate) arguments: Vec<ArgumentInfo>,
     /// Visible non-positional options reflected directly from Clap.
     pub(crate) options: Vec<ArgumentInfo>,
+    /// Operation data when this visible command is executable.
+    pub(crate) operation: Option<OperationData>,
     /// Schema-visible child commands.
     pub(crate) children: Vec<Self>,
 }
 
 impl DiscoveryNode {
-    /// Resolves an already-canonical owned path.
-    pub(crate) fn resolve_canonical(&self, path: &[String]) -> Option<&Self> {
-        let mut node = self;
-        for segment in path {
-            node = node.children.iter().find(|candidate| candidate.name == *segment)?;
+    /// Finds one operation type only when it appears at exactly one visible command node.
+    pub(crate) fn unique_operation(&self, id: TypeId) -> Option<&Self> {
+        fn visit<'a>(
+            node: &'a DiscoveryNode,
+            id: TypeId,
+            found: &mut Option<&'a DiscoveryNode>,
+            ambiguous: &mut bool,
+        ) {
+            if node.operation.as_ref().is_some_and(|operation| operation.id == id) {
+                if found.is_some() {
+                    *ambiguous = true;
+                    return;
+                }
+                *found = Some(node);
+            }
+            for child in &node.children {
+                if *ambiguous {
+                    return;
+                }
+                visit(child, id, found, ambiguous);
+            }
         }
-        Some(node)
+
+        let mut found = None;
+        let mut ambiguous = false;
+        visit(self, id, &mut found, &mut ambiguous);
+        if ambiguous { None } else { found }
     }
 
     /// Resolves a path by canonical names or any aliases accepted by Clap.

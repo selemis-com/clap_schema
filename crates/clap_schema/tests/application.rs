@@ -387,6 +387,7 @@ mod tests {
 
         assert!(contract.command(&["utilities", "whoami"]).is_err());
         assert!(contract.command(&["admin", "status"]).is_err());
+        assert!(contract.command_for::<StatusArgs>().is_none());
         assert!(contract.command(&["schema"]).is_err());
 
         let aliased = contract.command(&["objects", "show"])?;

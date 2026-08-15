@@ -7,7 +7,7 @@ use schemars::JsonSchema;
 
 use crate::{
     Operation,
-    model::{ArgumentInfo, CliContract, DiscoveryNode, OperationEntry},
+    model::{ArgumentInfo, CliContract, DiscoveryNode, OperationData},
     operation::output_schema_factory,
     schema::{
         ExtendedSchemaFactory, SchemaFactory, compose_extended_schemas, extended_schema_factory,
@@ -78,6 +78,15 @@ pub(crate) struct PendingOperation {
     extended: Option<ExtendedSchemaFactory>,
 }
 
+
+/// Visible operation data keyed by canonical path while the discovery tree is built.
+#[derive(Debug, Clone)]
+struct VisibleOperation {
+    /// Canonical command path excluding the executable name.
+    path: Vec<String>,
+    /// Operation data retained by the finished discovery tree.
+    data: OperationData,
+}
 /// Shared registration state used by builder and derive construction.
 #[derive(Debug, Default)]
 pub(crate) struct RegistrationState {
@@ -216,36 +225,30 @@ impl ContractBuilder {
         reject_duplicate_paths(&operations)?;
 
         let application_extended_schema = extended.map(ExtendedSchemaFactory::root);
-        let mut operation_entries = Vec::with_capacity(operations.len());
+        let mut visible_operations = Vec::with_capacity(operations.len());
         for operation in operations {
             let resolved = command_at(&root, &operation.path)?;
-            let visible = !resolved.hidden;
-            let extended_schema = if visible {
-                operation.extended.map(|operation| {
-                    extended.map_or_else(
-                        || operation.root(),
-                        |application| compose_extended_schemas(application, operation),
-                    )
-                })
-            } else {
-                None
-            };
-            operation_entries.push(OperationEntry {
-                id: operation.id,
+            if resolved.hidden {
+                continue;
+            }
+            let extended_schema = operation.extended.map(|operation| {
+                extended.map_or_else(
+                    || operation.root(),
+                    |application| compose_extended_schemas(application, operation),
+                )
+            });
+            visible_operations.push(VisibleOperation {
                 path: operation.path,
-                output: operation.output.map(|factory| factory()),
-                extended_schema,
-                visible,
+                data: OperationData {
+                    id: operation.id,
+                    output: operation.output.map(|factory| factory()),
+                    extended_schema,
+                },
             });
         }
-        operation_entries.sort_by(|left, right| left.path.cmp(&right.path));
-        let discovery = discovery_tree(&root, &operation_entries);
+        let discovery = discovery_tree(&root, &visible_operations);
 
-        Ok(CliContract {
-            operations: operation_entries,
-            discovery,
-            extended_schema: application_extended_schema,
-        })
+        Ok(CliContract { discovery, extended_schema: application_extended_schema })
     }
 }
 
@@ -293,7 +296,7 @@ fn command_at(root: &Command, path: &[String]) -> Result<ResolvedCommand> {
 }
 
 /// Builds the visible command topology needed to discover registered operations.
-fn discovery_tree(root: &Command, operations: &[OperationEntry]) -> DiscoveryNode {
+fn discovery_tree(root: &Command, operations: &[VisibleOperation]) -> DiscoveryNode {
     build_discovery_node(root, Vec::new(), operations, true)
         .expect("the root discovery node is always retained")
 }
@@ -302,7 +305,7 @@ fn discovery_tree(root: &Command, operations: &[OperationEntry]) -> DiscoveryNod
 fn build_discovery_node(
     command: &Command,
     path: Vec<String>,
-    operations: &[OperationEntry],
+    operations: &[VisibleOperation],
     root: bool,
 ) -> Option<DiscoveryNode> {
     if !root && command.is_hide_set() {
@@ -319,8 +322,11 @@ fn build_discovery_node(
     }
     children.sort_by(|left, right| left.name.cmp(&right.name));
 
-    let executable = operations.iter().any(|operation| operation.visible && operation.path == path);
-    if !root && !executable && children.is_empty() {
+    let operation = operations
+        .iter()
+        .find(|operation| operation.path == path)
+        .map(|operation| operation.data.clone());
+    if !root && operation.is_none() && children.is_empty() {
         return None;
     }
 
@@ -336,6 +342,7 @@ fn build_discovery_node(
         usage: usage_synopsis(command),
         arguments: reflected_positionals(command),
         options: reflected_options(command),
+        operation,
         children,
     })
 }
