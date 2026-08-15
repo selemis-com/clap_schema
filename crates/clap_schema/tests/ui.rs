@@ -75,6 +75,8 @@ mod tests {
             "flattened subcommands cannot declare operation schema metadata",
             "nested subcommands require a single tuple payload",
             "#[command(subcommand)] groups cannot declare handler, subcommands, or metadata",
+            "a command cannot be both subcommand and flatten",
+            "a command cannot be both skip and external_subcommand",
             "contract-visible executable commands require #[schema(handler = path)]",
             "duplicate handler",
             "duplicate subcommands type",

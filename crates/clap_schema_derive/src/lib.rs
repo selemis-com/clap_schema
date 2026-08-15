@@ -755,3 +755,6 @@ fn clap_schema_path() -> TokenStream2 {
         Ok(FoundCrate::Itself) | Err(_) => quote!(::clap_schema),
     }
 }
+
+#[cfg(test)]
+mod tests;

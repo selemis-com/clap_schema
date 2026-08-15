@@ -73,6 +73,18 @@ enum InvalidNestedMetadata {
 }
 
 #[derive(CommandSchema)]
+enum ConflictingNestingModes {
+    #[command(subcommand, flatten)]
+    Invalid(Child),
+}
+
+#[derive(CommandSchema)]
+enum ConflictingDispositionModes {
+    #[command(skip, external_subcommand)]
+    Invalid(Vec<String>),
+}
+
+#[derive(CommandSchema)]
 enum MissingHandler {
     Run(Args),
 }
