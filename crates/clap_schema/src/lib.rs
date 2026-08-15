@@ -135,23 +135,17 @@
 )]
 extern crate self as clap_schema;
 
-mod builder;
-mod error;
+mod contract;
 mod model;
-mod output;
-mod reflect;
-mod schema;
-mod spec;
+mod operation;
 
 #[doc(hidden)]
 pub mod __private;
 
-pub use builder::ContractBuilder;
 pub use clap_schema_derive::{CliSchema, CommandSchema, handler, operation};
-pub use error::{Error, Result};
+pub use contract::{ContractBuilder, Error, Result};
 pub use model::{CliContract, CommandInfo, CommandNode, CommandSummary, OperationContract};
-pub use output::{WriteJsonError, write_json};
-pub use spec::Operation;
+pub use operation::{Operation, WriteJsonError, write_json};
 
 /// Trait implemented by a machine-contract-aware root Clap parser.
 ///
