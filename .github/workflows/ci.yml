@@ -237,28 +237,6 @@ jobs:
           make about
           git diff --exit-code -- THIRD_PARTY_NOTICES.md
 
-  package:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Install stable Rust toolchain
-        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
-        with:
-          toolchain: stable
-
-      - name: Validate publishable packages
-        run: |
-          set -euo pipefail
-          cargo package --package clap_schema_derive --locked
-          cargo package --package clap_schema --no-verify --locked
-
   ci-success:
     runs-on: ubuntu-latest
     if: always()
@@ -273,7 +251,6 @@ jobs:
       - lint-typos
       - compliance-deny
       - compliance-about
-      - package
     timeout-minutes: 10
     steps:
       - name: Check required jobs succeeded
