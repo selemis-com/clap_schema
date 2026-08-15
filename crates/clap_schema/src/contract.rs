@@ -1,6 +1,6 @@
 //! Contract construction and Clap command-tree reflection.
 
-use std::collections::HashSet;
+use std::{any::TypeId, collections::HashSet};
 
 use clap::{Arg, ArgAction, Command};
 use schemars::JsonSchema;
@@ -8,8 +8,10 @@ use schemars::JsonSchema;
 use crate::{
     Operation,
     model::{ArgumentInfo, CliContract, DiscoveryNode, OperationEntry},
-    operation::OperationDescriptor,
-    schema::{ExtendedSchemaFactory, compose_extended_schemas, extended_schema_factory},
+    operation::output_schema_factory,
+    schema::{
+        ExtendedSchemaFactory, SchemaFactory, compose_extended_schemas, extended_schema_factory,
+    },
 };
 
 /// Result type returned by `clap_schema`.
@@ -63,6 +65,51 @@ pub enum Error {
     },
 }
 
+/// One operation registration before it is reconciled with the built Clap tree.
+#[derive(Debug, Clone)]
+pub(crate) struct PendingOperation {
+    /// Canonical command path excluding the executable name.
+    path: Vec<String>,
+    /// Stable in-process identity supplied by the explicitly registered Rust type.
+    id: TypeId,
+    /// Optional successful-output schema factory derived from the handler contract.
+    output: Option<SchemaFactory>,
+    /// Optional operation-specific extension schema factory.
+    extended: Option<ExtendedSchemaFactory>,
+}
+
+/// Shared registration state used by builder and derive construction.
+#[derive(Debug, Default)]
+pub(crate) struct RegistrationState {
+    /// Pending operation registrations.
+    operations: Vec<PendingOperation>,
+    /// Application-defined extension schema declarations.
+    extended: Vec<ExtendedSchemaFactory>,
+}
+
+impl RegistrationState {
+    /// Registers one operation type with an optional extension schema factory.
+    pub(crate) fn operation<T>(
+        &mut self,
+        path: Vec<String>,
+        extended: Option<ExtendedSchemaFactory>,
+    ) where
+        T: Operation,
+    {
+        self.operations.push(PendingOperation {
+            path,
+            id: TypeId::of::<T>(),
+            output: output_schema_factory::<T>(),
+            extended,
+        });
+    }
+
+    /// Adds one application-wide extension schema declaration.
+    pub(crate) fn extend(&mut self, extended: ExtendedSchemaFactory) {
+        self.extended.push(extended);
+    }
+}
+
 /// Builds and validates successful-output contracts for builder-style Clap applications.
 ///
 /// Clap remains authoritative for invocation syntax and parser behavior. The builder
@@ -77,17 +124,23 @@ pub enum Error {
 pub struct ContractBuilder {
     /// Root Clap command tree used to validate registered operation paths.
     root: Command,
-    /// Type-resolved operations keyed by canonical command path.
-    operations: Vec<(Vec<String>, OperationDescriptor)>,
-    /// Application-defined extension schema declarations.
-    extended: Vec<ExtendedSchemaFactory>,
+    /// Shared operation and extension registrations.
+    registration: RegistrationState,
 }
 
 impl ContractBuilder {
     /// Creates a contract builder around a Clap command tree.
     #[must_use]
     pub const fn new(root: Command) -> Self {
-        Self { root, operations: Vec::new(), extended: Vec::new() }
+        Self {
+            root,
+            registration: RegistrationState { operations: Vec::new(), extended: Vec::new() },
+        }
+    }
+
+    /// Creates a builder from derive-generated registration state.
+    pub(crate) const fn with_registration(root: Command, registration: RegistrationState) -> Self {
+        Self { root, registration }
     }
 
     /// Registers one executable operation type by canonical command path.
@@ -101,8 +154,8 @@ impl ContractBuilder {
     where
         T: Operation,
     {
-        self.operations
-            .push((path.into_iter().map(Into::into).collect(), T::__clap_schema_descriptor()));
+        self.registration
+            .operation::<T>(path.into_iter().map(Into::into).collect(), None);
         self
     }
 
@@ -119,24 +172,10 @@ impl ContractBuilder {
         T: Operation,
         E: JsonSchema,
     {
-        self.operations.push((
+        self.registration.operation::<T>(
             path.into_iter().map(Into::into).collect(),
-            T::__clap_schema_descriptor().with_extended(extended_schema_factory::<E>()),
-        ));
-        self
-    }
-
-    /// Registers an already type-erased operation descriptor for derive-generated construction.
-    pub(crate) fn operation_descriptor<I, S>(
-        mut self,
-        path: I,
-        operation: OperationDescriptor,
-    ) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.operations.push((path.into_iter().map(Into::into).collect(), operation));
+            Some(extended_schema_factory::<E>()),
+        );
         self
     }
 
@@ -158,13 +197,7 @@ impl ContractBuilder {
     where
         T: JsonSchema,
     {
-        self.extended.push(extended_schema_factory::<T>());
-        self
-    }
-
-    /// Declares an already type-erased extension schema factory for derive-generated registration.
-    pub(crate) fn extended_factory(mut self, extended: ExtendedSchemaFactory) -> Self {
-        self.extended.push(extended);
+        self.registration.extend(extended_schema_factory::<T>());
         self
     }
 
@@ -176,15 +209,16 @@ impl ContractBuilder {
     /// same operation path is registered more than once, or when more than one application-wide
     /// extension is declared.
     pub fn build(self) -> Result<CliContract> {
-        let Self { mut root, operations, extended } = self;
+        let Self { mut root, registration } = self;
+        let RegistrationState { operations, extended } = registration;
         let extended = unique_application_extension(&extended)?;
         root.build();
         reject_duplicate_paths(&operations)?;
 
         let application_extended_schema = extended.map(ExtendedSchemaFactory::root);
         let mut operation_entries = Vec::with_capacity(operations.len());
-        for (path, operation) in operations {
-            let resolved = command_at(&root, &path)?;
+        for operation in operations {
+            let resolved = command_at(&root, &operation.path)?;
             let visible = !resolved.hidden;
             let extended_schema = if visible {
                 operation.extended.map(|operation| {
@@ -198,7 +232,7 @@ impl ContractBuilder {
             };
             operation_entries.push(OperationEntry {
                 id: operation.id,
-                path,
+                path: operation.path,
                 output: operation.output.map(|factory| factory()),
                 extended_schema,
                 visible,
@@ -233,11 +267,11 @@ const fn unique_application_extension(
 }
 
 /// Rejects duplicate command paths before reflection.
-fn reject_duplicate_paths(operations: &[(Vec<String>, OperationDescriptor)]) -> Result<()> {
+fn reject_duplicate_paths(operations: &[PendingOperation]) -> Result<()> {
     let mut seen = HashSet::with_capacity(operations.len());
-    for (path, _) in operations {
-        if !seen.insert(path.clone()) {
-            return Err(Error::DuplicateOperation { path: path.clone() });
+    for operation in operations {
+        if !seen.insert(operation.path.clone()) {
+            return Err(Error::DuplicateOperation { path: operation.path.clone() });
         }
     }
     Ok(())

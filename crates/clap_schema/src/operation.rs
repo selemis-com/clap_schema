@@ -5,7 +5,7 @@ use std::{any::TypeId, io::Write};
 use schemars::JsonSchema;
 use serde::Serialize;
 
-use crate::schema::{ExtendedSchemaFactory, SchemaFactory, schema_for};
+use crate::schema::{SchemaFactory, schema_for};
 
 /// Compile-time identity of one executable operation.
 ///
@@ -33,45 +33,15 @@ use crate::schema::{ExtendedSchemaFactory, SchemaFactory, schema_for};
 ///     Ok(())
 /// }
 /// ```
-pub trait Operation: crate::__private::HandlerContract + 'static {
-    /// Returns the handler-derived descriptor used internally by contract construction.
-    #[doc(hidden)]
-    fn __clap_schema_descriptor() -> OperationDescriptor {
-        <Self as crate::__private::HandlerContract>::__clap_schema_handler_descriptor()
-    }
-}
+pub trait Operation: crate::__private::HandlerContract + 'static {}
 
-/// Type-erased descriptor produced after an [`Operation`] has been statically resolved.
-#[doc(hidden)]
-#[derive(Debug, Clone, Copy)]
-pub struct OperationDescriptor {
-    /// Stable in-process identity of the operation type.
-    pub(crate) id: TypeId,
-    /// Optional successful output schema factory.
-    pub(crate) output: Option<SchemaFactory>,
-    /// Optional operation-specific application extension schema factory.
-    pub(crate) extended: Option<ExtendedSchemaFactory>,
-}
-
-impl OperationDescriptor {
-    /// Builds a descriptor for one successful handler output type and operation identity.
-    pub(crate) fn for_output<T, I>() -> Self
-    where
-        T: JsonSchema + Serialize + 'static,
-        I: 'static,
-    {
-        Self {
-            id: TypeId::of::<I>(),
-            output: has_output::<T>().then_some(schema_for::<T>),
-            extended: None,
-        }
-    }
-
-    /// Attaches an already type-erased operation-specific extension schema factory.
-    pub(crate) const fn with_extended(mut self, extended: ExtendedSchemaFactory) -> Self {
-        self.extended = Some(extended);
-        self
-    }
+/// Returns the successful-output schema factory for one operation type.
+pub(crate) fn output_schema_factory<T>() -> Option<SchemaFactory>
+where
+    T: Operation,
+{
+    has_output::<<T as crate::__private::HandlerContract>::Output>()
+        .then_some(schema_for::<<T as crate::__private::HandlerContract>::Output>)
 }
 
 /// Returns whether a successful handler type has a machine-output payload.

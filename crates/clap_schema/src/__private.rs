@@ -8,12 +8,10 @@ pub use clap;
 use schemars::JsonSchema;
 use serde::Serialize;
 
-/// Type-erased descriptor returned by statically resolved `Operation` implementations.
-#[doc(hidden)]
-pub use crate::operation::OperationDescriptor;
 use crate::{
     CliContract, CliSchema, ContractBuilder, Operation, Result,
-    schema::{ExtendedSchemaFactory, extended_schema_factory},
+    contract::RegistrationState,
+    schema::extended_schema_factory,
 };
 
 /// Handler-derived contract required by the public `Operation` marker trait.
@@ -22,8 +20,8 @@ use crate::{
 /// those expansions can satisfy the `Operation` supertrait in downstream crates.
 #[doc(hidden)]
 pub trait HandlerContract: 'static {
-    /// Returns the successful-output descriptor for this operation type.
-    fn __clap_schema_handler_descriptor() -> OperationDescriptor;
+    /// Successful machine-output type declared by the canonical handler.
+    type Output: JsonSchema + Serialize + 'static;
 }
 
 /// Successful `Result<T, E>` contract used by handler contracts.
@@ -42,20 +40,10 @@ where
     type Output = T;
 }
 
-/// Builds an operation descriptor from a handler's return type and Rust operation identity.
-pub fn operation_from_result<R, I>() -> OperationDescriptor
-where
-    R: HandlerResult,
-    I: 'static,
-{
-    OperationDescriptor::for_output::<R::Output, I>()
-}
-
 /// Registry filled by the derive implementation.
 #[derive(Debug, Default)]
 pub struct Registry {
-    entries: Vec<(Vec<String>, OperationDescriptor)>,
-    extended: Option<ExtendedSchemaFactory>,
+    registration: RegistrationState,
 }
 
 impl Registry {
@@ -64,7 +52,7 @@ impl Registry {
     where
         T: Operation,
     {
-        self.entries.push((path.to_vec(), T::__clap_schema_descriptor()));
+        self.registration.operation::<T>(path.to_vec(), None);
     }
 
     /// Registers one executable operation with an operation-specific extension schema.
@@ -73,10 +61,8 @@ impl Registry {
         T: Operation,
         E: JsonSchema,
     {
-        self.entries.push((
-            path.to_vec(),
-            T::__clap_schema_descriptor().with_extended(extended_schema_factory::<E>()),
-        ));
+        self.registration
+            .operation::<T>(path.to_vec(), Some(extended_schema_factory::<E>()));
     }
 
     /// Declares the application-defined extension schema type for the root CLI.
@@ -84,7 +70,7 @@ impl Registry {
     where
         T: JsonSchema,
     {
-        self.extended = Some(extended_schema_factory::<T>());
+        self.registration.extend(extended_schema_factory::<T>());
     }
 }
 
@@ -96,12 +82,5 @@ where
     let mut registry = Registry::default();
     T::__clap_schema_register(&mut registry)?;
 
-    let mut builder = ContractBuilder::new(T::command());
-    if let Some(extended) = registry.extended {
-        builder = builder.extended_factory(extended);
-    }
-    for (path, operation) in registry.entries {
-        builder = builder.operation_descriptor(path, operation);
-    }
-    builder.build()
+    ContractBuilder::with_registration(T::command(), registry.registration).build()
 }

@@ -144,9 +144,7 @@ fn expand_item_handler(function: &ItemFn) -> syn::Result<TokenStream2> {
 
         #(#conditional)*
         impl #crate_path::__private::HandlerContract for #operation {
-            fn __clap_schema_handler_descriptor() -> #crate_path::__private::OperationDescriptor {
-                #crate_path::__private::operation_from_result::<#output, Self>()
-            }
+            type Output = <#output as #crate_path::__private::HandlerResult>::Output;
         }
     })
 }
@@ -204,9 +202,7 @@ fn expand_handler_impl(item_impl: &ItemImpl) -> syn::Result<TokenStream2> {
 
         #(#conditional)*
         impl #impl_generics #crate_path::__private::HandlerContract for #operation #where_clause {
-            fn __clap_schema_handler_descriptor() -> #crate_path::__private::OperationDescriptor {
-                #crate_path::__private::operation_from_result::<#output, Self>()
-            }
+            type Output = <#output as #crate_path::__private::HandlerResult>::Output;
         }
     })
 }
