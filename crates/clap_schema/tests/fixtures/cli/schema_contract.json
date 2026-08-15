@@ -2,15 +2,18 @@
   "operations": [
     {
       "path": [
-        "create"
+        "get"
       ],
       "output": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Resource returned by the get command.",
         "properties": {
           "id": {
+            "description": "Stable resource identifier.",
             "type": "string"
           },
           "name": {
+            "description": "Human-readable resource name.",
             "type": "string"
           }
         },
@@ -18,7 +21,7 @@
           "id",
           "name"
         ],
-        "title": "Created",
+        "title": "Resource",
         "type": "object"
       }
     }

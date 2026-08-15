@@ -1,18 +1,14 @@
-//! End-to-end derive and handler contract tests.
+//! End-to-end derive and handler output-contract tests.
 #![expect(dead_code, reason = "test data types are reflected rather than executed")]
 
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliSchema, CommandSchema, InputTransport, JsonSchema, OutputSelector};
+use clap_schema::{CliSchema, CommandSchema};
+use schemars::JsonSchema;
+use serde::Serialize;
 
 #[derive(Debug, Parser, CliSchema)]
-#[command(name = "demo", version = "9.1")]
+#[command(name = "demo")]
 struct Cli {
-    #[arg(long, global = true)]
-    api_key: Option<String>,
-
-    #[arg(long, global = true)]
-    json: bool,
-
     #[command(subcommand)]
     command: Commands,
 }
@@ -21,14 +17,16 @@ struct Cli {
 #[command(rename_all = "snake_case")]
 enum Commands {
     /// Create one thing.
+    #[schema(handler = create_thing)]
     CreateThing(CreateThingArgs),
 
     /// Nested administration.
     #[command(subcommand)]
     Admin(AdminCommands),
 
-    /// Deliberately renamed by clap.
+    /// Deliberately renamed by Clap.
     #[command(name = "rm")]
+    #[schema(handler = remove_thing)]
     RemoveThing(RemoveThingArgs),
 
     #[schema(skip)]
@@ -38,10 +36,11 @@ enum Commands {
 #[derive(Debug, Subcommand, CommandSchema)]
 enum AdminCommands {
     /// Get service status.
+    #[schema(handler = status)]
     Status(StatusArgs),
 }
 
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct CreateThingArgs {
     #[arg(long)]
     name: String,
@@ -50,21 +49,21 @@ struct CreateThingArgs {
     enabled: bool,
 }
 
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct RemoveThingArgs {
     id: String,
 }
 
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct StatusArgs {}
 
-#[derive(Debug, JsonSchema)]
+#[derive(Debug, Serialize, JsonSchema)]
 struct Thing {
     id: String,
     name: String,
 }
 
-#[derive(Debug, JsonSchema)]
+#[derive(Debug, Serialize, JsonSchema)]
 struct Status {
     healthy: bool,
 }
@@ -109,58 +108,24 @@ mod tests {
     fn derive_uses_clap_names_and_discovers_nested_commands() -> clap_schema::Result<()> {
         let contract = Cli::schema()?;
 
-        assert_eq!(contract.program.name, "demo");
-        assert_eq!(contract.program.version.as_deref(), Some("9.1"));
-        assert!(contract.command(&["create_thing"]).is_some());
-        assert!(contract.command(&["admin", "status"]).is_some());
-        assert!(contract.command(&["rm"]).is_some());
-        assert!(contract.command(&["schema"]).is_none());
+        assert!(contract.operation(&["create_thing"]).is_some());
+        assert!(contract.operation(&["admin", "status"]).is_some());
+        assert!(contract.operation(&["rm"]).is_some());
+        assert!(contract.operation(&["schema"]).is_none());
         Ok(())
     }
 
     #[test]
-    fn handler_signature_supplies_success_output_only() -> clap_schema::Result<()> {
+    fn handler_signature_is_the_success_output_source_of_truth() -> clap_schema::Result<()> {
         let contract = Cli::schema()?;
-        let create = contract.command(&["create_thing"]).ok_or_else(|| {
-            clap_schema::Error::UnknownCommand { path: vec!["create_thing".to_owned()] }
-        })?;
-        assert!(create.output.is_some());
+        let create = contract.operation(&["create_thing"]).expect("create contract");
+        assert_eq!(create.output.as_ref().expect("typed output")["title"], "Thing");
 
-        let status = contract.command(&["admin", "status"]).ok_or_else(|| {
-            clap_schema::Error::UnknownCommand {
-                path: vec!["admin".to_owned(), "status".to_owned()],
-            }
-        })?;
-        assert!(status.output.is_some());
+        let status = contract.operation(&["admin", "status"]).expect("status contract");
+        assert_eq!(status.output.as_ref().expect("typed output")["title"], "Status");
 
-        let remove = contract
-            .command(&["rm"])
-            .ok_or_else(|| clap_schema::Error::UnknownCommand { path: vec!["rm".to_owned()] })?;
+        let remove = contract.operation(&["rm"]).expect("remove contract");
         assert!(remove.output.is_none());
-        Ok(())
-    }
-
-    #[test]
-    fn root_context_and_json_output_are_separate_from_input() -> clap_schema::Result<()> {
-        let contract = Cli::schema()?;
-        assert_eq!(contract.context.len(), 1);
-        assert_eq!(contract.context[0].id, "api_key");
-
-        let create = contract.command(&["create_thing"]).ok_or_else(|| {
-            clap_schema::Error::UnknownCommand { path: vec!["create_thing".to_owned()] }
-        })?;
-        assert!(matches!(
-            create.output.as_ref().and_then(|output| output.selector.as_ref()),
-            Some(OutputSelector::Flag { .. })
-        ));
-
-        let InputTransport::Arguments { bindings, .. } = &create.input.transports[0] else {
-            panic!("expected argv transport");
-        };
-        assert!(bindings.contains_key("name"));
-        assert!(bindings.contains_key("enabled"));
-        assert!(!bindings.contains_key("api_key"));
-        assert!(!bindings.contains_key("json"));
         Ok(())
     }
 }

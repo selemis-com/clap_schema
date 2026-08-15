@@ -38,9 +38,5 @@ mod tests {
     ui_pass!(mutable_borrowed_async_handler_compiles => "handler_method_mut_async");
     ui_pass!(optional_root_subcommand_compiles => "optional_root_subcommand");
 
-    ui_fail!(root_requires_a_subcommand_field => "root_missing_subcommand");
-    ui_fail!(leaf_commands_require_tuple_payload => "leaf_struct_variant");
-    ui_fail!(stdin_requires_structured_input => "stdin_without_structured");
-    ui_fail!(handlers_own_their_payload => "handler_borrowed_payload");
-    ui_fail!(handler_context_rejects_impl_trait => "handler_impl_trait_context");
+    ui_fail!(root_requires_an_operation_or_subcommands => "root_missing_subcommand");
 }

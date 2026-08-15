@@ -1,47 +1,45 @@
-//! Agent-facing CLI contracts for [`clap`] applications.
+//! Checked successful-output contracts for [`clap`] applications.
 //!
-//! `clap_schema` emits a compact catalog of executable operations rather than a
-//! serialization of Clap's complete parser state. It joins four sources of
-//! truth already present in a Rust CLI:
+//! Clap and `--help` already describe how to invoke a binary. `clap_schema`
+//! focuses on the part agents cannot reliably infer: the JSON shape produced by
+//! a successful operation.
 //!
-//! - [`clap::Command`] owns invocation syntax, command structure, help, and parser validation.
-//! - [`handler`] marks the canonical implementation for each executable leaf payload.
-//! - Rust owns each handler's successful `Result<Output, _>` type.
-//! - [`JsonSchema`] owns the semantic input and successful output shapes.
+//! Every contract-visible operation is bound to one canonical
+//! `#[clap_schema::handler]`. The handler's declared `Result<T, E>` is the sole
+//! source of its successful output contract. For non-unit `T`, the crate
+//! requires `T: serde::Serialize + schemars::JsonSchema` and emits Schemars'
+//! serialization-view JSON Schema. `Result<(), E>` has no output contract.
 //!
-//! Runtime dispatch remains ordinary Rust. The handler attribute contributes
-//! type-level metadata only; handlers are never executed while a contract is
-//! built.
+//! At runtime, [`write_json`] serializes that same successful `T`, avoiding a
+//! separately maintained machine-output representation.
 //!
-//! # Derive and handler API
+//! # Derive API
 //!
 //! ```
 //! use clap::{Args, Parser, Subcommand};
-//! use clap_schema::{CliSchema, CommandSchema, JsonSchema};
+//! use clap_schema::{CliSchema, CommandSchema};
+//! use schemars::JsonSchema;
+//! use serde::Serialize;
 //!
 //! #[derive(Debug, Parser, CliSchema)]
 //! struct Cli {
 //!     #[command(subcommand)]
 //!     command: Commands,
-//!
-//!     /// Emit machine-readable output.
-//!     #[arg(long, global = true)]
-//!     json: bool,
 //! }
 //!
 //! #[derive(Debug, Subcommand, CommandSchema)]
 //! enum Commands {
-//!     /// Create an item.
+//!     #[schema(handler = create)]
 //!     Create(CreateArgs),
 //! }
 //!
-//! #[derive(Debug, Args, JsonSchema)]
+//! #[derive(Debug, Args)]
 //! struct CreateArgs {
 //!     #[arg(long)]
 //!     name: String,
 //! }
 //!
-//! #[derive(Debug, JsonSchema)]
+//! #[derive(Debug, Serialize, JsonSchema)]
 //! struct Item {
 //!     id: u64,
 //!     name: String,
@@ -53,122 +51,83 @@
 //! }
 //!
 //! let contract = Cli::schema()?;
-//! let create = contract.command(&["create"]).expect("create command");
-//! assert!(create.output.is_some());
+//! let output = contract
+//!     .operation(&["create"])
+//!     .and_then(|operation| operation.output.as_ref())
+//!     .expect("create output");
+//! assert_eq!(output.get("type").and_then(serde_json::Value::as_str), Some("object"));
 //! # Ok::<(), clap_schema::Error>(())
 //! ```
 //!
-//! [`CliSchema`] reflects the root parser and [`CommandSchema`] recursively
-//! registers executable subcommand leaves. A contract-visible leaf is a
-//! one-field tuple variant such as `Create(CreateArgs)`. The payload type is the
-//! key joining the Clap leaf to its canonical [`handler`]. Nested and flattened
-//! subcommand enums remain ordinary Clap; only executable leaves need handlers.
+//! The explicit `handler = ...` association makes output identity independent
+//! of the Clap input carrier. The same `Args` type can be reused by multiple
+//! operations, and unit, struct-style, and tuple variants are supported.
 //!
-//! A runtime-only command can be omitted with `#[schema(skip)]`. See the
-//! [`CliSchema`] and [`CommandSchema`] derive macro documentation for the full
-//! `#[schema(...)]` attribute reference.
+//! # Nested command shapes
 //!
-//! # Handler contract
+//! Normal `#[command(subcommand)]` and `#[command(flatten)]` enum nesting is
+//! followed automatically. When an `Args` payload itself contains a subcommand
+//! field, name the nested `CommandSchema` type on the parent variant:
 //!
-//! Handlers may be synchronous or asynchronous free functions, or inherent
-//! methods with `self`, `&self`, or `&mut self` receivers. Synchronous handlers
-//! may also be `const fn`. Free handlers use their first argument as the payload
-//! key; inherent methods use `Self`.
+//! ```ignore
+//! #[derive(Subcommand, CommandSchema)]
+//! enum Commands {
+//!     #[schema(handler = stash_default, subcommands = StashCommands)]
+//!     Stash(StashArgs),
+//! }
+//! ```
 //!
-//! The supported handler model is intentionally narrow:
+//! `handler` and `subcommands` may appear together when the parent operation is
+//! executable without selecting a child. Omit `handler` when the parent only
+//! groups child commands.
 //!
-//! - handlers are plain, non-generic functions or inherent methods;
-//! - free handlers own a named local command payload as their first argument;
-//! - method handlers use `self`, `&self`, or `&mut self`;
-//! - the return type resolves to `Result<T, E>`;
-//! - `T` implements [`JsonSchema`];
-//! - `E` has no schema bound and is not part of the contract;
-//! - `Result<(), E>` means there is no successful output payload;
-//! - one payload type has one canonical handler;
-//! - contract-visible leaves use exactly one tuple payload.
+//! # Handler forms
 //!
-//! Additional handler arguments are runtime context only. Borrowed free-function
-//! payloads, generic handlers, associated functions without `self`, and
-//! trait-object registration are outside the 0.1 handler model. The
-//! [`handler`] macro documents the supported signatures and dispatch model in
-//! detail.
+//! `#[handler]` supports synchronous, `const fn`, and asynchronous functions;
+//! free functions; associated functions; and inherent methods with `self`,
+//! `&self`, or `&mut self`. Arguments do not participate in the contract.
+//! Generic handlers and opaque `impl Trait` return types are rejected because
+//! they do not identify one concrete successful output contract.
 //!
-//! # Semantic input
+//! # Builder-style Clap
 //!
-//! By default, a leaf payload's [`JsonSchema`] is also its semantic input
-//! schema. `#[schema(input = Request)]` can instead use a different semantic
-//! request type while retaining the Clap payload as the runtime carrier and
-//! handler key.
-//!
-//! Input can be transported in two ways:
-//!
-//! - [`InputTransport::Arguments`] maps semantic object properties to deterministic Clap argv
-//!   representations.
-//! - [`InputTransport::Structured`] serializes the complete semantic value and supplies it through
-//!   one path/source argument, optionally with a standard input token.
-//!
-//! A transport is emitted only when contract construction can map the semantic
-//! value to that invocation shape. [`CommandSpec`] exposes the same semantics
-//! for builder-style Clap applications.
-//!
-//! # Contract model
-//!
-//! [`CliContract`] is the complete wire model. It contains:
-//!
-//! - [`CONTRACT_VERSION`] and [`JSON_SCHEMA_DIALECT`];
-//! - [`ProgramContract`] identity and description;
-//! - root [`ContextArgument`] values supplied independently from leaf input;
-//! - sorted executable [`CommandContract`] leaves.
-//!
-//! Each [`CommandContract`] contains its canonical path, description,
-//! deprecation guidance, semantic [`InputContract`], complete input transports,
-//! and optional successful [`OutputContract`]. With the derive API, the output
-//! schema is inferred from the canonical handler's `Result<T, E>` signature.
-//! Only `T` participates; `E` is deliberately ignored and `T = ()` omits the
-//! output contract.
-//!
-//! The contract describes successful operation invocation. Runtime failures are
-//! outside the wire model, so applications remain free to use `eyre`, `anyhow`,
-//! SDK errors, typed domain errors, or another error representation.
-//!
-//! # Reflection boundaries
-//!
-//! `clap_schema` deliberately reflects only parser semantics available through
-//! Clap's stable public reflection API. Groups and explicit conflicts exposed by
-//! Clap are represented in [`InputConstraint`]. Other parser-specific or
-//! conditional validation, including custom value-parser behavior and
-//! conditional requirements, can still be enforced only by Clap when the
-//! command is invoked.
-//!
-//! The 0.1 model also treats root arguments as invocation context and executable
-//! operations as subcommand leaves. Root-only operations and non-global
-//! agent-visible arguments on intermediate command-path nodes are rejected
-//! rather than emitted incompletely.
-//!
-//! # Builder API
-//!
-//! Applications that construct [`clap::Command`] values directly can use
-//! [`ContractBuilder`] and [`CommandSpec`] instead of proc macros:
+//! Builder applications use the same handler-derived metadata. There is no API
+//! for declaring an output type manually:
 //!
 //! ```
-//! use clap::{Arg, Command};
-//! use clap_schema::{CommandSpec, ContractBuilder, JsonSchema};
+//! use clap::Command;
+//! use clap_schema::ContractBuilder;
+//! use schemars::JsonSchema;
+//! use serde::Serialize;
 //!
-//! #[derive(JsonSchema)]
-//! struct CreateInput {
-//!     name: String,
+//! #[derive(Serialize, JsonSchema)]
+//! struct Created {
+//!     id: u64,
 //! }
 //!
-//! let cli = Command::new("example")
-//!     .subcommand(Command::new("create").arg(Arg::new("name").long("name")));
+//! #[clap_schema::handler]
+//! fn create() -> Result<Created, std::io::Error> {
+//!     Ok(Created { id: 1 })
+//! }
+//!
+//! let cli = Command::new("example").subcommand(Command::new("create"));
 //! let contract =
-//!     ContractBuilder::new(cli).command(["create"], CommandSpec::new::<CreateInput>()).build()?;
-//! assert!(contract.command(&["create"]).is_some());
+//!     ContractBuilder::new(cli).operation(["create"], clap_schema::operation!(create)).build()?;
+//! assert!(contract.operation(&["create"]).unwrap().output.is_some());
 //! # Ok::<(), clap_schema::Error>(())
 //! ```
 //!
-//! The derive + handler API is the normal path; the builder is the explicit
-//! counterpart for programmatic Clap trees.
+//! # Scope
+//!
+//! The wire model intentionally does not duplicate argv bindings, parser
+//! constraints, help text, input schemas, output selectors, or protocol
+//! versioning. A present output schema means the operation's successful value is
+//! JSON-renderable. How an application exposes machine mode remains ordinary
+//! CLI behavior discoverable through Clap.
+//!
+//! The remaining trust boundary is the output type itself: custom `Serialize`
+//! and `JsonSchema` implementations can disagree. Derived Serde/Schemars
+//! representations are the intended source of truth.
 #[expect(
     unused_extern_crates,
     reason = "proc-macro expansions refer to this crate through `::clap_schema`"
@@ -178,46 +137,41 @@ extern crate self as clap_schema;
 mod builder;
 mod error;
 mod model;
+mod output;
 mod reflect;
 mod schema;
-mod semantic;
 mod spec;
 
 #[doc(hidden)]
 pub mod __private;
 
 pub use builder::ContractBuilder;
-#[cfg(feature = "derive")]
-pub use clap_schema_derive::{CliSchema, CommandSchema, handler};
+pub use clap_schema_derive::{CliSchema, CommandSchema, handler, operation};
 pub use error::{Error, Result};
-pub use model::{
-    ArgumentInvocation, CONTRACT_VERSION, CatalogEntry, CliContract, CommandContract,
-    ContextArgument, InputConstraint, InputContract, InputTransport, JSON_SCHEMA_DIALECT,
-    OutputContract, OutputFormat, OutputSelector, ProgramContract, PropertyBinding,
-    StructuredFormat, ValueEncoding, ValueShape,
-};
-pub use schemars::{JsonSchema, Schema};
-pub use spec::{CommandSpec, JsonOutput, StructuredInput};
+pub use model::{CliContract, OperationContract};
+pub use output::{WriteJsonError, write_json};
+pub use spec::Operation;
 
-/// Trait implemented by an agent-contract-aware root clap parser.
+/// Trait implemented by a machine-contract-aware root Clap parser.
 ///
-/// Prefer `#[derive(CliSchema)]` when the `derive` feature is enabled.
+/// Prefer `#[derive(CliSchema)]` for derive-based Clap applications.
 pub trait CliSchema: clap::CommandFactory {
-    /// Subcommand enum that owns the executable command contracts.
-    type Commands: CommandSchema;
-
-    /// Returns root-level contract configuration generated by the derive.
+    /// Whether hidden Clap commands should be included in the contract.
     #[doc(hidden)]
-    fn __clap_schema_root() -> __private::RootSpec {
-        __private::RootSpec::default()
+    fn __clap_schema_include_hidden() -> bool {
+        false
     }
 
-    /// Builds the validated agent-facing contract for this CLI.
+    /// Registers root and subcommand operations generated by the derive.
+    #[doc(hidden)]
+    fn __clap_schema_register(registry: &mut __private::Registry) -> Result<()>;
+
+    /// Builds the successful-output contract for this CLI.
     ///
     /// # Errors
     ///
-    /// Returns an error when typed schema declarations and clap invocation
-    /// syntax cannot be joined into a complete contract.
+    /// Returns an error when derived operation metadata disagrees with the
+    /// actual Clap command tree.
     fn schema() -> Result<CliContract>
     where
         Self: Sized,
@@ -226,11 +180,11 @@ pub trait CliSchema: clap::CommandFactory {
     }
 }
 
-/// Trait implemented by subcommand enums that contribute typed command schemas.
+/// Trait implemented by subcommand enums that contribute operation contracts.
 ///
-/// Prefer `#[derive(CommandSchema)]` when the `derive` feature is enabled.
+/// Prefer `#[derive(CommandSchema)]` for derive-based Clap applications.
 pub trait CommandSchema: clap::Subcommand {
-    /// Registers executable leaf contracts below `prefix`.
+    /// Registers executable operation contracts below `prefix`.
     #[doc(hidden)]
     fn __clap_schema_register(
         prefix: &mut Vec<String>,

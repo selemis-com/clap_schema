@@ -1,0 +1,41 @@
+//! Canonical runtime emission for successful output.
+
+use std::{any::TypeId, io::Write};
+
+use schemars::JsonSchema;
+use serde::Serialize;
+
+/// Error returned by [`write_json`].
+#[derive(Debug, thiserror::Error)]
+pub enum WriteJsonError<E> {
+    /// The canonical handler failed before producing a successful value.
+    #[error("handler failed")]
+    Handler(E),
+    /// The successful value could not be serialized as JSON.
+    #[error("failed to serialize successful output as JSON: {0}")]
+    Serialize(#[from] serde_json::Error),
+}
+
+/// Writes the successful result of a canonical handler as JSON.
+///
+/// The generated contract schema and this function are both parameterized by
+/// the handler's successful `T`, which must implement `Serialize + JsonSchema`.
+/// `Result<(), E>` deliberately writes no bytes because unit handlers have no
+/// successful output payload in the contract.
+///
+/// # Errors
+///
+/// Returns [`WriteJsonError::Handler`] when the handler failed or
+/// [`WriteJsonError::Serialize`] when `serde_json` could not write the value.
+pub fn write_json<W, T, E>(writer: W, result: Result<T, E>) -> Result<(), WriteJsonError<E>>
+where
+    W: Write,
+    T: Serialize + JsonSchema + 'static,
+{
+    let value = result.map_err(WriteJsonError::Handler)?;
+    if TypeId::of::<T>() == TypeId::of::<()>() {
+        return Ok(());
+    }
+    serde_json::to_writer(writer, &value)?;
+    Ok(())
+}

@@ -1,14 +1,12 @@
 # Examples
 
-The examples are small executable API references:
+The examples focus on handler-derived successful JSON output while Clap remains authoritative for input syntax.
 
-- `basic`: the common derive + `#[clap_schema::handler]` path with ordinary Rust dispatch.
-- `builder_api`: explicit builder-style Clap integration.
-- `custom_output`: a non-default JSON output selector.
-- `flattened_commands`: Clap flattened subcommand composition.
-- `full_application`: a larger hierarchy with typed handlers and ordinary nested dispatch.
-- `handler_forms`: free/inherent and sync/async handler styles.
-- `nested_commands`: nested command groups.
-- `outputless_success`: handler output inference plus `Result<(), E>` for commands with no success payload.
-- `schema_subcommand`: expose the generated contract through the CLI itself.
-- `structured_input`: a semantic request type different from the Clap transport carrier.
+- `basic`: minimal derive + handler contract and `write_json` dispatch.
+- `builder_api`: programmatic Clap tree using the same handler-derived `operation!` metadata.
+- `flattened_commands`: flattened subcommand enums.
+- `full_application`: larger nested CLI with typed output envelopes.
+- `handler_forms`: sync, async, const, owned and borrowed inherent handlers.
+- `nested_commands`: nested subcommand enums.
+- `outputless_success`: `Result<(), E>` versus typed successful output.
+- `schema_subcommand`: exposing the generated contract through the CLI.

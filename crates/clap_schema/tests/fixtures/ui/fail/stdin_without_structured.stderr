@@ -1,4 +1,0 @@
-error: #[schema(stdin = ...)] requires #[schema(structured = ...)]
- --> fail/stdin_without_structured.rs:8:5
-  |
-8 |     Create,

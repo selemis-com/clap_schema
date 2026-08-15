@@ -1,99 +1,49 @@
 //! Implementation details used by the proc macros.
 //!
 //! This module is public only so proc-macro expansions can reach it. Its API is
-//! not part of the stable user-facing surface.
+//! not part of the user-facing surface.
 
-use std::any::TypeId;
-
-/// clap re-export used by proc-macro expansions.
+/// Clap re-export used by proc-macro expansions.
 pub use clap;
 use schemars::JsonSchema;
+use serde::Serialize;
 
-use crate::{
-    CliContract, CliSchema, CommandSchema, CommandSpec, ContractBuilder, JsonOutput, Result,
-};
+use crate::{CliContract, CliSchema, ContractBuilder, Operation, Result};
 
-/// Root settings produced by `#[derive(CliSchema)]`.
-#[derive(Debug, Clone, Default)]
-pub struct RootSpec {
-    json_output: JsonOutput,
-    include_hidden: bool,
-}
-
-impl RootSpec {
-    /// Configures JSON output selection.
-    #[must_use]
-    pub fn json_output(mut self, output: JsonOutput) -> Self {
-        self.json_output = output;
-        self
-    }
-
-    /// Includes hidden clap commands.
-    #[must_use]
-    pub const fn include_hidden(mut self) -> Self {
-        self.include_hidden = true;
-        self
-    }
-}
-
-/// Derives the successful output schema from a synchronous handler without executing it.
+/// Successful `Result<T, E>` contract used by handler metadata.
 ///
-/// The closure exists only as a type witness and is never called.
-pub fn command_spec_from_sync<Input, Make, Output, E>(_make: &Make) -> CommandSpec
+/// Type aliases resolve to their underlying `Result`, so handler return aliases
+/// remain supported without syntactic parsing of `T` and `E` in the proc macro.
+pub trait HandlerResult {
+    /// Successful machine-output type.
+    type Output: JsonSchema + Serialize + 'static;
+}
+
+impl<T, E> HandlerResult for std::result::Result<T, E>
 where
-    Input: ?Sized + JsonSchema,
-    Make: FnOnce() -> std::result::Result<Output, E>,
-    Output: JsonSchema + 'static,
+    T: JsonSchema + Serialize + 'static,
 {
-    command_spec_for_output::<Input, Output>()
+    type Output = T;
 }
 
-/// Derives the successful output schema from an async handler without executing it.
-///
-/// The closure exists only as a type witness. Its future is never created.
-pub fn command_spec_from_async<Input, Make, Fut, Output, E>(_make: &Make) -> CommandSpec
+/// Builds operation metadata from a handler's declared return type.
+pub fn operation_from_result<R>() -> Operation
 where
-    Input: ?Sized + JsonSchema,
-    Make: FnOnce() -> Fut,
-    Fut: Future<Output = std::result::Result<Output, E>>,
-    Output: JsonSchema + 'static,
+    R: HandlerResult,
 {
-    command_spec_for_output::<Input, Output>()
+    Operation::for_output::<R::Output>()
 }
 
-/// Builds a command spec from a successful output type.
-fn command_spec_for_output<Input, Output>() -> CommandSpec
-where
-    Input: ?Sized + JsonSchema,
-    Output: JsonSchema + 'static,
-{
-    let mut spec = CommandSpec::new::<Input>();
-    if TypeId::of::<Output>() != TypeId::of::<()>() {
-        spec = spec.output::<Output>();
-    }
-    spec
-}
-
-/// Produces an arbitrary value solely for an unevaluated handler type witness.
-///
-/// # Panics
-///
-/// Always panics when called. Proc-macro expansions only place this function
-/// inside closures passed to the handler type-witness helpers and never execute them.
-pub const fn type_witness<T>() -> T {
-    panic!("clap_schema type witness must never execute")
-}
-
-/// Registry filled by `#[derive(CommandSchema)]`.
+/// Registry filled by the derive implementation.
 #[derive(Debug, Default)]
 pub struct Registry {
-    entries: Vec<(Vec<String>, CommandSpec)>,
+    entries: Vec<(Vec<String>, Operation)>,
 }
 
 impl Registry {
-    /// Registers one leaf command.
-    pub fn command(&mut self, path: &[String], spec: CommandSpec) {
-        self.entries.push((path.to_vec(), spec));
+    /// Registers one executable operation.
+    pub fn operation(&mut self, path: &[String], operation: Operation) {
+        self.entries.push((path.to_vec(), operation));
     }
 }
 
@@ -103,14 +53,12 @@ where
     T: CliSchema,
 {
     let mut registry = Registry::default();
-    T::Commands::__clap_schema_register(&mut Vec::new(), &mut registry)?;
-    let root = T::__clap_schema_root();
+    T::__clap_schema_register(&mut registry)?;
 
-    let mut builder = ContractBuilder::new(T::command())
-        .json_output(root.json_output)
-        .include_hidden(root.include_hidden);
-    for (path, spec) in registry.entries {
-        builder = builder.command(path, spec);
+    let mut builder =
+        ContractBuilder::new(T::command()).include_hidden(T::__clap_schema_include_hidden());
+    for (path, operation) in registry.entries {
+        builder = builder.operation(path, operation);
     }
     builder.build()
 }

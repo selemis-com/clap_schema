@@ -1,14 +1,11 @@
 # Contributing
 
-`clap_schema` has one narrow job: combine Clap's invocation model, canonical typed handlers, Rust handler signatures, and Schemars semantic types into a contract that an agent can use to discover and invoke a CLI.
+`clap_schema` has one narrow job: derive the successful JSON output contract of a Clap operation from the canonical Rust handler that implements it.
 
-The architecture deliberately keeps runtime dispatch in the application. `#[clap_schema::handler]` only attaches compile-time contract metadata to the handler's first argument type. The crate should not become a serialized mirror of Clap, a business execution framework, or a general agent protocol.
+Clap remains authoritative for command discovery, argv syntax, help, and input validation. The crate should not grow a parallel model of those concerns, a second output declaration, or a general execution framework.
 
-Please keep changes covered by the existing layers of tests:
+The handler's `Result<T, E>` is the source of truth. Non-unit `T` must be serializable and schema-generatable; `Result<(), E>` is outputless. Runtime machine output should use `clap_schema::write_json` so the emitted value and generated schema are parameterized by the same `T`.
 
-- unit/integration tests for contract construction and validation;
-- checked-in JSON wire fixtures;
-- executable examples for public API shapes;
-- downstream compiler-UI fixtures for derive and handler diagnostics.
+Keep documentation in the repository: rustdoc, README content, and executable examples. Avoid parallel manuals.
 
 Before opening a pull request, run `make pr`.

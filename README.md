@@ -1,168 +1,94 @@
 # clap_schema
 
-Agent-facing, machine-readable contracts for Clap applications.
+`clap_schema` adds checked successful-output contracts to Rust CLIs built with Clap.
 
-`clap_schema` avoids a parallel hand-maintained CLI schema. Instead it joins facts that already exist in the Rust program:
+The boundary is intentionally narrow:
 
-- **Clap** owns command names, hierarchy, argv syntax, help, and parser validation.
-- **`#[clap_schema::handler]`** marks the canonical implementation for each leaf payload type.
-- **Rust** owns the handler's successful `Result<Output, _>` type.
-- **Schemars** owns the JSON Schema for semantic input and successful output types.
+- Clap and `--help` own command discovery, invocation syntax, and input validation.
+- A canonical Rust handler owns each executable operation.
+- The handler's `Result<T, E>` owns the successful output type.
+- Non-unit `T` must implement `serde::Serialize` and `schemars::JsonSchema`.
+- Schemars derives the JSON Schema for that serialized type.
+- `clap_schema::write_json` serializes the same successful `T` at runtime.
 
-Errors are deliberately outside the schema contract. Handlers may use any error type; it does not need `JsonSchema` and is not emitted.
+There is no input-schema layer, output-selector model, protocol version, or API for manually declaring a successful output type beside the real handler.
 
-## The common path
+## Example
 
 ```rust
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliSchema, CommandSchema, JsonSchema};
+use clap_schema::{CliSchema, CommandSchema};
+use schemars::JsonSchema;
+use serde::Serialize;
 
-#[derive(Parser, CliSchema)]
+#[derive(Debug, Parser, CliSchema)]
 struct Cli {
-    #[arg(long, global = true)]
-    json: bool,
-
     #[command(subcommand)]
     command: Commands,
 }
 
-#[derive(Subcommand, CommandSchema)]
+#[derive(Debug, Subcommand, CommandSchema)]
 enum Commands {
-    /// Create an item.
+    #[schema(handler = create)]
     Create(CreateArgs),
 }
 
-#[derive(Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct CreateArgs {
     #[arg(long)]
     name: String,
 }
 
-#[derive(JsonSchema)]
+#[derive(Debug, Serialize, JsonSchema)]
 struct Item {
-    id: String,
+    id: u64,
     name: String,
 }
 
-#[clap_schema::handler]
-async fn create(command: CreateArgs, ctx: &Context) -> std::io::Result<Item> {
-    // ...
-}
-```
-
-That is enough for the generated command contract to know:
-
-```text
-input  = CreateArgs
-output = Item
-```
-
-The handler signature is the source of truth for the successful output type. The handler's error type is irrelevant to `clap_schema`. Handlers may be synchronous or asynchronous, and may be free functions or inherent methods with `self`, `&self`, or `&mut self` receivers. Synchronous handlers may also be `const fn`.
-
-## Runtime dispatch stays ordinary Rust
-
-`clap_schema` does not own execution:
-
-```rust
-async fn dispatch(command: Commands, ctx: &Context) -> std::io::Result<()> {
-    match command {
-        Commands::Create(command) => {
-            let _ = create(command, ctx).await?;
-        }
-    }
-    Ok(())
-}
-```
-
-The handler attribute is compile-time glue only. Additional arguments such as `ctx` are runtime context and do not need `JsonSchema`.
-
-The command payload is the association key. A contract-visible leaf therefore uses a unique local one-field tuple payload. Reusable argument groups belong inside those payloads through normal Clap flattening.
-
-## Output inference
-
-The handler signature is authoritative:
-
-```rust
-#[clap_schema::handler]
-async fn create(command: CreateArgs) -> Result<Item, SomeApplicationError>;
-```
-
-Generated code uses the handler only as a type witness. Rust proves that a synchronous handler returns `Result<T, E>` or that an asynchronous handler's future resolves to it, after which Schemars generates the schema for `T`. `E` is unconstrained and ignored.
-
-Changing the implementation to return `Result<CreatedItem, _>` changes the successful output contract with it. If `CreatedItem` does not implement `JsonSchema`, compilation fails.
-
-`Result<(), E>` naturally means an operation with no machine-readable success payload.
-
-## Inherent handler methods
-
-Applications that dispatch through payload methods do not need adapters:
-
-```rust
-impl CreateArgs {
-    #[clap_schema::handler]
-    async fn run(self, ctx: &Context) -> std::io::Result<Item> {
-        // ...
-    }
-}
-
-match command {
-    Commands::Create(command) => {
-        let _ = command.run(&context).await?;
-    }
-}
-```
-
-The enclosing `Self` type is the payload key. Methods may use `self`, `&self`, or `&mut self`; synchronous methods may also be `const fn`.
-
-## Semantic input can differ from the Clap carrier
-
-Most commands use the leaf payload itself as input. For CLIs that support complete JSON requests as well as argv fields, the semantic request may be different:
-
-```rust
-#[derive(Subcommand, CommandSchema)]
-enum Commands {
-    #[schema(input = CreateDocumentInput, structured = "input", json(metadata))]
-    Create(CreateDocumentArgs),
-}
+#[derive(Debug)]
+struct Error;
 
 #[clap_schema::handler]
-async fn create(command: CreateDocumentArgs) -> std::io::Result<Document> {
-    // ...
+async fn create(_command: CreateArgs) -> Result<Item, Error> {
+    Err(Error)
 }
 ```
 
-`CreateDocumentArgs` remains the runtime Clap carrier and handler key; `CreateDocumentInput` supplies the machine-facing input schema.
+The generated contract contains only the information that is not already available from Clap:
 
-## Nested commands
-
-Nested and flattened subcommand enums remain ordinary Clap. `CommandSchema` recursively walks them, while only executable leaf payloads need handlers.
-
-A runtime-only command can be omitted from the contract:
-
-```rust
-#[derive(Subcommand, CommandSchema)]
-enum Commands {
-    Create(CreateArgs),
-
-    #[schema(skip)]
-    Schema,
+```json
+{
+  "operations": [
+    {
+      "path": ["create"],
+      "output": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "id": { "type": "integer", "format": "uint64", "minimum": 0 },
+          "name": { "type": "string" }
+        },
+        "required": ["id", "name"],
+        "title": "Item",
+        "type": "object"
+      }
+    }
+  ]
 }
 ```
 
-## Builder API
+A present `output` means the successful value is JSON-renderable. `Result<(), E>` has no output contract, and `write_json` writes no bytes for it.
 
-Builder-style Clap applications can bypass the derives:
+Builder-style Clap uses the same handler-derived metadata:
 
 ```rust
-let contract = clap_schema::ContractBuilder::new(cli())
-    .command(
-        ["create"],
-        clap_schema::CommandSpec::new::<CreateInput>()
-            .output::<Item>(),
-    )
+let contract = clap_schema::ContractBuilder::new(command)
+    .operation(["create"], clap_schema::operation!(create))
     .build()?;
+# Ok::<(), clap_schema::Error>(())
 ```
 
-The builder is the explicit escape hatch. The derive + handler path is the intended ergonomic API.
+The crate-level API documentation, examples, and this README are the authoritative documentation.
 
-The crate-level API documentation is the authoritative reference for the contract model, derive attributes, handler rules, reflection boundaries, and builder API. The `full_application` example shows a larger intended application shape.
+## License
+
+Licensed under either of Apache License, Version 2.0 or MIT at your option.

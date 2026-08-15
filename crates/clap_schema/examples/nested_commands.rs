@@ -2,7 +2,9 @@
 #![expect(dead_code, reason = "example data types are reflected rather than executed")]
 
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliSchema, CommandSchema, JsonSchema};
+use clap_schema::{CliSchema, CommandSchema};
+use schemars::JsonSchema;
+use serde::Serialize;
 
 /// Top-level arguments for the administration CLI.
 #[derive(Debug, Parser, CliSchema)]
@@ -25,28 +27,30 @@ enum Commands {
 #[derive(Debug, Subcommand, CommandSchema)]
 enum UserCommands {
     /// Show a user.
+    #[schema(handler = get_user)]
     Get(GetUserArgs),
 
     /// Delete a user.
+    #[schema(handler = delete_user)]
     Delete(DeleteUserArgs),
 }
 
 /// Arguments used to fetch a user.
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct GetUserArgs {
     /// Identifier of the user to fetch.
     user_id: String,
 }
 
 /// Arguments used to delete a user.
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct DeleteUserArgs {
     /// Identifier of the user to delete.
     user_id: String,
 }
 
 /// User returned by the get command.
-#[derive(Debug, JsonSchema)]
+#[derive(Debug, Serialize, JsonSchema)]
 struct User {
     /// Stable user identifier.
     id: String,
@@ -72,6 +76,6 @@ async fn delete_user(_command: DeleteUserArgs) -> Result<(), UserError> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("{}", serde_json::to_string_pretty(&Cli::schema()?.catalog())?);
+    println!("{}", serde_json::to_string_pretty(&Cli::schema()?)?);
     Ok(())
 }

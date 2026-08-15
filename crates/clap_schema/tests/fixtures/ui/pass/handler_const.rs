@@ -1,7 +1,9 @@
 #![allow(dead_code, unused_imports)]
 
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliSchema, CommandSchema, JsonSchema};
+use clap_schema::{CliSchema, CommandSchema};
+use schemars::JsonSchema;
+use serde::Serialize;
 
 #[derive(Parser, CliSchema)]
 struct Cli {
@@ -11,13 +13,14 @@ struct Cli {
 
 #[derive(Subcommand, CommandSchema)]
 enum Commands {
+    #[schema(handler = create)]
     Create(CreateArgs),
 }
 
-#[derive(Args, JsonSchema)]
+#[derive(Args)]
 struct CreateArgs {}
 
-#[derive(JsonSchema)]
+#[derive(Serialize, JsonSchema)]
 struct Item;
 
 struct CreateError;

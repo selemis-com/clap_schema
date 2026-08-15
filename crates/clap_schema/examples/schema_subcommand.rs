@@ -2,7 +2,9 @@
 #![expect(dead_code, reason = "example data types are reflected rather than executed")]
 
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliSchema, CommandSchema, JsonSchema};
+use clap_schema::{CliSchema, CommandSchema, write_json};
+use schemars::JsonSchema;
+use serde::Serialize;
 
 /// Top-level arguments for the agent-control CLI.
 #[derive(Debug, Parser, CliSchema)]
@@ -21,6 +23,7 @@ struct Cli {
 #[derive(Debug, Subcommand, CommandSchema)]
 enum Commands {
     /// Show one resource.
+    #[schema(handler = get)]
     Get(GetArgs),
 
     /// Print the machine-readable CLI contract.
@@ -29,7 +32,7 @@ enum Commands {
 }
 
 /// Arguments used to fetch a resource.
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct GetArgs {
     /// Identifier of the resource to fetch.
     id: String,
@@ -43,7 +46,7 @@ struct SchemaArgs {
 }
 
 /// Resource returned by the get command.
-#[derive(Debug, JsonSchema)]
+#[derive(Debug, Serialize, JsonSchema)]
 struct Resource {
     /// Stable resource identifier.
     id: String,
@@ -51,17 +54,10 @@ struct Resource {
     name: String,
 }
 
-/// Error returned when a resource lookup fails.
-#[derive(Debug)]
-struct GetError {
-    /// Machine-readable error code.
-    code: String,
-}
-
-/// Fetches a resource and supplies its successful output schema.
+/// Fetches a resource and supplies the exact value emitted in machine mode.
 #[clap_schema::handler]
-async fn get(_command: GetArgs) -> Result<Resource, GetError> {
-    Err(GetError { code: "not_found".to_owned() })
+fn get(command: GetArgs) -> Result<Resource, std::io::Error> {
+    Ok(Resource { id: command.id, name: "Example resource".to_owned() })
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -72,19 +68,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Cli::parse_from(args)
     };
 
-    match cli.command {
+    let Cli { json, command } = cli;
+    match command {
         Commands::Schema(request) => {
             let contract = Cli::schema()?;
             if request.path.is_empty() {
-                println!("{}", serde_json::to_string_pretty(&contract.catalog())?);
+                println!("{}", serde_json::to_string_pretty(&contract)?);
             } else {
                 let path = request.path.iter().map(String::as_str).collect::<Vec<_>>();
-                let command = contract.command(&path).ok_or("unknown contract command")?;
-                println!("{}", serde_json::to_string_pretty(command)?);
+                let operation = contract.operation(&path).ok_or("unknown contract operation")?;
+                println!("{}", serde_json::to_string_pretty(operation)?);
             }
         }
-        Commands::Get(_) => {
-            eprintln!("This example only implements contract discovery.");
+        Commands::Get(request) => {
+            let result = get(request);
+            if json {
+                write_json(std::io::stdout().lock(), result)?;
+            } else {
+                let resource = result?;
+                println!("{}: {}", resource.id, resource.name);
+            }
         }
     }
     Ok(())

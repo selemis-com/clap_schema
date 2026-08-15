@@ -1,8 +1,10 @@
-//! Common handler and dispatcher forms supported by `clap_schema`.
+//! Common handler forms using the canonical checked JSON output path.
 #![expect(dead_code, reason = "example handlers are reflected rather than executed")]
 
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliSchema, CommandSchema, JsonSchema};
+use clap_schema::{CliSchema, CommandSchema, WriteJsonError, write_json};
+use schemars::JsonSchema;
+use serde::Serialize;
 
 /// Top-level arguments for the handler-form demonstration CLI.
 #[derive(Debug, Parser, CliSchema)]
@@ -17,45 +19,51 @@ struct Cli {
 #[derive(Debug, Subcommand, CommandSchema)]
 enum Commands {
     /// Use a synchronous free handler.
+    #[schema(handler = local)]
     Local(LocalArgs),
     /// Use an asynchronous free handler.
+    #[schema(handler = remote)]
     Remote(RemoteArgs),
     /// Use a synchronous inherent handler.
+    #[schema(handler = InspectArgs::run)]
     Inspect(InspectArgs),
     /// Use an asynchronous inherent handler.
+    #[schema(handler = UpdateArgs::run)]
     Update(UpdateArgs),
     /// Use an immutable borrowed inherent handler.
+    #[schema(handler = InspectRefArgs::run)]
     InspectRef(InspectRefArgs),
     /// Use a mutable borrowed asynchronous inherent handler.
+    #[schema(handler = RefreshArgs::run)]
     Refresh(RefreshArgs),
 }
 
 /// Arguments accepted by the local command.
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct LocalArgs {}
 
 /// Arguments accepted by the remote command.
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct RemoteArgs {}
 
 /// Arguments accepted by the inspect command.
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct InspectArgs {}
 
 /// Arguments accepted by the update command.
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct UpdateArgs {}
 
 /// Arguments accepted by the borrowed inspect command.
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct InspectRefArgs {}
 
 /// Arguments accepted by the mutable refresh command.
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct RefreshArgs {}
 
 /// Successful result returned by every demonstration command.
-#[derive(Debug, JsonSchema)]
+#[derive(Debug, Serialize, JsonSchema)]
 struct Item {
     /// Stable item identifier.
     id: String,
@@ -118,33 +126,24 @@ impl RefreshArgs {
     }
 }
 
-/// Dispatches commands using ordinary Rust while preserving each handler form.
-async fn dispatch(command: Commands, context: &Context) -> Result<(), CommandError> {
+/// Dispatches every handler form through the canonical checked JSON output path.
+async fn dispatch_json<W: std::io::Write + Send>(
+    command: Commands,
+    context: &Context,
+    writer: &mut W,
+) -> Result<(), WriteJsonError<CommandError>> {
     match command {
-        Commands::Local(command) => {
-            let _ = local(command)?;
-        }
-        Commands::Remote(command) => {
-            let _ = remote(command, context).await?;
-        }
-        Commands::Inspect(command) => {
-            let _ = command.run()?;
-        }
-        Commands::Update(command) => {
-            let _ = command.run(context).await?;
-        }
-        Commands::InspectRef(command) => {
-            let _ = command.run(context)?;
-        }
-        Commands::Refresh(mut command) => {
-            let _ = command.run(context).await?;
-        }
+        Commands::Local(command) => write_json(&mut *writer, local(command)),
+        Commands::Remote(command) => write_json(&mut *writer, remote(command, context).await),
+        Commands::Inspect(command) => write_json(&mut *writer, command.run()),
+        Commands::Update(command) => write_json(&mut *writer, command.run(context).await),
+        Commands::InspectRef(command) => write_json(&mut *writer, command.run(context)),
+        Commands::Refresh(mut command) => write_json(&mut *writer, command.run(context).await),
     }
-    Ok(())
 }
 
 fn main() -> clap_schema::Result<()> {
-    let _ = dispatch;
+    let _ = dispatch_json::<Vec<u8>>;
     let contract = Cli::schema()?;
     println!("{}", serde_json::to_string_pretty(&contract).expect("serialize contract"));
     Ok(())

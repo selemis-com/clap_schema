@@ -4,7 +4,9 @@
 #[cfg(test)]
 mod tests {
     use clap::{Args, Parser, Subcommand};
-    use clap_schema::{CliSchema, CommandSchema, JsonSchema};
+    use clap_schema::{CliSchema, CommandSchema};
+    use schemars::JsonSchema;
+    use serde::Serialize;
 
     #[derive(Parser, CliSchema)]
     struct Cli {
@@ -14,22 +16,32 @@ mod tests {
 
     #[derive(Subcommand, CommandSchema)]
     enum Commands {
+        #[schema(handler = free_sync)]
         FreeSync(FreeSyncArgs),
+        #[schema(handler = free_const)]
         FreeConst(FreeConstArgs),
+        #[schema(handler = free_async)]
         FreeAsync(FreeAsyncArgs),
+        #[schema(handler = MethodOwnedSyncArgs::run)]
         MethodOwnedSync(MethodOwnedSyncArgs),
+        #[schema(handler = MethodOwnedConstArgs::run)]
         MethodOwnedConst(MethodOwnedConstArgs),
+        #[schema(handler = MethodOwnedAsyncArgs::run)]
         MethodOwnedAsync(MethodOwnedAsyncArgs),
+        #[schema(handler = MethodRefSyncArgs::run)]
         MethodRefSync(MethodRefSyncArgs),
+        #[schema(handler = MethodRefAsyncArgs::run)]
         MethodRefAsync(MethodRefAsyncArgs),
+        #[schema(handler = MethodMutSyncArgs::run)]
         MethodMutSync(MethodMutSyncArgs),
+        #[schema(handler = MethodMutAsyncArgs::run)]
         MethodMutAsync(MethodMutAsyncArgs),
     }
 
     macro_rules! payloads {
         ($($name:ident),+ $(,)?) => {
             $(
-                #[derive(Args, JsonSchema)]
+                #[derive(Args)]
                 struct $name {}
             )+
         };
@@ -48,7 +60,7 @@ mod tests {
         MethodMutAsyncArgs,
     );
 
-    #[derive(JsonSchema)]
+    #[derive(Serialize, JsonSchema)]
     struct Output {
         value: String,
     }
@@ -140,7 +152,7 @@ mod tests {
             "method-mut-sync",
             "method-mut-async",
         ] {
-            let command = contract.command(&[path]).ok_or_else(|| {
+            let command = contract.operation(&[path]).ok_or_else(|| {
                 clap_schema::Error::UnknownCommand { path: vec![path.to_owned()] }
             })?;
             assert!(command.output.is_some(), "missing output for {path}");

@@ -2,7 +2,9 @@
 #![expect(dead_code, reason = "example data types are reflected rather than executed")]
 
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliSchema, CommandSchema, JsonSchema};
+use clap_schema::{CliSchema, CommandSchema, write_json};
+use schemars::JsonSchema;
+use serde::Serialize;
 
 /// Top-level arguments for the item-management CLI.
 #[derive(Debug, Parser, CliSchema)]
@@ -21,14 +23,16 @@ struct Cli {
 #[derive(Debug, Subcommand, CommandSchema)]
 enum Commands {
     /// List items.
+    #[schema(handler = list)]
     List(ListArgs),
 
     /// Create an item.
+    #[schema(handler = create)]
     Create(CreateArgs),
 }
 
 /// Arguments accepted by the list operation.
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct ListArgs {
     /// Maximum number of items to return.
     #[arg(long, default_value_t = 50)]
@@ -36,7 +40,7 @@ struct ListArgs {
 }
 
 /// Arguments accepted by the create operation.
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct CreateArgs {
     /// Name assigned to the new item.
     #[arg(long)]
@@ -44,7 +48,7 @@ struct CreateArgs {
 }
 
 /// Item returned by successful item operations.
-#[derive(Debug, JsonSchema)]
+#[derive(Debug, Serialize, JsonSchema)]
 struct Item {
     /// Stable item identifier.
     id: u64,
@@ -71,23 +75,21 @@ async fn create(_command: CreateArgs) -> Result<Item, CommandError> {
     Err(CommandError::Unavailable)
 }
 
-/// Dispatches parsed item commands using ordinary Rust control flow.
-async fn dispatch(command: Commands) -> Result<(), CommandError> {
+/// Emits the checked machine representation from the actual handler result.
+async fn dispatch_json<W: std::io::Write + Send>(
+    command: Commands,
+    writer: &mut W,
+) -> Result<(), clap_schema::WriteJsonError<CommandError>> {
     match command {
-        Commands::List(command) => {
-            let _ = list(command).await?;
-        }
-        Commands::Create(command) => {
-            let _ = create(command).await?;
-        }
+        Commands::List(command) => write_json(writer, list(command).await),
+        Commands::Create(command) => write_json(writer, create(command).await),
     }
-    Ok(())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let _ = dispatch;
+    let _ = dispatch_json::<Vec<u8>>;
     let contract = Cli::schema()?;
-    let create = contract.command(&["create"]).expect("create command");
+    let create = contract.operation(&["create"]).expect("create command");
     assert!(create.output.is_some());
     println!("{}", serde_json::to_string_pretty(create)?);
     Ok(())

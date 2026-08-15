@@ -2,7 +2,9 @@
 #![expect(dead_code, reason = "example data types are reflected rather than executed")]
 
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliSchema, CommandSchema, JsonSchema};
+use clap_schema::{CliSchema, CommandSchema};
+use schemars::JsonSchema;
+use serde::Serialize;
 
 /// Top-level arguments for the resource CLI.
 #[derive(Debug, Parser, CliSchema)]
@@ -17,27 +19,29 @@ struct Cli {
 #[derive(Debug, Subcommand, CommandSchema)]
 enum Commands {
     /// Creates a resource and returns it on success.
+    #[schema(handler = create)]
     Create(CreateArgs),
     /// Deletes a resource without a successful output payload.
+    #[schema(handler = delete)]
     Delete(DeleteArgs),
 }
 
 /// Arguments accepted by resource creation.
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct CreateArgs {
     /// Name assigned to the new resource.
     name: String,
 }
 
 /// Arguments accepted by resource deletion.
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct DeleteArgs {
     /// Identifier of the resource to delete.
     id: String,
 }
 
 /// Resource returned by a successful create operation.
-#[derive(Debug, JsonSchema)]
+#[derive(Debug, Serialize, JsonSchema)]
 struct Resource {
     /// Stable resource identifier.
     id: String,
@@ -61,8 +65,8 @@ async fn delete(_command: DeleteArgs) -> Result<(), ApplicationError> {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let contract = Cli::schema()?;
-    let create = contract.command(&["create"]).expect("create command");
-    let delete = contract.command(&["delete"]).expect("delete command");
+    let create = contract.operation(&["create"]).expect("create command");
+    let delete = contract.operation(&["delete"]).expect("delete command");
     assert!(create.output.is_some());
     assert!(delete.output.is_none());
     Ok(())

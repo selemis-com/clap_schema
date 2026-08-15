@@ -2,7 +2,9 @@
 #![expect(dead_code, reason = "test data types are reflected rather than executed")]
 
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliSchema, CommandSchema, JsonSchema};
+use clap_schema::{CliSchema, CommandSchema};
+use schemars::JsonSchema;
+use serde::Serialize;
 
 #[derive(Debug, Parser, CliSchema)]
 #[command(name = "flat")]
@@ -16,31 +18,33 @@ enum Commands {
     #[command(flatten)]
     Users(UserCommands),
 
+    #[schema(handler = health)]
     Health(HealthArgs),
 }
 
 #[derive(Debug, Subcommand, CommandSchema)]
 enum UserCommands {
+    #[schema(handler = user)]
     User(UserArgs),
 
     #[schema(skip)]
     Internal,
 }
 
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct UserArgs {
     id: String,
 }
 
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct HealthArgs {}
 
-#[derive(Debug, JsonSchema)]
+#[derive(Debug, Serialize, JsonSchema)]
 struct User {
     id: String,
 }
 
-#[derive(Debug, JsonSchema)]
+#[derive(Debug, Serialize, JsonSchema)]
 struct Health {
     healthy: bool,
 }
@@ -67,10 +71,10 @@ mod tests {
     #[test]
     fn flattened_subcommands_do_not_add_a_schema_path_segment() -> clap_schema::Result<()> {
         let contract = Cli::schema()?;
-        assert!(contract.command(&["user"]).is_some());
-        assert!(contract.command(&["health"]).is_some());
-        assert!(contract.command(&["users", "user"]).is_none());
-        assert!(contract.command(&["internal"]).is_none());
+        assert!(contract.operation(&["user"]).is_some());
+        assert!(contract.operation(&["health"]).is_some());
+        assert!(contract.operation(&["users", "user"]).is_none());
+        assert!(contract.operation(&["internal"]).is_none());
         Ok(())
     }
 }

@@ -1,12 +1,13 @@
-//! A larger application-style CLI with nested commands, structured input, constraints, and typed
-//! handler outputs while runtime dispatch remains ordinary Rust.
+//! A larger application-style CLI with nested commands and checked typed handler outputs whose
+//! machine representation is emitted through `clap_schema::write_json`.
 #![expect(dead_code, reason = "example data types are reflected rather than executed")]
 
-use std::path::PathBuf;
+use std::{io::Write, path::PathBuf};
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use clap_schema::{CliSchema, CommandSchema, JsonSchema};
-use serde_json::Value;
+use clap_schema::{CliSchema, CommandSchema, WriteJsonError, write_json};
+use schemars::JsonSchema;
+use serde::Serialize;
 
 /// Top-level arguments shared by the example build-service CLI.
 #[derive(Debug, Parser, CliSchema)]
@@ -49,9 +50,11 @@ enum Commands {
 #[derive(Debug, Subcommand, CommandSchema)]
 enum RepositoryCommands {
     /// List repositories.
+    #[schema(handler = list_repositories)]
     List(ListRepositoriesArgs),
 
     /// Create a repository.
+    #[schema(handler = create_repository)]
     Create(CreateRepositoryArgs),
 }
 
@@ -59,10 +62,11 @@ enum RepositoryCommands {
 #[derive(Debug, Subcommand, CommandSchema)]
 enum BuildCommands {
     /// Fetch a build.
+    #[schema(handler = get_build)]
     Get(BuildKeyArgs),
 
-    /// Run a build using argv fields or a complete JSON request.
-    #[schema(input = RunBuildInput, structured = "input", json(variables))]
+    /// Run a build.
+    #[schema(handler = run_build)]
     Run(RunBuildArgs),
 
     /// Artifact operations.
@@ -74,17 +78,20 @@ enum BuildCommands {
 #[derive(Debug, Subcommand, CommandSchema)]
 enum ArtifactCommands {
     /// List artifacts produced by a build.
+    #[schema(handler = list_artifacts)]
     List(ListArtifactsArgs),
 
     /// Download one artifact.
+    #[schema(handler = download_artifact)]
     Download(DownloadArtifactArgs),
 
     /// Remove one artifact.
+    #[schema(handler = remove_artifact)]
     Remove(RemoveArtifactArgs),
 }
 
 /// Pagination arguments accepted by repository listing.
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct ListRepositoriesArgs {
     /// Opaque cursor from the previous page, when continuing a listing.
     #[arg(long)]
@@ -96,7 +103,7 @@ struct ListRepositoriesArgs {
 }
 
 /// Arguments accepted by repository creation.
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct CreateRepositoryArgs {
     /// Human-readable repository name.
     #[arg(long)]
@@ -108,23 +115,12 @@ struct CreateRepositoryArgs {
 }
 
 /// Composite key used to identify a build.
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct BuildKeyArgs {
     /// Repository containing the build.
     repository_id: String,
     /// Build identifier within the repository.
     build_id: String,
-}
-
-/// Semantic build-run request represented by argv fields or structured JSON input.
-#[derive(Debug, JsonSchema)]
-struct RunBuildInput {
-    /// Repository to build.
-    repository_id: String,
-    /// Branch, tag, or commit to build.
-    reference: String,
-    /// Arbitrary build variables.
-    variables: Value,
 }
 
 /// Clap transport arguments used to construct a build-run request.
@@ -147,11 +143,10 @@ struct RunBuildArgs {
 }
 
 /// Arguments accepted when listing artifacts for a build.
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct ListArtifactsArgs {
     /// Build whose artifacts should be listed.
     #[command(flatten)]
-    #[schemars(flatten)]
     build: BuildKeyArgs,
 
     /// Opaque cursor from the previous page, when continuing a listing.
@@ -160,11 +155,10 @@ struct ListArtifactsArgs {
 }
 
 /// Arguments accepted when downloading an artifact.
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct DownloadArtifactArgs {
     /// Build that produced the artifact.
     #[command(flatten)]
-    #[schemars(flatten)]
     build: BuildKeyArgs,
 
     /// Artifact identifier.
@@ -176,11 +170,10 @@ struct DownloadArtifactArgs {
 }
 
 /// Arguments accepted when removing an artifact.
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct RemoveArtifactArgs {
     /// Build that produced the artifact.
     #[command(flatten)]
-    #[schemars(flatten)]
     build: BuildKeyArgs,
 
     /// Artifact identifier.
@@ -188,9 +181,9 @@ struct RemoveArtifactArgs {
 }
 
 /// Repository visibility accepted by repository creation.
-#[derive(Debug, Clone, ValueEnum, JsonSchema)]
+#[derive(Debug, Clone, ValueEnum, Serialize, JsonSchema)]
 #[value(rename_all = "kebab-case")]
-#[schemars(rename_all = "kebab-case")]
+#[serde(rename_all = "kebab-case")]
 enum Visibility {
     /// Visible to everyone with service access.
     Public,
@@ -199,7 +192,7 @@ enum Visibility {
 }
 
 /// Repository returned by repository operations.
-#[derive(Debug, JsonSchema)]
+#[derive(Debug, Serialize, JsonSchema)]
 struct Repository {
     /// Stable repository identifier.
     id: String,
@@ -210,7 +203,7 @@ struct Repository {
 }
 
 /// Build returned by build operations.
-#[derive(Debug, JsonSchema)]
+#[derive(Debug, Serialize, JsonSchema)]
 struct Build {
     /// Stable build identifier.
     id: String,
@@ -223,7 +216,7 @@ struct Build {
 }
 
 /// Artifact returned by artifact operations.
-#[derive(Debug, JsonSchema)]
+#[derive(Debug, Serialize, JsonSchema)]
 struct Artifact {
     /// Stable artifact identifier.
     id: String,
@@ -236,7 +229,7 @@ struct Artifact {
 }
 
 /// Cursor-paginated response used by list operations.
-#[derive(Debug, JsonSchema)]
+#[derive(Debug, Serialize, JsonSchema)]
 struct ListResponse<T> {
     /// Items returned in the current page.
     items: Vec<T>,
@@ -248,7 +241,7 @@ struct ListResponse<T> {
 #[derive(Debug)]
 struct CommandError;
 
-/// Shared runtime state passed to command handlers during ordinary dispatch.
+/// Shared runtime state passed to command handlers during machine-output dispatch.
 #[derive(Debug)]
 struct CliContext;
 
@@ -309,71 +302,75 @@ async fn remove_artifact(
     Err(CommandError)
 }
 
-/// Dispatches artifact commands to their ordinary Rust handlers.
-async fn dispatch_artifacts(
+/// Dispatches artifact commands through the canonical checked JSON output path.
+async fn dispatch_artifacts_json<W: Write + Send>(
     command: ArtifactCommands,
     ctx: &CliContext,
-) -> Result<(), CommandError> {
+    writer: &mut W,
+) -> Result<(), WriteJsonError<CommandError>> {
     match command {
         ArtifactCommands::List(command) => {
-            let _ = list_artifacts(command, ctx).await?;
+            write_json(&mut *writer, list_artifacts(command, ctx).await)
         }
-        ArtifactCommands::Download(command) => download_artifact(command, ctx).await?,
+        ArtifactCommands::Download(command) => {
+            write_json(&mut *writer, download_artifact(command, ctx).await)
+        }
         ArtifactCommands::Remove(command) => {
-            let _ = remove_artifact(command, ctx).await?;
+            write_json(&mut *writer, remove_artifact(command, ctx).await)
         }
     }
-    Ok(())
 }
 
 /// Dispatches build commands and delegates nested artifact operations.
-async fn dispatch_builds(command: BuildCommands, ctx: &CliContext) -> Result<(), CommandError> {
+async fn dispatch_builds_json<W: Write + Send>(
+    command: BuildCommands,
+    ctx: &CliContext,
+    writer: &mut W,
+) -> Result<(), WriteJsonError<CommandError>> {
     match command {
-        BuildCommands::Get(command) => {
-            let _ = get_build(command, ctx).await?;
-        }
-        BuildCommands::Run(command) => {
-            let _ = run_build(command, ctx).await?;
-        }
-        BuildCommands::Artifacts(command) => dispatch_artifacts(command, ctx).await?,
+        BuildCommands::Get(command) => write_json(&mut *writer, get_build(command, ctx).await),
+        BuildCommands::Run(command) => write_json(&mut *writer, run_build(command, ctx).await),
+        BuildCommands::Artifacts(command) => dispatch_artifacts_json(command, ctx, writer).await,
     }
-    Ok(())
 }
 
-/// Dispatches repository commands to their ordinary Rust handlers.
-async fn dispatch_repositories(
+/// Dispatches repository commands through the canonical checked JSON output path.
+async fn dispatch_repositories_json<W: Write + Send>(
     command: RepositoryCommands,
     ctx: &CliContext,
-) -> Result<(), CommandError> {
+    writer: &mut W,
+) -> Result<(), WriteJsonError<CommandError>> {
     match command {
         RepositoryCommands::List(command) => {
-            let _ = list_repositories(command, ctx).await?;
+            write_json(&mut *writer, list_repositories(command, ctx).await)
         }
         RepositoryCommands::Create(command) => {
-            let _ = create_repository(command, ctx).await?;
+            write_json(&mut *writer, create_repository(command, ctx).await)
         }
     }
-    Ok(())
 }
 
-/// Dispatches the selected top-level command group.
-async fn dispatch(command: Commands, ctx: &CliContext) -> Result<(), CommandError> {
+/// Dispatches the selected top-level command group through checked JSON emission.
+async fn dispatch_json<W: Write + Send>(
+    command: Commands,
+    ctx: &CliContext,
+    writer: &mut W,
+) -> Result<(), WriteJsonError<CommandError>> {
     match command {
-        Commands::Repositories(command) => dispatch_repositories(command, ctx).await?,
-        Commands::Builds(command) => dispatch_builds(command, ctx).await?,
-        Commands::Schema => {}
+        Commands::Repositories(command) => dispatch_repositories_json(command, ctx, writer).await,
+        Commands::Builds(command) => dispatch_builds_json(command, ctx, writer).await,
+        Commands::Schema => Ok(()),
     }
-    Ok(())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let _ = dispatch;
+    let _ = dispatch_json::<Vec<u8>>;
     let contract = Cli::schema()?;
-    println!("{}", serde_json::to_string_pretty(&contract.catalog())?);
+    println!("{}", serde_json::to_string_pretty(&contract)?);
     println!(
         "{}",
         serde_json::to_string_pretty(
-            contract.command(&["builds", "artifacts", "list"]).expect("artifact list command")
+            contract.operation(&["builds", "artifacts", "list"]).expect("artifact list command")
         )?
     );
     Ok(())

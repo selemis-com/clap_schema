@@ -2,7 +2,9 @@
 #![expect(dead_code, reason = "example data types are reflected rather than executed")]
 
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliSchema, CommandSchema, JsonSchema};
+use clap_schema::{CliSchema, CommandSchema};
+use schemars::JsonSchema;
+use serde::Serialize;
 
 /// Top-level arguments for the operations CLI.
 #[derive(Debug, Parser, CliSchema)]
@@ -21,6 +23,7 @@ enum Commands {
     Users(UserCommands),
 
     /// Print service status.
+    #[schema(handler = status)]
     Status(StatusArgs),
 }
 
@@ -28,29 +31,30 @@ enum Commands {
 #[derive(Debug, Subcommand, CommandSchema)]
 enum UserCommands {
     /// Show a user.
+    #[schema(handler = user)]
     User(UserArgs),
 }
 
 /// Arguments used to select a user.
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct UserArgs {
     /// Identifier of the user to fetch.
     user_id: String,
 }
 
 /// Arguments accepted by the status command.
-#[derive(Debug, Args, JsonSchema)]
+#[derive(Debug, Args)]
 struct StatusArgs {}
 
 /// User returned by the user command.
-#[derive(Debug, JsonSchema)]
+#[derive(Debug, Serialize, JsonSchema)]
 struct User {
     /// Stable user identifier.
     id: String,
 }
 
 /// Service health returned by the status command.
-#[derive(Debug, JsonSchema)]
+#[derive(Debug, Serialize, JsonSchema)]
 struct Status {
     /// Whether the service reports itself as healthy.
     healthy: bool,
@@ -76,6 +80,6 @@ async fn status(_command: StatusArgs) -> Result<Status, OpsError> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("{}", serde_json::to_string_pretty(&Cli::schema()?.catalog())?);
+    println!("{}", serde_json::to_string_pretty(&Cli::schema()?)?);
     Ok(())
 }
