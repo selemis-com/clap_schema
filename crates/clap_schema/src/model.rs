@@ -20,9 +20,6 @@ pub struct CliContract {
     /// Optional application-defined metadata schema, kept out of the default wire model.
     #[serde(skip)]
     pub(crate) metadata_schema: Option<Value>,
-    /// Operation-specific metadata schema supplements keyed by canonical visible operation path.
-    #[serde(skip)]
-    pub(crate) operation_metadata_schemas: Vec<(Vec<String>, Value)>,
     /// Effective application-plus-operation metadata schemas keyed by canonical visible path.
     #[serde(skip)]
     pub(crate) effective_metadata_schemas: Vec<(Vec<String>, Value)>,
@@ -57,24 +54,6 @@ impl CliContract {
     #[must_use]
     pub const fn metadata_schema(&self) -> Option<&Value> {
         self.metadata_schema.as_ref()
-    }
-
-    /// Returns the operation-specific metadata schema supplement for a visible operation.
-    ///
-    /// Paths may use any alias accepted by Clap; lookup is canonicalized through the same visible
-    /// discovery tree as [`Self::command`]. Commands without a registered handler or without an
-    /// operation-specific metadata schema return `Ok(None)`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`crate::Error::UnknownCommand`] when `path` is not schema-visible.
-    pub fn operation_metadata_schema(&self, path: &[&str]) -> crate::Result<Option<&Value>> {
-        let node = self.discovery.resolve(path)?;
-        Ok(self
-            .operation_metadata_schemas
-            .iter()
-            .find(|(candidate, _)| candidate == &node.path)
-            .map(|(_, schema)| schema))
     }
 
     /// Returns the effective metadata schema for one visible command or operation.

@@ -6,6 +6,9 @@ struct First;
 struct Second;
 
 #[derive(CliSchema)]
+struct MissingRootOperation;
+
+#[derive(CliSchema)]
 #[schema(handler = one, handler = two)]
 struct DuplicateRootHandler;
 

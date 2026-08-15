@@ -131,7 +131,6 @@ impl ContractBuilder {
         let application_metadata_schema = metadata.map(MetadataSchemaFactory::root);
         let mut registered_operations = Vec::with_capacity(operations.len());
         let mut visible_operations = Vec::with_capacity(operations.len());
-        let mut operation_metadata_schemas = Vec::new();
         let mut effective_metadata_schemas = Vec::new();
         for (path, operation) in operations {
             let resolved = command_at(&root, &path)?;
@@ -141,9 +140,6 @@ impl ContractBuilder {
                 output: operation.output.map(|factory| factory()),
             };
             if !resolved.hidden {
-                if let Some(factory) = operation_metadata {
-                    operation_metadata_schemas.push((path.clone(), factory.root()));
-                }
                 if let Some(operation) = operation_metadata {
                     let effective = metadata.map_or_else(
                         || operation.root(),
@@ -157,7 +153,6 @@ impl ContractBuilder {
         }
         registered_operations.sort_by(|left, right| left.path.cmp(&right.path));
         visible_operations.sort_by(|left, right| left.path.cmp(&right.path));
-        operation_metadata_schemas.sort_by(|left, right| left.0.cmp(&right.0));
         effective_metadata_schemas.sort_by(|left, right| left.0.cmp(&right.0));
         let operation_paths =
             visible_operations.iter().map(|operation| operation.path.clone()).collect::<Vec<_>>();
@@ -168,7 +163,6 @@ impl ContractBuilder {
             registered_operations,
             discovery,
             metadata_schema: application_metadata_schema,
-            operation_metadata_schemas,
             effective_metadata_schemas,
         })
     }

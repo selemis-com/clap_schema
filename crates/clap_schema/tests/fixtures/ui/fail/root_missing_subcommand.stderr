@@ -1,4 +1,0 @@
-error: CliSchema requires a root #[schema(handler = ...)] or a #[command(subcommand)] field
- --> fail/root_missing_subcommand.rs:6:8
-  |
-6 | struct Cli {

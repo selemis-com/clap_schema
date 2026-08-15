@@ -54,7 +54,7 @@ test-examples: ## Build and run all runnable examples.
 			--package clap_schema \
 			--example "$$example" \
 			--all-features \
-			--locked >/dev/null; \
+			--locked; \
 	done
 
 .PHONY: test

@@ -1,31 +1,29 @@
 //! Application-owned metadata values paired with `clap_schema` metadata schemas.
 #![expect(dead_code, reason = "example data types are reflected rather than executed")]
 
+use std::convert::Infallible;
+
 use clap::{Args, Parser, Subcommand};
 use clap_schema::{CliSchema, CommandSchema};
 use schemars::JsonSchema;
 use serde::Serialize;
 
-/// Top-level arguments for the metadata example CLI.
+/// Example resource CLI with an application-wide metadata vocabulary.
 #[derive(Debug, Parser, CliSchema)]
 #[command(name = "resourcectl")]
 #[schema(metadata = CommandMetadata)]
 struct Cli {
-    /// Selects the resource operation to inspect.
+    /// Selects the operation to inspect.
     #[command(subcommand)]
     command: Commands,
 }
 
-/// Resource operations exposed by the example CLI.
+/// Resource operations.
 #[derive(Debug, Subcommand, CommandSchema)]
 enum Commands {
-    /// Lists resources with cursor pagination.
+    /// List resources with cursor pagination.
     #[schema(handler = list, metadata = PaginationMetadata)]
     List(ListArgs),
-
-    /// Permanently deletes one resource.
-    #[schema(handler = delete)]
-    Delete(DeleteArgs),
 }
 
 /// Arguments accepted by resource listing.
@@ -36,17 +34,7 @@ struct ListArgs {
     cursor: Option<String>,
 }
 
-/// Arguments accepted by resource deletion.
-#[derive(Debug, Args)]
-struct DeleteArgs {
-    /// Identifier of the resource to delete.
-    id: String,
-}
-
 /// Application-wide semantic vocabulary for command metadata.
-///
-/// `Serialize` is used by this application when it emits concrete values;
-/// `clap_schema` itself only requires `JsonSchema` for metadata types.
 #[derive(Debug, Serialize, JsonSchema)]
 struct CommandMetadata {
     /// Broad effect of invoking the command.
@@ -55,7 +43,7 @@ struct CommandMetadata {
     idempotent: bool,
 }
 
-/// Operation-specific metadata added only to paginated commands.
+/// Operation-specific metadata added to paginated commands.
 #[derive(Debug, Serialize, JsonSchema)]
 struct PaginationMetadata {
     /// Option that accepts the cursor returned by the previous page.
@@ -70,14 +58,9 @@ struct PaginationMetadata {
 enum Effect {
     /// Reads state without modifying it.
     Read,
-    /// Permanently removes state.
-    Delete,
 }
 
-/// Concrete metadata value emitted by the application for the list command.
-///
-/// The application chooses how values from the application-wide and operation-specific
-/// vocabularies are combined. `clap_schema` does not construct this value.
+/// Concrete metadata value assembled and serialized by the application.
 #[derive(Debug, Serialize)]
 struct ListMetadataValue {
     /// Application-wide metadata fields.
@@ -88,49 +71,24 @@ struct ListMetadataValue {
     pagination: PaginationMetadata,
 }
 
-/// Resource returned by the example handlers.
-#[derive(Debug, Serialize, JsonSchema)]
-struct Resource {
-    /// Stable resource identifier.
-    id: String,
-}
-
-/// Cursor-paginated resource page.
+/// Successful page returned by the list handler.
 #[derive(Debug, Serialize, JsonSchema)]
 struct ResourcePage {
-    /// Resources in the current page.
-    items: Vec<Resource>,
     /// Cursor for the next page, when another page exists.
     next_cursor: Option<String>,
 }
 
-/// Example command failure.
-#[derive(Debug)]
-struct CommandError;
-
-/// Lists resources and exposes the paginated successful-output contract.
+/// Canonical list handler.
 #[clap_schema::handler]
-fn list(_command: ListArgs) -> Result<ResourcePage, CommandError> {
-    Err(CommandError)
-}
-
-/// Deletes one resource and returns no successful payload.
-#[clap_schema::handler]
-fn delete(_command: DeleteArgs) -> Result<(), CommandError> {
-    Err(CommandError)
+fn list(_command: ListArgs) -> Result<ResourcePage, Infallible> {
+    Ok(ResourcePage { next_cursor: Some("next-123".to_owned()) })
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let contract = Cli::schema()?;
+    let metadata_schema = contract.metadata_schema_for(&["list"])?.expect("metadata schema");
 
-    // clap_schema owns only the schemas.
-    let list_metadata_schema =
-        contract.metadata_schema_for(&["list"])?.expect("list metadata schema");
-    assert_eq!(list_metadata_schema["allOf"].as_array().map(Vec::len), Some(2));
-    assert_eq!(contract.metadata_schema_for(&["delete"])?, contract.metadata_schema());
-
-    // The application owns the concrete values and how the layers are combined.
-    let list_metadata = ListMetadataValue {
+    let metadata = ListMetadataValue {
         command: CommandMetadata { effect: Effect::Read, idempotent: true },
         pagination: PaginationMetadata {
             cursor_argument: "cursor".to_owned(),
@@ -138,13 +96,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
     };
 
-    // The application also chooses the final machine-facing document shape.
-    let document = serde_json::json!({
-        "command": contract.command(&["list"] )?,
-        "metadata_schema": list_metadata_schema,
-        "metadata": list_metadata,
-    });
-    println!("{}", serde_json::to_string_pretty(&document)?);
+    println!("Application-owned metadata value:");
+    println!("{}", serde_json::to_string_pretty(&metadata)?);
+
+    println!("\nclap_schema effective metadata schema:");
+    println!("{}", serde_json::to_string_pretty(metadata_schema)?);
 
     Ok(())
 }

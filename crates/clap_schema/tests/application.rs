@@ -1,4 +1,4 @@
-//! End-to-end derive tests over a realistic nested CLI.
+//! End-to-end contract behavior over one realistic nested CLI.
 #![expect(dead_code, reason = "test data types are reflected rather than executed")]
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -369,15 +369,6 @@ mod tests {
         assert!(metadata["properties"].get("mutates").is_some());
         assert!(metadata["properties"].get("retry").is_some());
 
-        let pagination = contract
-            .operation_metadata_schema(&["objects", "list"])?
-            .expect("operation metadata schema");
-        assert_eq!(pagination["type"], "object");
-        assert!(pagination["properties"].get("cursor_argument").is_some());
-        assert!(pagination["properties"].get("cursor_output_field").is_some());
-        assert!(pagination.get("$schema").is_none());
-        assert!(pagination.get("title").is_none());
-
         let effective =
             contract.metadata_schema_for(&["objects", "list"])?.expect("effective metadata schema");
         let all_of = effective["allOf"].as_array().expect("allOf metadata composition");
@@ -396,11 +387,13 @@ mod tests {
             .metadata_schema_for(&["objects", "get"])?
             .expect("inherited application metadata schema");
         assert_eq!(inherited, metadata);
-        assert!(contract.operation_metadata_schema(&["objects", "show"])?.is_none());
         let aliased_metadata = contract
-            .operation_metadata_schema(&["objects", "access", "add"])?
-            .expect("aliased operation metadata schema");
-        assert!(aliased_metadata["properties"].get("minimum_role").is_some());
+            .metadata_schema_for(&["objects", "access", "add"])?
+            .expect("aliased effective metadata schema");
+        let aliased_ref =
+            aliased_metadata["allOf"][1]["$ref"].as_str().expect("operation metadata ref");
+        let aliased_key = aliased_ref.trim_start_matches("#/$defs/");
+        assert!(aliased_metadata["$defs"][aliased_key]["properties"].get("minimum_role").is_some());
 
         let destructive = contract
             .metadata_schema_for(&["objects", "delete"])?

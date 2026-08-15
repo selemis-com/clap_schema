@@ -1,4 +1,4 @@
-//! Golden test for the complete machine-output wire contract.
+//! Base wire contract and builder validation.
 
 #[path = "support/contract.rs"]
 mod support;
@@ -7,8 +7,8 @@ mod support;
 mod tests {
     use std::convert::Infallible;
 
-    use clap::Command;
-    use clap_schema::ContractBuilder;
+    use clap::{Command, Parser};
+    use clap_schema::{CliSchema, ContractBuilder};
     use schemars::JsonSchema;
     use serde::Serialize;
     use snapbox::assert_data_eq;
@@ -39,6 +39,10 @@ mod tests {
         Ok(Created { id: "1".to_owned(), name: "example".to_owned() })
     }
 
+    #[derive(Parser, CliSchema)]
+    #[schema(handler = create)]
+    struct RootCli;
+
     #[test]
     fn complete_contract_matches_the_checked_in_wire_fixture()
     -> Result<(), Box<dyn std::error::Error>> {
@@ -51,14 +55,21 @@ mod tests {
         let metadata = contract.metadata_schema().expect("metadata schema");
         assert_eq!(metadata["type"], "object");
         assert!(metadata["properties"].get("destructive").is_some());
-        let local =
-            contract.operation_metadata_schema(&["create"])?.expect("operation metadata schema");
-        assert!(local["properties"].get("audit_event").is_some());
         let effective = contract.metadata_schema_for(&["create"])?.expect("effective metadata");
         assert_eq!(effective["allOf"].as_array().map(Vec::len), Some(2));
+        let local_ref = effective["allOf"][1]["$ref"].as_str().expect("operation metadata ref");
+        let local_key = local_ref.trim_start_matches("#/$defs/");
+        assert!(effective["$defs"][local_key]["properties"].get("audit_event").is_some());
 
         let actual = format!("{}\n", serde_json::to_string_pretty(&contract)?);
         assert_data_eq!(actual, support::contract_fixture("minimal.json"));
+        Ok(())
+    }
+
+    #[test]
+    fn derive_supports_an_executable_root() -> clap_schema::Result<()> {
+        let contract = RootCli::schema()?;
+        assert!(contract.operation(&[]).and_then(|operation| operation.output.as_ref()).is_some());
         Ok(())
     }
 

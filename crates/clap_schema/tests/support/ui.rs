@@ -12,10 +12,7 @@ use std::{
     },
 };
 
-use snapbox::{
-    Data,
-    cmd::{Command, OutputAssert},
-};
+use snapbox::cmd::Command;
 
 static CARGO_LOCK: Mutex<()> = Mutex::new(());
 static NEXT_PROJECT: AtomicUsize = AtomicUsize::new(0);
@@ -82,20 +79,6 @@ pub(crate) fn ui_output(kind: &str, fixture: &str) -> Output {
         .output()
         .unwrap_or_else(|error| panic!("failed to compile UI fixture `{fixture}`: {error}"));
     normalize_output(output, &project.diagnostic_path)
-}
-
-/// Compiles one downstream fixture and returns a snapshot assertion helper.
-#[track_caller]
-pub(crate) fn assert_ui(kind: &str, fixture: &str) -> OutputAssert {
-    OutputAssert::new(ui_output(kind, fixture))
-}
-
-/// Loads the compiler diagnostic snapshot for one failing derive fixture.
-pub(crate) fn ui_stderr(fixture: &str) -> Data {
-    Data::read_from(
-        &repository_root().join("tests/fixtures/ui/fail").join(format!("{fixture}.stderr")),
-        None,
-    )
 }
 
 fn normalize_output(mut output: Output, diagnostic_path: &str) -> Output {
