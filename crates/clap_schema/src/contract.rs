@@ -78,14 +78,6 @@ pub(crate) struct PendingOperation {
     extended: Option<ExtendedSchemaFactory>,
 }
 
-/// Visible operation data keyed by canonical path while the discovery tree is built.
-#[derive(Debug, Clone)]
-struct VisibleOperation {
-    /// Canonical command path excluding the executable name.
-    path: Vec<String>,
-    /// Operation data retained by the finished discovery tree.
-    data: OperationData,
-}
 /// Shared registration state used by builder and derive construction.
 #[derive(Debug, Default)]
 pub(crate) struct RegistrationState {
@@ -223,37 +215,14 @@ impl ContractBuilder {
         reject_duplicate_paths(&operations)?;
 
         let application_extended_schema = extended.map(ExtendedSchemaFactory::root);
-        let mut visible_operations = Vec::with_capacity(operations.len());
-        for operation in operations {
-            let resolved = command_at(&root, &operation.path)?;
-            if resolved.hidden {
-                continue;
-            }
-            let extended_schema = operation.extended.map(|operation| {
-                extended.map_or_else(
-                    || operation.root(),
-                    |application| compose_extended_schemas(application, operation),
-                )
-            });
-            visible_operations.push(VisibleOperation {
-                path: operation.path,
-                data: OperationData {
-                    id: operation.id,
-                    output: operation.output.map(|factory| factory()),
-                    extended_schema,
-                },
-            });
+        let mut operations = operations;
+        let discovery = discovery_tree(&root, &mut operations, extended);
+        if let Some(operation) = operations.first() {
+            return Err(Error::UnknownCommand { path: operation.path.clone() });
         }
-        let discovery = discovery_tree(&root, &visible_operations);
 
         Ok(CliContract { discovery, extended_schema: application_extended_schema })
     }
-}
-
-/// Resolved command plus hidden state inherited from its path.
-struct ResolvedCommand {
-    /// Whether this command or an ancestor is hidden.
-    hidden: bool,
 }
 
 /// Resolves the single application-wide extension allowed by the contract model.
@@ -278,52 +247,69 @@ fn reject_duplicate_paths(operations: &[PendingOperation]) -> Result<()> {
     Ok(())
 }
 
-/// Resolves a canonical subcommand path.
-fn command_at(root: &Command, path: &[String]) -> Result<ResolvedCommand> {
-    let mut command = root;
-    let mut hidden = root.is_hide_set();
-    for component in path {
-        let next = command
-            .get_subcommands()
-            .find(|candidate| candidate.get_name() == component)
-            .ok_or_else(|| Error::UnknownCommand { path: path.to_vec() })?;
-        hidden |= next.is_hide_set();
-        command = next;
-    }
-    Ok(ResolvedCommand { hidden })
-}
-
-/// Builds the visible command topology needed to discover registered operations.
-fn discovery_tree(root: &Command, operations: &[VisibleOperation]) -> DiscoveryNode {
-    build_discovery_node(root, Vec::new(), operations, true)
+/// Reconciles registered operations with Clap while building the visible discovery topology.
+fn discovery_tree(
+    root: &Command,
+    operations: &mut Vec<PendingOperation>,
+    application_extension: Option<ExtendedSchemaFactory>,
+) -> DiscoveryNode {
+    build_discovery_node(root, Vec::new(), operations, application_extension, false, true)
         .expect("the root discovery node is always retained")
 }
 
-/// Recursively reflects commands that are executable or lead to executable descendants.
+/// Recursively validates registrations and reflects schema-visible commands in one traversal.
 fn build_discovery_node(
     command: &Command,
     path: Vec<String>,
-    operations: &[VisibleOperation],
+    operations: &mut Vec<PendingOperation>,
+    application_extension: Option<ExtendedSchemaFactory>,
+    ancestor_hidden: bool,
     root: bool,
 ) -> Option<DiscoveryNode> {
-    if !root && command.is_hide_set() {
-        return None;
-    }
+    let hidden = ancestor_hidden || command.is_hide_set();
+    let pending = operations
+        .iter()
+        .position(|operation| operation.path == path)
+        .map(|index| operations.remove(index));
 
     let mut children = Vec::new();
     for child in command.get_subcommands() {
         let mut child_path = path.clone();
         child_path.push(child.get_name().to_owned());
-        if let Some(child) = build_discovery_node(child, child_path, operations, false) {
+        if let Some(child) = build_discovery_node(
+            child,
+            child_path,
+            operations,
+            application_extension,
+            hidden,
+            false,
+        ) {
             children.push(child);
         }
     }
     children.sort_by(|left, right| left.name.cmp(&right.name));
 
-    let operation = operations
-        .iter()
-        .find(|operation| operation.path == path)
-        .map(|operation| operation.data.clone());
+    if !root && hidden {
+        return None;
+    }
+
+    let operation = if hidden {
+        None
+    } else {
+        pending.map(|operation| {
+            let extended_schema = operation.extended.map(|operation| {
+                application_extension.map_or_else(
+                    || operation.root(),
+                    |application| compose_extended_schemas(application, operation),
+                )
+            });
+            OperationData {
+                id: operation.id,
+                output: operation.output.map(|factory| factory()),
+                extended_schema,
+            }
+        })
+    };
     if !root && operation.is_none() && children.is_empty() {
         return None;
     }
