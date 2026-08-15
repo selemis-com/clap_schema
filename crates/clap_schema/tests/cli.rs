@@ -28,6 +28,26 @@ mod tests {
     }
 
     #[test]
+    fn schema_flag_lists_executable_commands() {
+        support::schema_example_command()
+            .arg("--schema")
+            .assert()
+            .success()
+            .stdout_eq(support::cli_fixture("schema_catalog.json"))
+            .stderr_eq("");
+    }
+
+    #[test]
+    fn schema_flag_describes_command_without_runtime_operands() {
+        support::schema_example_command()
+            .args(["get", "--schema"])
+            .assert()
+            .success()
+            .stdout_eq(support::cli_fixture("schema_get.json"))
+            .stderr_eq("");
+    }
+
+    #[test]
     fn schema_subcommand_rejects_unknown_contract_paths() {
         support::schema_example_command()
             .args(["schema", "missing"])

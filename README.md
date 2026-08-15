@@ -92,13 +92,21 @@ requiredness, visible defaults, and visible finite possible values.
 
 This context is deliberately not a second argv grammar. Clap-generated `--help` remains authoritative for custom parsers, conditional requirements, conflicts, groups, and other invocation relationships.
 
-This makes it straightforward to build application-owned discovery commands such as:
+The discovery model is independent of how an application routes those queries. A CLI can expose a
+dedicated namespace, command-local introspection, or both, backed by the same `CliContract` APIs:
 
 ```text
 tool schema
 tool schema objects get
 tool schema objects --full
+
+tool --schema
+tool objects get --schema
 ```
+
+The runnable `schema_subcommand` example demonstrates both forms. The command-local form treats the
+tokens before `--schema` as a command path rather than a normal invocation, so required runtime
+operands are not needed merely to inspect a command.
 
 ## Application-defined extensions
 
@@ -146,7 +154,7 @@ The repository keeps the example set intentionally small:
 | Example | Demonstrates |
 | --- | --- |
 | `basic` | Derive API, handler-derived output schema, and runtime `write_json` |
-| `schema_subcommand` | A standalone agent-facing schema/discovery command |
+| `schema_subcommand` | Dedicated `schema <command>` and command-local `<command> --schema` discovery |
 | `application_extension` | Application-owned metadata values paired with clap_schema-generated extension schemas |
 | `builder_api` | The same contract model with Clap's builder API |
 
