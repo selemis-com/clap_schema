@@ -2,7 +2,7 @@
 
 use std::any::TypeId;
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
 
 use crate::Operation;
@@ -271,7 +271,7 @@ impl CliContract {
 }
 
 /// Contract for one executable operation.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct OperationContract {
     /// Canonical subcommand path excluding the executable name.
     pub path: Vec<String>,
@@ -281,7 +281,7 @@ pub struct OperationContract {
 }
 
 /// Shallow discovery information for one visible command or command group.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CommandInfo {
     /// Canonical command name.
     pub name: String,
@@ -316,7 +316,7 @@ pub struct CommandInfo {
 }
 
 /// Compact catalog entry for one visible executable command.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CommandSummary {
     /// Canonical command path excluding the executable name.
     pub path: Vec<String>,
@@ -326,7 +326,7 @@ pub struct CommandSummary {
 }
 
 /// Complete recursive discovery node for a visible command subtree.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CommandNode {
     /// Canonical command name.
     pub name: String,
@@ -364,7 +364,7 @@ pub struct CommandNode {
 ///
 /// This intentionally exposes only straightforward facts from Clap's built command model.
 /// Complete invocation semantics remain authoritative in Clap and its generated help.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ArgumentInfo {
     /// Clap argument identifier.
     pub id: String,
