@@ -72,8 +72,8 @@ impl CliContract {
     ///
     /// The schema uses the same draft 2020-12 serialization-view settings as successful-output
     /// schemas. `clap_schema` does not construct or serialize extension values and does not inject
-    /// this schema into command discovery automatically. Applications decide how both the schema and
-    /// their concrete values appear in their own machine-facing documents.
+    /// this schema into command discovery automatically. Applications decide how both the schema
+    /// and their concrete values appear in their own machine-facing documents.
     #[must_use]
     pub const fn extended_schema(&self) -> Option<&Value> {
         self.extended_schema.as_ref()

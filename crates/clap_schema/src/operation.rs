@@ -46,8 +46,8 @@ impl Operation {
     /// satisfy both schema layers.
     ///
     /// This method changes only the application-defined schema extension. It does not attach a
-    /// concrete value to the operation or inject an extension field into discovery output. Repeated calls
-    /// replace the previous operation-specific extension.
+    /// concrete value to the operation or inject an extension field into discovery output. Repeated
+    /// calls replace the previous operation-specific extension.
     #[must_use]
     pub fn extend<T>(mut self) -> Self
     where
