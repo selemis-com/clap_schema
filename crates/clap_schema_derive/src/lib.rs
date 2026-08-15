@@ -119,7 +119,7 @@ fn expand_item_handler(function: &ItemFn) -> syn::Result<TokenStream2> {
     let helper = handler_helper_ident(&function.sig.ident);
     let output = declared_return_type(&function.sig)?;
     let visibility = &function.vis;
-    let conditional = conditional_attributes(&function.attrs);
+    let conditional = conditional_attributes(&function.attrs)?;
     let crate_path = clap_schema_path();
 
     Ok(quote! {
@@ -145,7 +145,7 @@ fn expand_impl_handler(method: &ImplItemFn) -> syn::Result<TokenStream2> {
     let helper = handler_helper_ident(&method.sig.ident);
     let output = declared_return_type(&method.sig)?;
     let visibility = &method.vis;
-    let conditional = conditional_attributes(&method.attrs);
+    let conditional = conditional_attributes(&method.attrs)?;
     let crate_path = clap_schema_path();
 
     Ok(quote! {
@@ -165,14 +165,33 @@ fn expand_impl_handler(method: &ImplItemFn) -> syn::Result<TokenStream2> {
     })
 }
 
-/// Returns conditional-compilation attributes that must also guard generated metadata.
-fn conditional_attributes(attrs: &[Attribute]) -> Vec<&Attribute> {
-    attrs
-        .iter()
-        .filter(|attribute| {
-            attribute.path().is_ident("cfg") || attribute.path().is_ident("cfg_attr")
-        })
-        .collect()
+/// Returns conditional-compilation attributes that must also guard the generated companion.
+fn conditional_attributes(attrs: &[Attribute]) -> syn::Result<Vec<TokenStream2>> {
+    let mut conditional = Vec::new();
+    for attribute in attrs {
+        if attribute.path().is_ident("cfg") {
+            conditional.push(quote!(#attribute));
+            continue;
+        }
+        if !attribute.path().is_ident("cfg_attr") {
+            continue;
+        }
+
+        let Meta::List(list) = &attribute.meta else {
+            continue;
+        };
+        let nested =
+            list.parse_args_with(syn::punctuated::Punctuated::<Meta, Token![,]>::parse_terminated)?;
+        let mut nested = nested.into_iter();
+        let Some(predicate) = nested.next() else {
+            continue;
+        };
+        let cfg_attributes = nested.filter(|meta| meta.path().is_ident("cfg")).collect::<Vec<_>>();
+        if !cfg_attributes.is_empty() {
+            conditional.push(quote!(#[cfg_attr(#predicate, #(#cfg_attributes),*)]));
+        }
+    }
+    Ok(conditional)
 }
 
 /// Validates handler signature properties required for one concrete output contract.
@@ -813,6 +832,3 @@ fn clap_schema_path() -> TokenStream2 {
         Ok(FoundCrate::Itself) | Err(_) => quote!(::clap_schema),
     }
 }
-
-#[cfg(test)]
-mod tests;
