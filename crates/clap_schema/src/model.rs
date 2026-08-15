@@ -189,21 +189,12 @@ impl CliContract {
                 if full {
                     SchemaSubcommand::Resolved(Box::new(self.schema_document(child, true)))
                 } else {
-                    SchemaSubcommand::Summary(self.schema_command_summary(child))
+                    let command = self.command_info(child);
+                    SchemaSubcommand::Summary(SchemaCommandSummary::from_command(&command))
                 }
             })
             .collect();
         SchemaDocument { command, subcommands }
-    }
-
-    /// Builds a compact public reference from the same command state as full discovery.
-    fn schema_command_summary(&self, node: &DiscoveryNode) -> SchemaCommandSummary {
-        SchemaCommandSummary {
-            path: node.path.clone(),
-            description: node.description.clone(),
-            executable: node.operation.is_some(),
-            has_subcommands: !node.children.is_empty(),
-        }
     }
 
     /// Resolves an operation identity only when it names one visible command unambiguously.
@@ -215,7 +206,7 @@ impl CliContract {
     }
 
     /// Applies operation-local extension precedence over the application-wide extension.
-    fn extended_schema_for_node(&self, node: &DiscoveryNode) -> Option<&Value> {
+    fn extended_schema_for_node<'a>(&'a self, node: &'a DiscoveryNode) -> Option<&'a Value> {
         node.operation
             .as_ref()
             .and_then(|operation| operation.extended_schema.as_ref())
@@ -373,6 +364,18 @@ pub struct SchemaCommandSummary {
     /// Whether this command has schema-visible child commands.
     #[serde(default, skip_serializing_if = "is_false")]
     pub has_subcommands: bool,
+}
+
+impl SchemaCommandSummary {
+    /// Projects the compact child shape from the canonical command projection.
+    fn from_command(command: &CommandInfo) -> Self {
+        Self {
+            path: command.path.clone(),
+            description: command.description.clone(),
+            executable: command.executable,
+            has_subcommands: command.has_subcommands,
+        }
+    }
 }
 
 /// Compact context for one visible Clap argument or option.

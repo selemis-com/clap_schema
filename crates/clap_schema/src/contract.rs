@@ -78,7 +78,6 @@ pub(crate) struct PendingOperation {
     extended: Option<ExtendedSchemaFactory>,
 }
 
-
 /// Visible operation data keyed by canonical path while the discovery tree is built.
 #[derive(Debug, Clone)]
 struct VisibleOperation {
@@ -163,8 +162,7 @@ impl ContractBuilder {
     where
         T: Operation,
     {
-        self.registration
-            .operation::<T>(path.into_iter().map(Into::into).collect(), None);
+        self.registration.operation::<T>(path.into_iter().map(Into::into).collect(), None);
         self
     }
 

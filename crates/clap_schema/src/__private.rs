@@ -9,8 +9,7 @@ use schemars::JsonSchema;
 use serde::Serialize;
 
 use crate::{
-    CliContract, CliSchema, ContractBuilder, Operation, Result,
-    contract::RegistrationState,
+    CliContract, CliSchema, ContractBuilder, Operation, Result, contract::RegistrationState,
     schema::extended_schema_factory,
 };
 
@@ -61,8 +60,7 @@ impl Registry {
         T: Operation,
         E: JsonSchema,
     {
-        self.registration
-            .operation::<T>(path.to_vec(), Some(extended_schema_factory::<E>()));
+        self.registration.operation::<T>(path.to_vec(), Some(extended_schema_factory::<E>()));
     }
 
     /// Declares the application-defined extension schema type for the root CLI.
