@@ -39,4 +39,20 @@ mod tests {
         assert_data_eq!(actual, support::contract_fixture("minimal.json"));
         Ok(())
     }
+
+    #[test]
+    fn builder_rejects_invalid_and_duplicate_operation_paths() {
+        let unknown = ContractBuilder::new(Command::new("fixture"))
+            .operation(["missing"], clap_schema::operation!(create))
+            .build()
+            .expect_err("unknown operation path");
+        assert_eq!(unknown.to_string(), "unknown clap command path: missing");
+
+        let duplicate = ContractBuilder::new(Command::new("fixture"))
+            .operation(std::iter::empty::<&str>(), clap_schema::operation!(create))
+            .operation(std::iter::empty::<&str>(), clap_schema::operation!(create))
+            .build()
+            .expect_err("duplicate root operation");
+        assert_eq!(duplicate.to_string(), "duplicate operation declaration for command: <root>");
+    }
 }

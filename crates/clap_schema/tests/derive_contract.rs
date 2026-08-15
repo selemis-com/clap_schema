@@ -55,6 +55,9 @@ struct CreateThingArgs {
 
     #[arg(long, default_value = "safe", value_parser = ["fast", "safe"])]
     mode: String,
+
+    #[arg(long, hide = true)]
+    internal_token: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -172,6 +175,7 @@ mod tests {
         let mode = create.options.iter().find(|argument| argument.id == "mode").expect("mode");
         assert_eq!(mode.default_values, vec!["safe".to_owned()]);
         assert_eq!(mode.possible_values, vec!["fast".to_owned(), "safe".to_owned()]);
+        assert!(!create.options.iter().any(|argument| argument.id == "internal_token"));
 
         let positional = contract.command(&["rm"])?;
         assert_eq!(positional.arguments.len(), 1);

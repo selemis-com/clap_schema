@@ -74,14 +74,20 @@ impl Drop for UiProject {
 
 /// Compiles one downstream fixture and returns normalized compiler output.
 #[track_caller]
-pub(crate) fn assert_ui(kind: &str, fixture: &str) -> OutputAssert {
+pub(crate) fn ui_output(kind: &str, fixture: &str) -> Output {
     let _guard = CARGO_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let project = UiProject::new(kind, fixture);
     let output = project
         .command()
         .output()
         .unwrap_or_else(|error| panic!("failed to compile UI fixture `{fixture}`: {error}"));
-    OutputAssert::new(normalize_output(output, &project.diagnostic_path))
+    normalize_output(output, &project.diagnostic_path)
+}
+
+/// Compiles one downstream fixture and returns a snapshot assertion helper.
+#[track_caller]
+pub(crate) fn assert_ui(kind: &str, fixture: &str) -> OutputAssert {
+    OutputAssert::new(ui_output(kind, fixture))
 }
 
 /// Loads the compiler diagnostic snapshot for one failing derive fixture.
@@ -97,6 +103,7 @@ fn normalize_output(mut output: Output, diagnostic_path: &str) -> Output {
     let mut lines = stderr
         .lines()
         .filter(|line| !line.starts_with("error: could not compile `clap_schema-ui-"))
+        .filter(|line| !line.starts_with("error: process didn't exit successfully:"))
         .filter(|line| {
             let Some((_, marker)) = line.split_once('|') else {
                 return true;
