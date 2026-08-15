@@ -6,6 +6,8 @@ Clap remains authoritative for command topology, argv syntax, generated help, pa
 
 The handler's `Result<T, E>` is the source of truth. Non-unit `T` must be serializable and schema-generatable; `Result<(), E>` is outputless. Runtime machine output should use `clap_schema::write_json` so the emitted value and generated schema are parameterized by the same `T`.
 
+Application metadata is intentionally schema-only in this crate. A root CLI may declare one application-owned metadata type implementing `JsonSchema`, and executable operations may supplement it with their own application-defined metadata schema. Effective schemas compose these layers with JSON Schema `allOf`; do not invent shallow schema-merge semantics. `clap_schema` must not define metadata fields, construct or store metadata values, require a metadata serialization format, or automatically mix metadata into discovery documents. Applications own concrete values, value defaults/overrides, command association, and presentation.
+
 Keep documentation in the repository: rustdoc, README content, and executable examples. When the discovery surface changes, update the checked CLI fixtures and public model documentation in the same change. Avoid parallel manuals.
 
 Before opening a pull request, run `make pr`.

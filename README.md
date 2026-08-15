@@ -10,6 +10,7 @@ The boundary is intentionally narrow:
 - Non-unit `T` must implement `serde::Serialize` and `schemars::JsonSchema`.
 - Schemars derives the JSON Schema for that serialized type.
 - `clap_schema::write_json` serializes the same successful `T` at runtime.
+- Applications may declare an app-wide metadata schema and let individual operations supplement it.
 
 There is no input-schema layer, output-selector model, protocol version, or API for manually declaring a successful output type beside the real handler. The serialized contract stays output-only. Schema-discovery commands can additionally query a read-only view of visible command metadata and compact argument context reflected directly from Clap's built command tree.
 
@@ -84,6 +85,66 @@ let contract = clap_schema::ContractBuilder::new(command)
     .build()?;
 # Ok::<(), clap_schema::Error>(())
 ```
+
+
+## Application metadata
+
+Applications can define an application-wide metadata vocabulary and let individual operations supplement it without making `clap_schema` own metadata values or semantics:
+
+```rust
+use clap::{Args, Parser, Subcommand};
+use clap_schema::{CliSchema, CommandSchema};
+use schemars::JsonSchema;
+
+#[derive(Debug, JsonSchema)]
+struct CommandMetadata {
+    destructive: bool,
+    idempotent: bool,
+}
+
+#[derive(Debug, JsonSchema)]
+struct PaginationMetadata {
+    cursor_argument: String,
+    cursor_output_field: String,
+}
+
+#[derive(Debug, Parser, CliSchema)]
+#[schema(metadata = CommandMetadata)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+# #[derive(Debug, Args)]
+# struct ListArgs {}
+# #[derive(Debug, Subcommand, CommandSchema)]
+# enum Commands {
+#     #[schema(handler = list, metadata = PaginationMetadata)]
+#     List(ListArgs),
+# }
+# #[derive(Debug, serde::Serialize, JsonSchema)]
+# struct Output {}
+# #[clap_schema::handler]
+# fn list(_: ListArgs) -> Result<Output, std::convert::Infallible> { Ok(Output {}) }
+# let contract = Cli::schema()?;
+let application = contract.metadata_schema().expect("application metadata schema");
+let operation = contract
+    .operation_metadata_schema(&["list"])?
+    .expect("operation metadata schema");
+let effective = contract
+    .metadata_schema_for(&["list"])?
+    .expect("effective metadata schema");
+assert_eq!(application["type"], "object");
+assert_eq!(operation["type"], "object");
+assert_eq!(effective["allOf"].as_array().map(Vec::len), Some(2));
+# Ok::<(), clap_schema::Error>(())
+```
+
+Root `metadata = Type` declares the application-wide schema. An executable command may also declare `metadata = Type`; builder-style code uses `operation!(handler).metadata::<Type>()`. The operation schema supplements the application schema rather than replacing it. `metadata_schema_for(path)` returns the effective schema, composing both layers with JSON Schema `allOf`. Commands without an operation supplement simply inherit the application schema.
+
+Metadata types need only `JsonSchema`. `clap_schema` never constructs, stores, shallow-merges, or serializes metadata values and does not inject metadata into `CommandInfo`, `CommandNode`, or the serialized `CliContract`. The application owns concrete values, any default/override or shallow-merge behavior between those values, and where metadata schemas and values appear in its machine-facing documents. Applications will typically derive `Serialize` on their concrete metadata types as well, but `clap_schema` deliberately does not require it because no metadata value crosses this crate.
+
+Builder-style applications declare the application schema with `ContractBuilder::metadata::<Type>()` and an operation supplement with `operation!(handler).metadata::<Type>()`.
 
 ## Command discovery
 

@@ -18,6 +18,7 @@ use syn::{
 /// # `#[schema(...)]` options
 ///
 /// - `handler = path` binds an executable root operation to its canonical handler.
+/// - `metadata = Type` declares the application-wide metadata schema type.
 #[proc_macro_derive(CliSchema, attributes(schema, command))]
 pub fn derive_cli_schema(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -39,7 +40,9 @@ pub fn derive_cli_schema(input: TokenStream) -> TokenStream {
 /// Normal `#[command(subcommand)]` and `#[command(flatten)]` nesting is followed
 /// automatically. When an `Args` payload itself contains a subcommand field,
 /// use `subcommands = Type` on the parent variant. `handler` and `subcommands`
-/// may be combined for an executable parent with optional children.
+/// may be combined for an executable parent with optional children. Executable
+/// operations may also declare `metadata = Type` to supplement the root
+/// application metadata schema.
 #[proc_macro_derive(CommandSchema, attributes(schema, command))]
 pub fn derive_command_schema(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -226,7 +229,7 @@ fn handler_helper_path(mut path: Path) -> syn::Result<Path> {
 /// Expands a `CliSchema` derive into root operation registration.
 fn expand_cli_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
     let crate_path = clap_schema_path();
-    let RootSchema { handler } = parse_root_schema(&input.attrs)?;
+    let RootSchema { handler, metadata } = parse_root_schema(&input.attrs)?;
     let commands = find_subcommand_field(&input)?;
     if handler.is_none() && commands.is_none() {
         return Err(syn::Error::new_spanned(
@@ -239,6 +242,11 @@ fn expand_cli_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
     let generics = input.generics;
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
 
+    let root_metadata = metadata.map(|metadata| {
+        quote! {
+            registry.metadata::<#metadata>();
+        }
+    });
     let root_handler = if let Some(handler) = handler {
         let helper = handler_helper_path(handler)?;
         Some(quote! {
@@ -263,6 +271,7 @@ fn expand_cli_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
             fn __clap_schema_register(
                 registry: &mut #crate_path::__private::Registry,
             ) -> #crate_path::Result<()> {
+                #root_metadata
                 #root_handler
                 #child_registration
                 Ok(())
@@ -304,7 +313,7 @@ fn expand_command_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
         if schema.skip && schema.has_operation_metadata() {
             return Err(syn::Error::new_spanned(
                 variant.ident,
-                "#[schema(skip)] cannot be combined with handler or subcommands metadata",
+                "#[schema(skip)] cannot be combined with handler, subcommands, or metadata",
             ));
         }
 
@@ -373,7 +382,7 @@ fn expand_command_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
             if schema.has_operation_metadata() {
                 return Err(syn::Error::new_spanned(
                     variant.ident,
-                    "#[command(subcommand)] groups cannot declare handler or subcommands metadata",
+                    "#[command(subcommand)] groups cannot declare handler, subcommands, or metadata",
                 ));
             }
             steps.push(quote! {
@@ -398,8 +407,11 @@ fn expand_command_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
         }
         let register_handler = if let Some(handler) = schema.handler.as_ref() {
             let helper = handler_helper_path(handler.clone())?;
+            let metadata = schema.metadata.as_ref().map(|metadata| {
+                quote! { .metadata::<#metadata>() }
+            });
             Some(quote! {
-                registry.operation(prefix, #helper());
+                registry.operation(prefix, #helper() #metadata);
             })
         } else {
             None
@@ -485,6 +497,8 @@ fn expand_command_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
 struct RootSchema {
     /// Optional executable root handler.
     handler: Option<Path>,
+    /// Optional application-defined metadata schema type.
+    metadata: Option<Type>,
 }
 
 /// Parses root `#[schema(...)]` metadata.
@@ -497,6 +511,11 @@ fn parse_root_schema(attrs: &[Attribute]) -> syn::Result<RootSchema> {
                     return Err(meta.error("duplicate root handler"));
                 }
                 result.handler = Some(meta.value()?.parse()?);
+            } else if meta.path.is_ident("metadata") {
+                if result.metadata.is_some() {
+                    return Err(meta.error("duplicate root metadata type"));
+                }
+                result.metadata = Some(meta.value()?.parse()?);
             } else {
                 return Err(meta.error("unsupported #[schema(...)] root option"));
             }
@@ -623,6 +642,8 @@ struct VariantSchema {
     handler: Option<Path>,
     /// Explicit child enum when an `Args` payload owns subcommands.
     subcommands: Option<Type>,
+    /// Optional operation-specific application metadata schema type.
+    metadata: Option<Type>,
     /// Whether this runtime command is omitted from the contract.
     skip: bool,
 }
@@ -630,12 +651,15 @@ struct VariantSchema {
 impl VariantSchema {
     /// Returns whether no schema metadata was supplied.
     const fn is_empty(&self) -> bool {
-        self.handler.is_none() && self.subcommands.is_none() && !self.skip
+        self.handler.is_none()
+            && self.subcommands.is_none()
+            && self.metadata.is_none()
+            && !self.skip
     }
 
     /// Returns whether metadata affects operation registration.
     const fn has_operation_metadata(&self) -> bool {
-        self.handler.is_some() || self.subcommands.is_some()
+        self.handler.is_some() || self.subcommands.is_some() || self.metadata.is_some()
     }
 }
 
@@ -654,6 +678,11 @@ fn parse_variant_schema(attrs: &[Attribute]) -> syn::Result<VariantSchema> {
                     return Err(meta.error("duplicate subcommands type"));
                 }
                 result.subcommands = Some(meta.value()?.parse()?);
+            } else if meta.path.is_ident("metadata") {
+                if result.metadata.is_some() {
+                    return Err(meta.error("duplicate metadata type"));
+                }
+                result.metadata = Some(meta.value()?.parse()?);
             } else if meta.path.is_ident("skip") {
                 result.skip = true;
             } else {

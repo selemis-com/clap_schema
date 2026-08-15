@@ -6,7 +6,42 @@ use clap_schema::{CliSchema, CommandSchema};
 use schemars::JsonSchema;
 use serde::Serialize;
 
+#[derive(Debug, JsonSchema)]
+struct ApplicationMetadata {
+    /// Whether invoking a command can mutate application state.
+    mutates: bool,
+    /// Application-defined retry classification.
+    retry: RetryClass,
+}
+
+#[derive(Debug, JsonSchema)]
+enum RetryClass {
+    Never,
+    Safe,
+}
+
+#[derive(Debug, JsonSchema)]
+struct PaginationMetadata {
+    /// Input field that receives the cursor from a previous page.
+    cursor_argument: String,
+    /// Output field containing the cursor for the next page.
+    cursor_output_field: String,
+}
+
+#[derive(Debug, JsonSchema)]
+struct DestructiveMetadata {
+    /// Whether the application requires explicit confirmation before execution.
+    confirmation_required: bool,
+}
+
+#[derive(Debug, JsonSchema)]
+struct AuthorizationMetadata {
+    /// Application-defined authorization classification.
+    minimum_role: String,
+}
+
 #[derive(Debug, Parser, CliSchema)]
+#[schema(metadata = ApplicationMetadata)]
 #[command(name = "kivalish", about = "Example collaborative-object CLI")]
 struct Cli {
     /// Override the configured service root URL.
@@ -59,11 +94,11 @@ enum ObjectCommands {
     Get(ObjectKeyArgs),
 
     /// List objects visible in a workspace.
-    #[schema(handler = list_objects)]
+    #[schema(handler = list_objects, metadata = PaginationMetadata)]
     List(ListObjectsArgs),
 
     /// Permanently remove one object.
-    #[schema(handler = delete_object)]
+    #[schema(handler = delete_object, metadata = DestructiveMetadata)]
     Delete(ObjectKeyArgs),
 
     /// Inspect or modify direct object grants.
@@ -75,7 +110,7 @@ enum ObjectCommands {
 enum AccessCommands {
     /// Grant a user or linked group a role on an object.
     #[command(visible_alias = "add")]
-    #[schema(handler = grant_access)]
+    #[schema(handler = grant_access, metadata = AuthorizationMetadata)]
     Grant(GrantArgs),
 
     /// Revoke one direct object grant.
@@ -319,6 +354,69 @@ mod tests {
 
         assert!(contract.command(&["admin"]).is_err());
         assert!(contract.command(&["schema"]).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn application_metadata_is_schema_only_and_kept_out_of_the_base_wire_model()
+    -> clap_schema::Result<()> {
+        let contract = Cli::schema()?;
+        let metadata = contract.metadata_schema().expect("application metadata schema");
+
+        assert_eq!(metadata["type"], "object");
+        assert!(metadata.get("$schema").is_none());
+        assert!(metadata.get("title").is_none());
+        assert!(metadata["properties"].get("mutates").is_some());
+        assert!(metadata["properties"].get("retry").is_some());
+
+        let pagination = contract
+            .operation_metadata_schema(&["objects", "list"])?
+            .expect("operation metadata schema");
+        assert_eq!(pagination["type"], "object");
+        assert!(pagination["properties"].get("cursor_argument").is_some());
+        assert!(pagination["properties"].get("cursor_output_field").is_some());
+        assert!(pagination.get("$schema").is_none());
+        assert!(pagination.get("title").is_none());
+
+        let effective =
+            contract.metadata_schema_for(&["objects", "list"])?.expect("effective metadata schema");
+        let all_of = effective["allOf"].as_array().expect("allOf metadata composition");
+        assert_eq!(all_of.len(), 2);
+        let application_ref = all_of[0]["$ref"].as_str().expect("application metadata ref");
+        let operation_ref = all_of[1]["$ref"].as_str().expect("operation metadata ref");
+        assert!(application_ref.starts_with("#/$defs/"));
+        assert!(operation_ref.starts_with("#/$defs/"));
+        let application_key = application_ref.trim_start_matches("#/$defs/");
+        let operation_key = operation_ref.trim_start_matches("#/$defs/");
+        assert!(effective["$defs"][application_key]["properties"].get("mutates").is_some());
+        assert!(effective["$defs"][operation_key]["properties"].get("cursor_argument").is_some());
+        assert!(effective["$defs"].get("RetryClass").is_some());
+
+        let inherited = contract
+            .metadata_schema_for(&["objects", "get"])?
+            .expect("inherited application metadata schema");
+        assert_eq!(inherited, metadata);
+        assert!(contract.operation_metadata_schema(&["objects", "show"])?.is_none());
+        let aliased_metadata = contract
+            .operation_metadata_schema(&["objects", "access", "add"])?
+            .expect("aliased operation metadata schema");
+        assert!(aliased_metadata["properties"].get("minimum_role").is_some());
+
+        let destructive = contract
+            .metadata_schema_for(&["objects", "delete"])?
+            .expect("destructive metadata schema");
+        let destructive_ref =
+            destructive["allOf"][1]["$ref"].as_str().expect("operation metadata ref");
+        let destructive_key = destructive_ref.trim_start_matches("#/$defs/");
+        assert!(
+            destructive["$defs"][destructive_key]["properties"]
+                .get("confirmation_required")
+                .is_some()
+        );
+
+        let wire = serde_json::to_value(&contract).expect("serialize base contract");
+        assert!(wire.get("metadata_schema").is_none());
+        assert!(wire.get("metadata").is_none());
         Ok(())
     }
 

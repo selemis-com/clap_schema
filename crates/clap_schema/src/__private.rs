@@ -8,7 +8,10 @@ pub use clap;
 use schemars::JsonSchema;
 use serde::Serialize;
 
-use crate::{CliContract, CliSchema, ContractBuilder, Operation, Result};
+use crate::{
+    CliContract, CliSchema, ContractBuilder, Operation, Result,
+    schema::{MetadataSchemaFactory, metadata_schema_factory},
+};
 
 /// Successful `Result<T, E>` contract used by handler metadata.
 ///
@@ -38,12 +41,21 @@ where
 #[derive(Debug, Default)]
 pub struct Registry {
     entries: Vec<(Vec<String>, Operation)>,
+    metadata: Option<MetadataSchemaFactory>,
 }
 
 impl Registry {
     /// Registers one executable operation.
     pub fn operation(&mut self, path: &[String], operation: Operation) {
         self.entries.push((path.to_vec(), operation));
+    }
+
+    /// Declares the application-defined metadata schema type for the root CLI.
+    pub fn metadata<T>(&mut self)
+    where
+        T: JsonSchema,
+    {
+        self.metadata = Some(metadata_schema_factory::<T>());
     }
 }
 
@@ -56,6 +68,9 @@ where
     T::__clap_schema_register(&mut registry)?;
 
     let mut builder = ContractBuilder::new(T::command());
+    if let Some(metadata) = registry.metadata {
+        builder = builder.metadata_factory(metadata);
+    }
     for (path, operation) in registry.entries {
         builder = builder.operation(path, operation);
     }

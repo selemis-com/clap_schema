@@ -15,6 +15,18 @@ mod tests {
 
     use super::support;
 
+    #[derive(JsonSchema)]
+    #[expect(dead_code, reason = "metadata test type is reflected into JSON Schema")]
+    struct ApplicationMetadata {
+        destructive: bool,
+    }
+
+    #[derive(JsonSchema)]
+    #[expect(dead_code, reason = "metadata test type is reflected into JSON Schema")]
+    struct CreateMetadata {
+        audit_event: bool,
+    }
+
     #[derive(Serialize, JsonSchema)]
     struct Created {
         id: String,
@@ -32,8 +44,18 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         let contract =
             ContractBuilder::new(Command::new("fixture").subcommand(Command::new("create")))
-                .operation(["create"], clap_schema::operation!(create))
+                .metadata::<ApplicationMetadata>()
+                .operation(["create"], clap_schema::operation!(create).metadata::<CreateMetadata>())
                 .build()?;
+
+        let metadata = contract.metadata_schema().expect("metadata schema");
+        assert_eq!(metadata["type"], "object");
+        assert!(metadata["properties"].get("destructive").is_some());
+        let local =
+            contract.operation_metadata_schema(&["create"])?.expect("operation metadata schema");
+        assert!(local["properties"].get("audit_event").is_some());
+        let effective = contract.metadata_schema_for(&["create"])?.expect("effective metadata");
+        assert_eq!(effective["allOf"].as_array().map(Vec::len), Some(2));
 
         let actual = format!("{}\n", serde_json::to_string_pretty(&contract)?);
         assert_data_eq!(actual, support::contract_fixture("minimal.json"));

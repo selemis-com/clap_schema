@@ -2,22 +2,22 @@
 
 use std::{any::TypeId, io::Write};
 
-use schemars::{JsonSchema, generate::SchemaSettings};
+use schemars::JsonSchema;
 use serde::Serialize;
-use serde_json::Value;
 
-/// Function pointer that lazily generates a JSON Schema value.
-pub(crate) type SchemaFactory = fn() -> Value;
+use crate::schema::{MetadataSchemaFactory, SchemaFactory, metadata_schema_factory, schema_for};
 
-/// Handler-derived metadata for one executable operation.
+/// Contract metadata for one executable operation.
 ///
-/// Values are produced by [`crate::operation!`] or by the derive macros from a
-/// `#[clap_schema::handler]`. There is intentionally no public constructor for
-/// declaring an output type separately from the handler.
+/// Values are anchored to a canonical `#[clap_schema::handler]` through [`crate::operation!`] or
+/// the derive macros. The successful output type cannot be declared separately from that handler;
+/// applications may only supplement the operation with an application-defined metadata schema.
 #[derive(Debug, Clone, Copy)]
 pub struct Operation {
     /// Optional successful output schema factory.
     pub(crate) output: Option<SchemaFactory>,
+    /// Optional operation-specific application metadata schema factory.
+    pub(crate) metadata: Option<MetadataSchemaFactory>,
 }
 
 impl Operation {
@@ -26,7 +26,25 @@ impl Operation {
     where
         T: JsonSchema + Serialize + 'static,
     {
-        Self { output: (TypeId::of::<T>() != TypeId::of::<()>()).then_some(output_schema::<T>) }
+        Self {
+            output: (TypeId::of::<T>() != TypeId::of::<()>()).then_some(schema_for::<T>),
+            metadata: None,
+        }
+    }
+
+    /// Supplements the application-wide metadata schema for this operation.
+    ///
+    /// `clap_schema` records only the JSON Schema for `T`; applications remain responsible for
+    /// constructing and serializing concrete metadata values. When an application-wide metadata
+    /// schema is also declared, [`crate::CliContract::metadata_schema_for`] composes both schemas
+    /// with JSON Schema `allOf`.
+    #[must_use]
+    pub fn metadata<T>(mut self) -> Self
+    where
+        T: JsonSchema,
+    {
+        self.metadata = Some(metadata_schema_factory::<T>());
+        self
     }
 }
 
@@ -63,21 +81,4 @@ where
     }
     serde_json::to_writer(writer, &value)?;
     Ok(())
-}
-
-/// Generates draft 2020-12 JSON Schema for the serialized successful value.
-fn output_schema<T>() -> Value
-where
-    T: ?Sized + JsonSchema + Serialize,
-{
-    let mut schema = SchemaSettings::draft2020_12()
-        .for_serialize()
-        .into_generator()
-        .into_root_schema_for::<T>()
-        .to_value();
-    if let Value::Object(root) = &mut schema {
-        root.remove("$schema");
-        root.remove("title");
-    }
-    schema
 }

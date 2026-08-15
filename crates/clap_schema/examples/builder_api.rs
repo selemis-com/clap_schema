@@ -6,6 +6,20 @@ use clap_schema::ContractBuilder;
 use schemars::JsonSchema;
 use serde::Serialize;
 
+/// Application-defined metadata vocabulary for command semantics.
+#[derive(Debug, JsonSchema)]
+struct CommandMetadata {
+    /// Whether invoking a command can mutate state.
+    mutates: bool,
+}
+
+/// Additional metadata vocabulary used only by the create operation.
+#[derive(Debug, JsonSchema)]
+struct CreateMetadata {
+    /// Whether successful creation emits an audit event.
+    audit_event: bool,
+}
+
 /// Widget returned by a successful creation command.
 #[derive(Debug, Serialize, JsonSchema)]
 struct Widget {
@@ -29,9 +43,13 @@ fn cli() -> Command {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let contract = ContractBuilder::new(cli())
-        .operation(["create"], clap_schema::operation!(create))
+        .metadata::<CommandMetadata>()
+        .operation(["create"], clap_schema::operation!(create).metadata::<CreateMetadata>())
         .build()?;
 
+    assert!(contract.metadata_schema().is_some());
+    assert!(contract.operation_metadata_schema(&["create"])?.is_some());
+    assert!(contract.metadata_schema_for(&["create"])?.is_some());
     println!("{}", serde_json::to_string_pretty(&contract)?);
     Ok(())
 }

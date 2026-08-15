@@ -3,7 +3,10 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Successful-output contracts plus an in-memory discovery view for one CLI.
+/// Successful-output contracts plus in-memory discovery and application metadata schemas.
+///
+/// The default serialized form remains output-only; discovery and metadata schemas are queried
+/// explicitly by applications constructing richer machine-facing documents.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CliContract {
     /// Schema-visible executable operations and their successful-output contracts.
@@ -14,6 +17,15 @@ pub struct CliContract {
     /// Visible command topology reflected from the same Clap tree.
     #[serde(skip)]
     pub(crate) discovery: DiscoveryNode,
+    /// Optional application-defined metadata schema, kept out of the default wire model.
+    #[serde(skip)]
+    pub(crate) metadata_schema: Option<Value>,
+    /// Operation-specific metadata schema supplements keyed by canonical visible operation path.
+    #[serde(skip)]
+    pub(crate) operation_metadata_schemas: Vec<(Vec<String>, Value)>,
+    /// Effective application-plus-operation metadata schemas keyed by canonical visible path.
+    #[serde(skip)]
+    pub(crate) effective_metadata_schemas: Vec<(Vec<String>, Value)>,
 }
 
 impl CliContract {
@@ -31,6 +43,54 @@ impl CliContract {
     #[must_use]
     pub fn operation_for_invocation(&self, path: &[&str]) -> Option<&OperationContract> {
         self.registered_operations.iter().find(|operation| path_matches(&operation.path, path))
+    }
+
+    /// Returns the application-defined metadata schema declared for this CLI, when present.
+    ///
+    /// `clap_schema` does not construct or serialize metadata values and does not inject this
+    /// schema into command discovery automatically. Applications decide how both the schema and
+    /// their concrete metadata values appear in their own machine-facing documents.
+    #[must_use]
+    pub const fn metadata_schema(&self) -> Option<&Value> {
+        self.metadata_schema.as_ref()
+    }
+
+    /// Returns the operation-specific metadata schema supplement for a visible operation.
+    ///
+    /// Paths may use any alias accepted by Clap; lookup is canonicalized through the same visible
+    /// discovery tree as [`Self::command`]. Commands without a registered handler or without an
+    /// operation-specific metadata schema return `Ok(None)`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::Error::UnknownCommand`] when `path` is not schema-visible.
+    pub fn operation_metadata_schema(&self, path: &[&str]) -> crate::Result<Option<&Value>> {
+        let node = self.discovery.resolve(path)?;
+        Ok(self
+            .operation_metadata_schemas
+            .iter()
+            .find(|(candidate, _)| candidate == &node.path)
+            .map(|(_, schema)| schema))
+    }
+
+    /// Returns the effective metadata schema for one visible command or operation.
+    ///
+    /// The application-wide metadata schema applies everywhere. When the selected executable
+    /// operation declares an additional metadata schema, both layers are composed with JSON Schema
+    /// `allOf`; `clap_schema` never shallow-merges schema objects. Concrete metadata values remain
+    /// entirely application-owned.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::Error::UnknownCommand`] when `path` is not schema-visible.
+    pub fn metadata_schema_for(&self, path: &[&str]) -> crate::Result<Option<&Value>> {
+        let node = self.discovery.resolve(path)?;
+        if let Some((_, schema)) =
+            self.effective_metadata_schemas.iter().find(|(candidate, _)| candidate == &node.path)
+        {
+            return Ok(Some(schema));
+        }
+        Ok(self.metadata_schema.as_ref())
     }
 
     /// Resolves a visible command or command group by canonical name or Clap alias.

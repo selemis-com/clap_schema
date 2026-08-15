@@ -10,6 +10,10 @@ struct Second;
 struct DuplicateRootHandler;
 
 #[derive(CliSchema)]
+#[schema(metadata = First, metadata = Second)]
+struct DuplicateRootMetadata;
+
+#[derive(CliSchema)]
 #[schema(unsupported)]
 struct UnsupportedRootOption;
 
@@ -82,6 +86,12 @@ enum DuplicateHandler {
 #[derive(CommandSchema)]
 enum DuplicateSubcommandsType {
     #[schema(subcommands = First, subcommands = Second)]
+    Run(Args),
+}
+
+#[derive(CommandSchema)]
+enum DuplicateMetadataType {
+    #[schema(handler = run, metadata = First, metadata = Second)]
     Run(Args),
 }
 

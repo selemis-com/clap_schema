@@ -3,10 +3,12 @@
 use std::collections::HashSet;
 
 use clap::{Arg, ArgAction, Command};
+use schemars::JsonSchema;
 
 use crate::{
     Operation,
     model::{ArgumentInfo, CliContract, DiscoveryNode, OperationContract},
+    schema::{MetadataSchemaFactory, compose_metadata_schemas, metadata_schema_factory},
 };
 
 /// Result type returned by `clap_schema`.
@@ -53,20 +55,24 @@ pub enum Error {
 /// Clap remains authoritative for invocation syntax and parser behavior. The builder
 /// associates canonical command paths with [`crate::operation!`] values derived from
 /// real `#[clap_schema::handler]` return types and reflects the same built command tree
-/// into the crate's read-only discovery view.
+/// into the crate's read-only discovery view. Applications may additionally declare an
+/// application-wide metadata schema with [`ContractBuilder::metadata`] and supplement individual
+/// operations through [`Operation::metadata`](crate::Operation::metadata).
 #[derive(Debug)]
 pub struct ContractBuilder {
     /// Root Clap command tree used to validate registered operation paths.
     root: Command,
     /// Handler-derived operations keyed by canonical command path.
     operations: Vec<(Vec<String>, Operation)>,
+    /// Optional application-defined metadata schema factory.
+    metadata: Option<MetadataSchemaFactory>,
 }
 
 impl ContractBuilder {
     /// Creates a contract builder around a Clap command tree.
     #[must_use]
     pub const fn new(root: Command) -> Self {
-        Self { root, operations: Vec::new() }
+        Self { root, operations: Vec::new(), metadata: None }
     }
 
     /// Registers one executable operation by canonical command path.
@@ -83,6 +89,26 @@ impl ContractBuilder {
         self
     }
 
+    /// Declares the application-defined metadata type for this CLI.
+    ///
+    /// `clap_schema` generates and exposes only the JSON Schema for `T`. Applications remain
+    /// responsible for constructing, serializing, and attaching concrete metadata values to their
+    /// own schema responses. Repeated calls replace the previous metadata type.
+    #[must_use]
+    pub fn metadata<T>(mut self) -> Self
+    where
+        T: JsonSchema,
+    {
+        self.metadata = Some(metadata_schema_factory::<T>());
+        self
+    }
+
+    /// Declares an already type-erased metadata schema factory for derive-generated registration.
+    pub(crate) const fn metadata_factory(mut self, metadata: MetadataSchemaFactory) -> Self {
+        self.metadata = Some(metadata);
+        self
+    }
+
     /// Builds and validates the contract.
     ///
     /// # Errors
@@ -90,28 +116,53 @@ impl ContractBuilder {
     /// Returns an error when an operation path does not exist in the actual
     /// Clap tree, or when the same operation path is registered more than once.
     pub fn build(self) -> Result<CliContract> {
-        let Self { mut root, operations } = self;
+        let Self { mut root, operations, metadata } = self;
         root.build();
         reject_duplicate_paths(&operations)?;
 
+        let application_metadata_schema = metadata.map(MetadataSchemaFactory::root);
         let mut registered_operations = Vec::with_capacity(operations.len());
         let mut visible_operations = Vec::with_capacity(operations.len());
+        let mut operation_metadata_schemas = Vec::new();
+        let mut effective_metadata_schemas = Vec::new();
         for (path, operation) in operations {
             let resolved = command_at(&root, &path)?;
-            let operation =
-                OperationContract { path, output: operation.output.map(|factory| factory()) };
+            let operation_metadata = operation.metadata;
+            let operation_contract = OperationContract {
+                path: path.clone(),
+                output: operation.output.map(|factory| factory()),
+            };
             if !resolved.hidden {
-                visible_operations.push(operation.clone());
+                if let Some(factory) = operation_metadata {
+                    operation_metadata_schemas.push((path.clone(), factory.root()));
+                }
+                if let Some(operation) = operation_metadata {
+                    let effective = metadata.map_or_else(
+                        || operation.root(),
+                        |application| compose_metadata_schemas(application, operation),
+                    );
+                    effective_metadata_schemas.push((path, effective));
+                }
+                visible_operations.push(operation_contract.clone());
             }
-            registered_operations.push(operation);
+            registered_operations.push(operation_contract);
         }
         registered_operations.sort_by(|left, right| left.path.cmp(&right.path));
         visible_operations.sort_by(|left, right| left.path.cmp(&right.path));
+        operation_metadata_schemas.sort_by(|left, right| left.0.cmp(&right.0));
+        effective_metadata_schemas.sort_by(|left, right| left.0.cmp(&right.0));
         let operation_paths =
             visible_operations.iter().map(|operation| operation.path.clone()).collect::<Vec<_>>();
         let discovery = discovery_tree(&root, &operation_paths);
 
-        Ok(CliContract { operations: visible_operations, registered_operations, discovery })
+        Ok(CliContract {
+            operations: visible_operations,
+            registered_operations,
+            discovery,
+            metadata_schema: application_metadata_schema,
+            operation_metadata_schemas,
+            effective_metadata_schemas,
+        })
     }
 }
 
