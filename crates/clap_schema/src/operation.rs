@@ -1,21 +1,51 @@
-//! Handler-derived operations and successful-output emission.
+//! Rust-type operation identities and successful-output emission.
 
 use std::{any::TypeId, io::Write};
 
 use schemars::JsonSchema;
 use serde::Serialize;
 
-use crate::schema::{ExtendedSchemaFactory, SchemaFactory, extended_schema_factory, schema_for};
+use crate::schema::{ExtendedSchemaFactory, SchemaFactory, schema_for};
 
-/// Contract descriptor for one executable operation.
+/// Compile-time identity of one executable operation.
 ///
-/// Values are anchored to a canonical `#[clap_schema::handler]`. Derive-based commands obtain the
-/// descriptor through the handler's command input type; builder-style applications use
-/// [`crate::operation!`]. The successful output type cannot be declared separately from that
-/// handler; applications may only extend the operation with an application-defined schema.
+/// Operation identities are ordinary Rust types. In derive-based Clap applications, implement this
+/// trait on the tuple payload type of the executable command. Builder-style applications may use a
+/// dedicated marker type instead. A canonical [`crate::handler`] must provide the hidden handler
+/// contract for the same type; the trait bound makes a missing or mismatched handler a compile-time
+/// error.
+///
+/// The implementation is intentionally empty:
+///
+/// ```
+/// # use clap::Args;
+/// #[derive(Args)]
+/// struct CreateArgs {
+///     #[arg(long)]
+///     name: String,
+/// }
+///
+/// impl clap_schema::Operation for CreateArgs {}
+///
+/// #[clap_schema::handler]
+/// fn create(args: CreateArgs) -> Result<(), std::convert::Infallible> {
+///     let _ = args;
+///     Ok(())
+/// }
+/// ```
+pub trait Operation: crate::__private::HandlerContract + 'static {
+    /// Returns the handler-derived descriptor used internally by contract construction.
+    #[doc(hidden)]
+    fn __clap_schema_descriptor() -> OperationDescriptor {
+        <Self as crate::__private::HandlerContract>::__clap_schema_handler_descriptor()
+    }
+}
+
+/// Type-erased descriptor produced after an [`Operation`] has been statically resolved.
+#[doc(hidden)]
 #[derive(Debug, Clone, Copy)]
-pub struct Operation {
-    /// Stable in-process identity of the command input or, for builder-only handlers, the handler.
+pub struct OperationDescriptor {
+    /// Stable in-process identity of the operation type.
     pub(crate) id: TypeId,
     /// Optional successful output schema factory.
     pub(crate) output: Option<SchemaFactory>,
@@ -23,8 +53,8 @@ pub struct Operation {
     pub(crate) extended: Option<ExtendedSchemaFactory>,
 }
 
-impl Operation {
-    /// Builds an operation descriptor for one successful handler output type.
+impl OperationDescriptor {
+    /// Builds a descriptor for one successful handler output type and operation identity.
     pub(crate) fn for_output<T, I>() -> Self
     where
         T: JsonSchema + Serialize + 'static,
@@ -37,24 +67,9 @@ impl Operation {
         }
     }
 
-    /// Extends the application-wide schema for this operation.
-    ///
-    /// `clap_schema` records only the JSON Schema for `T`; applications remain responsible for
-    /// constructing and serializing concrete extension values. When an application-wide extension
-    /// schema is also declared, [`crate::CliContract::extended_schema_for`] and
-    /// [`crate::CliContract::extended_schema_for_operation`] compose both schemas with JSON Schema
-    /// `allOf`. The concrete value exposed by the application must therefore
-    /// satisfy both schema layers.
-    ///
-    /// This method changes only the application-defined schema extension. It does not attach a
-    /// concrete value to the operation or inject an extension field into discovery output. Repeated
-    /// calls replace the previous operation-specific extension.
-    #[must_use]
-    pub fn extend<T>(mut self) -> Self
-    where
-        T: JsonSchema,
-    {
-        self.extended = Some(extended_schema_factory::<T>());
+    /// Attaches an already type-erased operation-specific extension schema factory.
+    pub(crate) const fn with_extended(mut self, extended: ExtendedSchemaFactory) -> Self {
+        self.extended = Some(extended);
         self
     }
 }

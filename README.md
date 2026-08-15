@@ -7,7 +7,7 @@ JSON Schema generation for Clap, including typed output schemas.
 The model is deliberately small:
 
 - `CliSchema` reflects visible command topology and compact argument context from Clap's built `Command` tree.
-- `#[clap_schema::handler]` marks the real implementation of an executable operation.
+- `Operation` gives each executable operation an ordinary Rust type identity; an empty trait implementation declares that identity and requires a canonical handler contract for the same type.
 - The handler's `Result<T, E>` determines the successful output type. Non-unit `T` must implement `Serialize + JsonSchema`; `Result<(), E>` is outputless.
 - `write_json` serializes the same successful `T` used to generate the output schema.
 - Applications can add their own extension schemas without making `clap_schema` own metadata values or semantics.
@@ -48,6 +48,8 @@ struct GetArgs {
     id: String,
 }
 
+impl clap_schema::Operation for GetArgs {}
+
 #[derive(Serialize, JsonSchema)]
 struct Item {
     id: String,
@@ -55,37 +57,39 @@ struct Item {
 }
 
 #[clap_schema::handler]
-fn get(args: GetArgs) -> Result<Item, std::convert::Infallible> {
-    Ok(Item { id: args.id, name: "example".to_owned() })
+impl GetArgs {
+    fn run(self) -> Result<Item, std::convert::Infallible> {
+        Ok(Item { id: self.id, name: "example".to_owned() })
+    }
 }
 
 let contract = Cli::schema()?;
 let command = contract
-    .command_for(clap_schema::operation!(get))
-    .expect("get handler is registered");
+    .command_for::<GetArgs>()
+    .expect("get operation is registered");
 assert!(command.output.is_some());
 # Ok::<(), clap_schema::Error>(())
 ```
 
-The command-to-handler relationship is type-driven: `#[clap_schema::handler]` binds its command input type, and `CommandSchema` resolves the operation through the variant's payload type. There is no handler path to repeat on the command definition. Changing or removing that association therefore becomes a compile error instead of leaving a stale schema registration.
+`GetArgs` is the Rust operation identity. `impl clap_schema::Operation for GetArgs {}` declares that identity with ordinary Rust, while `#[clap_schema::handler]` supplies the handler-derived contract required by the trait. `CommandSchema` resolves the operation through the variant payload type. Removing the handler or defining a second canonical handler for the same operation type therefore fails at compile time.
 
 The output schema comes from the declared successful handler type, not from a separate `#[schema(output = ...)]` declaration. At runtime, use `write_json` when you want the emitted JSON and generated schema to stay parameterized by the same `T`.
 
-Derive-based executable commands use one named tuple payload, such as `Get(GetArgs)`. Commands with no arguments use an empty `Args` type. This gives each operation a concrete Rust type that can carry exactly one handler association. The payload type must be local to the crate that defines its annotated handler so the macro can install the compile-time binding. Foreign payload types and dynamically assembled command trees remain covered by `ContractBuilder` and `operation!`.
+Derive-based executable commands use one named tuple payload, such as `Get(GetArgs)`. Commands with no arguments use an empty `Args` type. Shared argument groups can still be reused with Clap's `flatten`, while distinct executable operations keep distinct operation types. Receiver-based handlers put `#[clap_schema::handler]` on a dedicated inherent impl block with one receiver method, allowing arbitrary runtime context parameters without guessing which parameter is the operation. Builder-style Clap uses the same operation types through `ContractBuilder::operation::<T>(path)`.
 
 ## Command discovery
 
-A generated `CliContract` supports handler-based lookup alongside three path-based discovery views:
+A generated `CliContract` supports type-based lookup alongside three path-based discovery views:
 
 | API | Purpose |
 | --- | --- |
-| `command_for(operation!(handler))` | Inspect a command already identified by its Rust handler |
+| `command_for::<OperationType>()` | Inspect a command already identified by its Rust operation type |
 | `command(path)` | Inspect one visible command or group selected by path |
 | `catalog(path)` | List visible executable descendants beneath a command or group |
 | `full(path)` | Inspect a command or group and its recursive visible subtree |
 
-Use handler-based lookup from static Rust code so Clap renames cannot leave path literals behind. If
-one handler is intentionally reused by multiple commands, the association is ambiguous and the path
+Use type-based lookup from static Rust code so Clap renames cannot leave path literals behind. If
+one operation type is intentionally registered at multiple commands, the association is ambiguous and the path
 API remains explicit. Path-based queries are also the right choice for user- or agent-selected paths
 and accept visible Clap aliases; returned paths are always canonical.
 
@@ -136,20 +140,21 @@ struct Cli {
 // #[schema(extend = PaginationMetadata)]
 ```
 
-`extended_schema()` returns the application-wide schema. When Rust code already names a handler,
-`extended_schema_for_operation(operation!(handler))` returns its effective schema without repeating
-the command path; `extended_schema_for(path)` serves dynamic path-based discovery. Application-wide
-and operation-specific layers are composed with JSON Schema `allOf`.
+`extended_schema()` returns the application-wide schema. When Rust code already names an operation type,
+`extended_schema_for_operation::<OperationType>()` returns its effective schema without repeating the
+command path; `extended_schema_for(path)` serves dynamic path-based discovery. Application-wide and
+operation-specific layers are composed with JSON Schema `allOf`.
 
 `clap_schema` never constructs or serializes metadata values. The application decides which values to emit and how they appear in its own machine-facing document. See the runnable `application_extension` example for a complete value/schema workflow.
 
 ## Builder API
 
-Builder-style Clap applications use the same model through `ContractBuilder` and `operation!(handler)`.
-Registration still names the canonical command path explicitly because builder-style Clap has no Rust
-subcommand payload relationship from which to derive it. The explicit path is validated against the built
-Clap tree, while the operation's output still comes only from the annotated handler. See the `builder_api`
-example.
+Builder-style Clap applications use the same Rust operation types through
+`ContractBuilder::operation::<T>(path)`. Registration still names the canonical command path explicitly
+because builder-style Clap has no Rust subcommand payload relationship from which to derive it. The path is
+validated against the built Clap tree, while the operation's output still comes only from its annotated
+handler. Use `operation_with_extension::<T, E>(path)` when a builder-registered operation adds an
+application-defined extension schema. See the `builder_api` example.
 
 ## Runnable examples
 

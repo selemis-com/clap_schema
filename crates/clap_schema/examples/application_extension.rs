@@ -34,6 +34,8 @@ struct ListArgs {
     cursor: Option<String>,
 }
 
+impl clap_schema::Operation for ListArgs {}
+
 /// Application-wide semantic vocabulary for command metadata.
 #[derive(Debug, Serialize, JsonSchema)]
 struct CommandMetadata {
@@ -86,9 +88,8 @@ fn list(_command: ListArgs) -> Result<ResourcePage, Infallible> {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let contract = Cli::schema()?;
-    let extended_schema = contract
-        .extended_schema_for_operation(clap_schema::operation!(list))
-        .expect("list extended schema");
+    let extended_schema =
+        contract.extended_schema_for_operation::<ListArgs>().expect("list extended schema");
 
     let metadata = ListMetadataValue {
         command: CommandMetadata { effect: Effect::Read, idempotent: true },

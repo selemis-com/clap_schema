@@ -8,6 +8,7 @@ use schemars::JsonSchema;
 use crate::{
     Operation,
     model::{ArgumentInfo, CliContract, DiscoveryNode, OperationContract},
+    operation::OperationDescriptor,
     schema::{ExtendedSchemaFactory, compose_extended_schemas, extended_schema_factory},
 };
 
@@ -32,8 +33,8 @@ pub enum Error {
         path: Vec<String>,
     },
 
-    /// Derive metadata and Clap's generated subcommand sequence disagree.
-    #[error("derived CommandSchema metadata does not match clap subcommands for `{type_name}`")]
+    /// Derived command registration and Clap's generated subcommand sequence disagree.
+    #[error("derived CommandSchema registration does not match clap subcommands for `{type_name}`")]
     DerivedCommandMismatch {
         /// Rust subcommand type being registered.
         type_name: &'static str,
@@ -53,17 +54,19 @@ pub enum Error {
 /// Builds and validates successful-output contracts for builder-style Clap applications.
 ///
 /// Clap remains authoritative for invocation syntax and parser behavior. The builder
-/// associates canonical command paths with [`crate::operation!`] values derived from
-/// real `#[clap_schema::handler]` signatures and reflects the same built command tree
-/// into the crate's read-only discovery view. Applications may additionally declare an
-/// application-wide schema extension with [`ContractBuilder::extend`] and supplement individual
-/// operations through [`Operation::extend`](crate::Operation::extend).
+/// associates canonical command paths with Rust types implementing [`Operation`]. Those operation
+/// implementations are ordinary empty Rust trait impls backed by the type's canonical
+/// `#[clap_schema::handler]`, so successful output schemas stay tied to real handler signatures.
+/// The same built Clap command tree is reflected into the crate's read-only discovery view.
+/// Applications may additionally declare an application-wide schema extension with
+/// [`ContractBuilder::extend`] and operation-specific extensions with
+/// [`ContractBuilder::operation_with_extension`].
 #[derive(Debug)]
 pub struct ContractBuilder {
     /// Root Clap command tree used to validate registered operation paths.
     root: Command,
-    /// Handler-derived operations keyed by canonical command path.
-    operations: Vec<(Vec<String>, Operation)>,
+    /// Type-resolved operations keyed by canonical command path.
+    operations: Vec<(Vec<String>, OperationDescriptor)>,
     /// Optional application-defined extension schema factory.
     extended: Option<ExtendedSchemaFactory>,
 }
@@ -75,14 +78,48 @@ impl ContractBuilder {
         Self { root, operations: Vec::new(), extended: None }
     }
 
-    /// Registers one executable operation by canonical command path.
+    /// Registers one executable operation type by canonical command path.
     ///
-    /// `operation` must come from [`crate::operation!`], so its output type is
-    /// inferred from the canonical handler rather than declared separately. Builder paths are
-    /// canonical Clap command names; alias resolution is a discovery-time feature after the
-    /// contract has been built.
+    /// `T` is the Rust identity of the operation. It must implement [`Operation`], with its
+    /// canonical `#[clap_schema::handler]` supplying the successful output contract.
+    /// Builder paths are canonical Clap command names; alias resolution is a discovery-time feature
+    /// after the contract has been built.
     #[must_use]
-    pub fn operation<I, S>(mut self, path: I, operation: Operation) -> Self
+    pub fn operation<T>(mut self, path: impl IntoIterator<Item = impl Into<String>>) -> Self
+    where
+        T: Operation,
+    {
+        self.operations
+            .push((path.into_iter().map(Into::into).collect(), T::__clap_schema_descriptor()));
+        self
+    }
+
+    /// Registers one executable operation type with an operation-specific extension schema.
+    ///
+    /// This is the builder-style counterpart to `#[schema(extend = Type)]` on derive-based
+    /// executable variants.
+    #[must_use]
+    pub fn operation_with_extension<T, E>(
+        mut self,
+        path: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self
+    where
+        T: Operation,
+        E: JsonSchema,
+    {
+        self.operations.push((
+            path.into_iter().map(Into::into).collect(),
+            T::__clap_schema_descriptor().with_extended(extended_schema_factory::<E>()),
+        ));
+        self
+    }
+
+    /// Registers an already type-erased operation descriptor for derive-generated construction.
+    pub(crate) fn operation_descriptor<I, S>(
+        mut self,
+        path: I,
+        operation: OperationDescriptor,
+    ) -> Self
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
@@ -98,11 +135,11 @@ impl ContractBuilder {
     /// machine-facing responses, and for ensuring those values satisfy the declared schema.
     /// Repeated calls replace the previous application-wide extension type.
     ///
-    /// Operation-specific supplements are attached with
-    /// [`Operation::extend`](crate::Operation::extend) and can be queried together with
+    /// Operation-specific supplements are attached while registering the operation with
+    /// [`ContractBuilder::operation_with_extension`] and can be queried together with
     /// this schema through
     /// [`CliContract::extended_schema_for`](crate::CliContract::extended_schema_for) or, when the
-    /// handler is already known, through
+    /// operation type is already known, through
     /// [`CliContract::extended_schema_for_operation`](crate::CliContract::extended_schema_for_operation).
     #[must_use]
     pub fn extend<T>(mut self) -> Self
@@ -182,7 +219,7 @@ struct ResolvedCommand {
 }
 
 /// Rejects duplicate command paths before reflection.
-fn reject_duplicate_paths(operations: &[(Vec<String>, Operation)]) -> Result<()> {
+fn reject_duplicate_paths(operations: &[(Vec<String>, OperationDescriptor)]) -> Result<()> {
     let mut seen = HashSet::with_capacity(operations.len());
     for (path, _) in operations {
         if !seen.insert(path.clone()) {

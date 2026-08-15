@@ -37,23 +37,26 @@ impl CliContract {
     ///
     /// Unlike discovery queries, this method does not resolve Clap aliases. Use [`Self::command`]
     /// when starting from a user- or agent-supplied command path, or [`Self::command_for`] when
-    /// static Rust code already names the annotated handler.
+    /// static Rust code already names the operation type.
     #[must_use]
     pub fn operation(&self, path: &[&str]) -> Option<&OperationContract> {
         self.operations.iter().find(|operation| path_matches(&operation.path, path))
     }
 
-    /// Finds the visible command bound to an annotated handler.
+    /// Finds the visible command bound to a Rust operation type.
     ///
     /// This is the non-brittle counterpart to a static string path lookup. The derive macros
     /// obtain the canonical command path from Clap itself, so renaming a command with
     /// `#[command(name = "...")]` does not require updating Rust-side schema queries that already
-    /// name the handler. Returns `None` when the handler is not schema-visible or is intentionally
-    /// reused by more than one visible command; use [`Self::command`] for those ambiguous paths or
-    /// when the path comes from user or agent input.
+    /// name the operation type. Returns `None` when the operation is not schema-visible or the same
+    /// operation type is intentionally registered at more than one visible path; use
+    /// [`Self::command`] for those ambiguous paths or when the path comes from user or agent input.
     #[must_use]
-    pub fn command_for(&self, operation: Operation) -> Option<CommandInfo> {
-        let path = self.unique_path_for(operation)?;
+    pub fn command_for<T>(&self) -> Option<CommandInfo>
+    where
+        T: Operation,
+    {
+        let path = self.unique_path_for::<T>()?;
         let node = self.discovery.resolve_canonical(path)?;
         Some(self.command_info(node))
     }
@@ -114,19 +117,24 @@ impl CliContract {
     ///     next_cursor: Option<String>,
     /// }
     ///
+    /// struct ListOperation;
+    ///
+    /// impl clap_schema::Operation for ListOperation {}
+    ///
     /// #[clap_schema::handler]
-    /// fn list() -> Result<Page, std::convert::Infallible> {
-    ///     Ok(Page { next_cursor: None })
+    /// impl ListOperation {
+    ///     fn list(self) -> Result<Page, std::convert::Infallible> {
+    ///         Ok(Page { next_cursor: None })
+    ///     }
     /// }
     ///
     /// let contract = ContractBuilder::new(Command::new("example").subcommand(Command::new("list")))
     ///     .extend::<CommonMetadata>()
-    ///     .operation(["list"], clap_schema::operation!(list).extend::<PaginationMetadata>())
+    ///     .operation_with_extension::<ListOperation, PaginationMetadata>(["list"])
     ///     .build()?;
     ///
-    /// let schema = contract
-    ///     .extended_schema_for_operation(clap_schema::operation!(list))
-    ///     .expect("extended schema");
+    /// let schema =
+    ///     contract.extended_schema_for_operation::<ListOperation>().expect("extended schema");
     /// assert_eq!(schema["allOf"].as_array().map(Vec::len), Some(2));
     /// # Ok::<(), clap_schema::Error>(())
     /// ```
@@ -134,8 +142,8 @@ impl CliContract {
     /// # Errors
     ///
     /// Returns [`crate::Error::UnknownCommand`] when `path` is not schema-visible. When static
-    /// Rust code already names the handler, prefer [`Self::extended_schema_for_operation`] to avoid
-    /// repeating its canonical command path.
+    /// Rust code already names the operation type, prefer [`Self::extended_schema_for_operation`]
+    /// to avoid repeating its canonical command path.
     pub fn extended_schema_for(&self, path: &[&str]) -> crate::Result<Option<&Value>> {
         let node = self.discovery.resolve(path)?;
         if let Some((_, schema)) =
@@ -146,15 +154,18 @@ impl CliContract {
         Ok(self.extended_schema.as_ref())
     }
 
-    /// Returns the effective extended schema for an annotated visible handler.
+    /// Returns the effective extended schema for a visible Rust operation type.
     ///
     /// This avoids repeating a canonical command path in application code that already names the
-    /// handler. Returns `None` when the handler is not schema-visible, is reused by multiple
-    /// visible commands, or has no applicable extended schema. Use
+    /// operation type. Returns `None` when the operation is not schema-visible, is registered at
+    /// multiple visible paths, or has no applicable extended schema. Use
     /// [`Self::extended_schema_for`] when the path comes from user or agent input.
     #[must_use]
-    pub fn extended_schema_for_operation(&self, operation: Operation) -> Option<&Value> {
-        let path = self.unique_path_for(operation)?;
+    pub fn extended_schema_for_operation<T>(&self) -> Option<&Value>
+    where
+        T: Operation,
+    {
+        let path = self.unique_path_for::<T>()?;
         self.effective_extended_schemas
             .iter()
             .find_map(|(candidate, schema)| (candidate == path).then_some(schema))
@@ -164,7 +175,7 @@ impl CliContract {
     /// Resolves a visible command or command group by canonical name or Clap alias.
     ///
     /// Returned paths are always canonical and exclude the executable name. When static Rust code
-    /// already names an annotated handler, prefer [`Self::command_for`] so a Clap rename cannot
+    /// already names an operation type, prefer [`Self::command_for`] so a Clap rename cannot
     /// leave a duplicated path literal behind.
     ///
     /// # Errors
@@ -256,10 +267,15 @@ impl CliContract {
     }
 
     /// Resolves an operation identity only when it names one visible command unambiguously.
-    fn unique_path_for(&self, operation: Operation) -> Option<&[String]> {
-        let mut matches = self.operation_paths.iter().filter_map(|(candidate, path)| {
-            (*candidate == operation.id).then_some(path.as_slice())
-        });
+    fn unique_path_for<T>(&self) -> Option<&[String]>
+    where
+        T: Operation,
+    {
+        let operation = TypeId::of::<T>();
+        let mut matches = self
+            .operation_paths
+            .iter()
+            .filter_map(|(candidate, path)| (*candidate == operation).then_some(path.as_slice()));
         let path = matches.next()?;
         matches.next().is_none().then_some(path)
     }
@@ -304,10 +320,10 @@ pub struct CommandInfo {
     /// Visible non-positional options reflected directly from Clap.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub options: Vec<ArgumentInfo>,
-    /// Whether this node has a registered executable handler.
+    /// Whether this node is an executable operation.
     #[serde(default, skip_serializing_if = "is_false")]
     pub executable: bool,
-    /// Successful output schema when the executable handler returns non-unit.
+    /// Successful output schema when the operation returns a non-unit value.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output: Option<Value>,
     /// Whether the node has schema-visible child commands.
@@ -349,10 +365,10 @@ pub struct CommandNode {
     /// Visible non-positional options reflected directly from Clap.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub options: Vec<ArgumentInfo>,
-    /// Whether this node has a registered executable handler.
+    /// Whether this node is an executable operation.
     #[serde(default, skip_serializing_if = "is_false")]
     pub executable: bool,
-    /// Successful output schema when the executable handler returns non-unit.
+    /// Successful output schema when the operation returns a non-unit value.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output: Option<Value>,
     /// Visible child commands, recursively expanded.

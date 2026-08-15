@@ -15,6 +15,8 @@ enum Commands {
 #[derive(Args)]
 struct RunArgs {}
 
+impl clap_schema::Operation for RunArgs {}
+
 fn main() {
     let _ = Cli::schema();
 }

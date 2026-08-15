@@ -8,12 +8,25 @@ pub use clap;
 use schemars::JsonSchema;
 use serde::Serialize;
 
+/// Type-erased descriptor returned by statically resolved `Operation` implementations.
+#[doc(hidden)]
+pub use crate::operation::OperationDescriptor;
 use crate::{
     CliContract, CliSchema, ContractBuilder, Operation, Result,
     schema::{ExtendedSchemaFactory, extended_schema_factory},
 };
 
-/// Successful `Result<T, E>` contract used by handler metadata.
+/// Handler-derived contract required by the public `Operation` marker trait.
+///
+/// This trait is intended for `#[clap_schema::handler]` expansions. It is public solely so
+/// those expansions can satisfy the `Operation` supertrait in downstream crates.
+#[doc(hidden)]
+pub trait HandlerContract: 'static {
+    /// Returns the successful-output descriptor for this operation type.
+    fn __clap_schema_handler_descriptor() -> OperationDescriptor;
+}
+
+/// Successful `Result<T, E>` contract used by handler contracts.
 ///
 /// Type aliases resolve to their underlying `Result`, so handler return aliases
 /// remain supported without syntactic parsing of `T` and `E` in the proc macro.
@@ -29,26 +42,41 @@ where
     type Output = T;
 }
 
-/// Builds operation metadata from a handler's return type and compile-time operation identity.
-pub fn operation_from_result<R, I>() -> Operation
+/// Builds an operation descriptor from a handler's return type and Rust operation identity.
+pub fn operation_from_result<R, I>() -> OperationDescriptor
 where
     R: HandlerResult,
     I: 'static,
 {
-    Operation::for_output::<R::Output, I>()
+    OperationDescriptor::for_output::<R::Output, I>()
 }
 
 /// Registry filled by the derive implementation.
 #[derive(Debug, Default)]
 pub struct Registry {
-    entries: Vec<(Vec<String>, Operation)>,
+    entries: Vec<(Vec<String>, OperationDescriptor)>,
     extended: Option<ExtendedSchemaFactory>,
 }
 
 impl Registry {
-    /// Registers one executable operation.
-    pub fn operation(&mut self, path: &[String], operation: Operation) {
-        self.entries.push((path.to_vec(), operation));
+    /// Registers one executable operation by Rust operation type.
+    pub fn operation<T>(&mut self, path: &[String])
+    where
+        T: Operation,
+    {
+        self.entries.push((path.to_vec(), T::__clap_schema_descriptor()));
+    }
+
+    /// Registers one executable operation with an operation-specific extension schema.
+    pub fn operation_extended<T, E>(&mut self, path: &[String])
+    where
+        T: Operation,
+        E: JsonSchema,
+    {
+        self.entries.push((
+            path.to_vec(),
+            T::__clap_schema_descriptor().with_extended(extended_schema_factory::<E>()),
+        ));
     }
 
     /// Declares the application-defined extension schema type for the root CLI.
@@ -73,7 +101,7 @@ where
         builder = builder.extended_factory(extended);
     }
     for (path, operation) in registry.entries {
-        builder = builder.operation(path, operation);
+        builder = builder.operation_descriptor(path, operation);
     }
     builder.build()
 }

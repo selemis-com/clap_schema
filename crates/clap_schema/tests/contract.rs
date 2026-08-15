@@ -33,10 +33,17 @@ mod tests {
         name: String,
     }
 
-    #[expect(dead_code, reason = "handler is referenced through generated operation metadata")]
+    #[derive(Debug)]
+    struct CreateOperation;
+
+    impl clap_schema::Operation for CreateOperation {}
+
     #[clap_schema::handler]
-    fn create() -> Result<Created, Infallible> {
-        Ok(Created { id: "1".to_owned(), name: "example".to_owned() })
+    impl CreateOperation {
+        #[expect(dead_code, reason = "handler is reflected through the operation type")]
+        fn run(self) -> Result<Created, Infallible> {
+            Ok(Created { id: "1".to_owned(), name: "example".to_owned() })
+        }
     }
 
     #[derive(Parser, CliSchema)]
@@ -46,7 +53,9 @@ mod tests {
     #[schema(executable)]
     struct RootCli;
 
-    #[expect(dead_code, reason = "handler is referenced through generated operation metadata")]
+    impl clap_schema::Operation for RootCli {}
+
+    #[expect(dead_code, reason = "handler supplies the operation contract")]
     #[clap_schema::handler]
     fn root(_command: RootCli) -> Result<Created, Infallible> {
         Ok(Created { id: "1".to_owned(), name: "root".to_owned() })
@@ -67,7 +76,9 @@ mod tests {
     #[derive(Args)]
     struct FetchArgs {}
 
-    #[expect(dead_code, reason = "handler is referenced through generated operation metadata")]
+    impl clap_schema::Operation for FetchArgs {}
+
+    #[expect(dead_code, reason = "handler supplies the operation contract")]
     #[clap_schema::handler]
     fn fetch(_command: FetchArgs) -> Result<Created, Infallible> {
         Ok(Created { id: "1".to_owned(), name: "example".to_owned() })
@@ -79,17 +90,17 @@ mod tests {
         let contract =
             ContractBuilder::new(Command::new("fixture").subcommand(Command::new("create")))
                 .extend::<ApplicationMetadata>()
-                .operation(["create"], clap_schema::operation!(create).extend::<CreateMetadata>())
+                .operation_with_extension::<CreateOperation, CreateMetadata>(["create"])
                 .build()?;
 
         let metadata = contract.extended_schema().expect("metadata schema");
         assert_eq!(metadata["type"], "object");
         assert!(metadata["properties"].get("destructive").is_some());
         let effective = contract
-            .extended_schema_for_operation(clap_schema::operation!(create))
+            .extended_schema_for_operation::<CreateOperation>()
             .expect("effective metadata");
         assert_eq!(effective["allOf"].as_array().map(Vec::len), Some(2));
-        let local_ref = effective["allOf"][1]["$ref"].as_str().expect("operation metadata ref");
+        let local_ref = effective["allOf"][1]["$ref"].as_str().expect("operation extension ref");
         let local_key = local_ref.trim_start_matches("#/$defs/");
         assert!(effective["$defs"][local_key]["properties"].get("audit_event").is_some());
 
@@ -108,21 +119,15 @@ mod tests {
     #[test]
     fn derive_supports_an_executable_root() -> clap_schema::Result<()> {
         let contract = RootCli::schema()?;
-        assert!(
-            contract
-                .command_for(clap_schema::operation!(root))
-                .and_then(|command| command.output)
-                .is_some()
-        );
+        assert!(contract.command_for::<RootCli>().and_then(|command| command.output).is_some());
         Ok(())
     }
 
     #[test]
-    fn type_driven_operation_tracks_claps_canonical_command_name() -> clap_schema::Result<()> {
+    fn operation_type_tracks_claps_canonical_command_name() -> clap_schema::Result<()> {
         let contract = RenamedCli::schema()?;
-        let command = contract
-            .command_for(clap_schema::operation!(fetch))
-            .expect("fetch handler should be registered");
+        let command =
+            contract.command_for::<FetchArgs>().expect("fetch operation should be registered");
 
         assert_eq!(command.name, "fetch");
         assert_eq!(command.path, ["fetch"]);
@@ -132,31 +137,31 @@ mod tests {
     #[test]
     fn builder_rejects_invalid_and_duplicate_operation_paths() {
         let unknown = ContractBuilder::new(Command::new("fixture"))
-            .operation(["missing"], clap_schema::operation!(create))
+            .operation::<CreateOperation>(["missing"])
             .build()
             .expect_err("unknown operation path");
         assert_eq!(unknown.to_string(), "unknown clap command path: missing");
 
         let duplicate = ContractBuilder::new(Command::new("fixture"))
-            .operation(std::iter::empty::<&str>(), clap_schema::operation!(create))
-            .operation(std::iter::empty::<&str>(), clap_schema::operation!(create))
+            .operation::<CreateOperation>(std::iter::empty::<&str>())
+            .operation::<CreateOperation>(std::iter::empty::<&str>())
             .build()
             .expect_err("duplicate root operation");
         assert_eq!(duplicate.to_string(), "duplicate operation declaration for command: <root>");
     }
 
     #[test]
-    fn handler_lookup_falls_back_to_paths_when_a_handler_is_reused() -> clap_schema::Result<()> {
+    fn type_lookup_is_ambiguous_when_one_operation_has_multiple_paths() -> clap_schema::Result<()> {
         let contract = ContractBuilder::new(
             Command::new("fixture")
                 .subcommand(Command::new("first"))
                 .subcommand(Command::new("second")),
         )
-        .operation(["first"], clap_schema::operation!(create))
-        .operation(["second"], clap_schema::operation!(create))
+        .operation::<CreateOperation>(["first"])
+        .operation::<CreateOperation>(["second"])
         .build()?;
 
-        assert!(contract.command_for(clap_schema::operation!(create)).is_none());
+        assert!(contract.command_for::<CreateOperation>().is_none());
         assert!(contract.command(&["first"]).is_ok());
         assert!(contract.command(&["second"]).is_ok());
         Ok(())

@@ -32,6 +32,8 @@ struct CreateArgs {
     name: String,
 }
 
+impl clap_schema::Operation for CreateArgs {}
+
 /// Item returned by a successful create operation.
 #[derive(Debug, Serialize, JsonSchema)]
 struct Item {
@@ -43,23 +45,24 @@ struct Item {
 
 /// Canonical create handler. Its `Item` result is the output contract source of truth.
 #[clap_schema::handler]
-fn create(command: CreateArgs) -> Result<Item, Infallible> {
-    Ok(Item { id: 42, name: command.name })
+impl CreateArgs {
+    /// Creates the example item.
+    fn run(self) -> Result<Item, Infallible> {
+        Ok(Item { id: 42, name: self.name })
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let contract = Cli::schema()?;
-    let command = contract
-        .command_for(clap_schema::operation!(create))
-        .expect("create handler is registered");
+    let command = contract.command_for::<CreateArgs>().expect("create operation is registered");
 
     println!("Command contract:");
     println!("{}", serde_json::to_string_pretty(&command)?);
 
     let mut runtime_json = Vec::new();
-    write_json(&mut runtime_json, create(CreateArgs { name: "example".to_owned() }))?;
+    write_json(&mut runtime_json, CreateArgs { name: "example".to_owned() }.run())?;
 
-    println!("\nRuntime JSON from the same handler type:");
+    println!("\nRuntime JSON from the same handler output type:");
     println!("{}", String::from_utf8(runtime_json)?);
 
     Ok(())

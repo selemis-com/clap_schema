@@ -3,28 +3,29 @@
 use proc_macro::TokenStream;
 use proc_macro_crate::{FoundCrate, crate_name};
 use proc_macro2::TokenStream as TokenStream2;
-use quote::{format_ident, quote};
+use quote::quote;
 use syn::{
-    Attribute, Data, DeriveInput, Fields, GenericArgument, Ident, ImplItemFn, ItemFn, Meta, Path,
-    PathArguments, ReturnType, Token, Type, parse_macro_input,
+    Attribute, Data, DeriveInput, Fields, GenericArgument, Ident, ImplItem, ImplItemFn, ItemFn,
+    ItemImpl, Meta, PathArguments, ReturnType, Token, Type, parse_macro_input,
 };
 
 /// Derives the root `clap_schema::CliSchema` implementation.
 ///
 /// The derive reflects the root Clap parser and registers output contracts for
 /// its root operation and/or subcommand tree. Invocation syntax stays owned by
-/// Clap. Executable roots are wired through the root parser type itself: a
-/// `#[clap_schema::handler]` that accepts that type provides its operation metadata.
+/// Clap. An executable root uses the root parser type as its operation type; a
+/// `#[clap_schema::handler]` that accepts that type provides its handler contract.
 ///
 /// # `#[schema(...)]` options
 ///
-/// - `executable` binds the root parser type as an executable operation.
+/// - `executable` makes the root parser type an executable operation; the root must implement
+///   `clap_schema::Operation`.
 /// - `extend = Type` declares the application-wide extension schema type. It is schema-only:
 ///   `clap_schema` never constructs or serializes values of `Type`.
 ///
 /// Root `extend` describes the application-wide extension vocabulary, not a supplement specific
-/// to an executable root handler. Builder-style applications can supplement a registered root
-/// operation directly through `Operation::extend`.
+/// to an executable root handler. Builder-style applications can supplement individual operation
+/// types with `ContractBuilder::operation_with_extension`.
 #[proc_macro_derive(CliSchema, attributes(schema, command))]
 pub fn derive_cli_schema(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -42,12 +43,11 @@ pub fn derive_command_group(input: TokenStream) -> TokenStream {
     expand_command_group(input).unwrap_or_else(syn::Error::into_compile_error).into()
 }
 
-/// Derives type-driven operation registration for a Clap subcommand enum.
+/// Derives operation registration for a Clap subcommand enum.
 ///
-/// Every contract-visible executable variant has one tuple payload whose type is also accepted by
-/// exactly one `#[clap_schema::handler]`. The handler macro installs hidden operation metadata on
-/// that payload type, so there is no handler path to repeat on the enum variant. Rust name and type
-/// checking therefore owns the association.
+/// Every contract-visible executable variant has one tuple payload implementing
+/// `clap_schema::Operation`. The operation type supplies its successful-output contract through
+/// normal Rust trait resolution.
 ///
 /// Normal `#[command(subcommand)]` and `#[command(flatten)]` nesting is followed automatically.
 /// When an `Args` payload itself contains a subcommand field, derive `CommandGroup` on that payload
@@ -63,21 +63,32 @@ pub fn derive_command_schema(input: TokenStream) -> TokenStream {
     expand_command_schema(input).unwrap_or_else(syn::Error::into_compile_error).into()
 }
 
-/// Marks the canonical implementation of a contract-visible operation.
+/// Marks the canonical implementation of an operation type.
 ///
-/// The attribute leaves runtime behavior unchanged and generates hidden operation metadata. The
-/// declared `Result<T, E>` return type is the sole source of the successful output contract; type
-/// aliases are supported.
+/// For free functions, the handler must have exactly one typed operation input. The macro
+/// implements the hidden handler contract for that input type; borrowing the input does not change
+/// its identity.
 ///
-/// A handler with one typed command argument binds that argument's named type to the operation. An
-/// inherent method with a receiver binds `Self`. `CommandSchema` uses that type-level association
-/// directly, so derive-based command definitions never repeat a handler path. Zero-argument
-/// handlers remain available to builder-style applications through [`operation!`].
+/// Receiver-based handlers use a dedicated inherent impl block:
 ///
-/// Sync, `const fn`, async, free functions, associated functions whose command input is `Self`,
-/// and inherent methods with any receiver form are supported. Generic handlers and handlers with
-/// more than one typed argument are rejected because they do not identify one concrete command
-/// input and output contract.
+/// ```ignore
+/// impl clap_schema::Operation for CreateCommand {}
+///
+/// #[clap_schema::handler]
+/// impl CreateCommand {
+///     async fn run(self, context: Context) -> Result<Created, Error> {
+///         // ...
+///     }
+/// }
+/// ```
+///
+/// The handler impl must contain exactly one receiver method. Put unrelated helper methods in a
+/// separate inherent impl block. Additional runtime context parameters are unrestricted because the
+/// enclosing `Self` type, rather than a parameter position, is the operation identity.
+///
+/// The handler's declared `Result<T, E>` is the sole source of the successful output contract; type
+/// aliases are supported. Generic handlers and opaque `impl Trait` return types are rejected
+/// because they do not identify one concrete output contract.
 #[proc_macro_attribute]
 pub fn handler(attribute: TokenStream, input: TokenStream) -> TokenStream {
     if !attribute.is_empty() {
@@ -90,10 +101,20 @@ pub fn handler(attribute: TokenStream, input: TokenStream) -> TokenStream {
     }
 
     let tokens = TokenStream2::from(input);
+    if let Ok(item_impl) = syn::parse2::<ItemImpl>(tokens.clone()) {
+        return expand_handler_impl(&item_impl)
+            .unwrap_or_else(syn::Error::into_compile_error)
+            .into();
+    }
     if let Ok(method) = syn::parse2::<ImplItemFn>(tokens.clone())
         && matches!(method.sig.inputs.first(), Some(syn::FnArg::Receiver(_)))
     {
-        return expand_impl_handler(&method).unwrap_or_else(syn::Error::into_compile_error).into();
+        return syn::Error::new_spanned(
+            method.sig,
+            "receiver handlers must put #[clap_schema::handler] on a dedicated inherent impl block",
+        )
+        .into_compile_error()
+        .into();
     }
 
     let function = match syn::parse2::<ItemFn>(tokens) {
@@ -103,128 +124,82 @@ pub fn handler(attribute: TokenStream, input: TokenStream) -> TokenStream {
     expand_item_handler(&function).unwrap_or_else(syn::Error::into_compile_error).into()
 }
 
-/// Returns handler-derived operation metadata and identity.
-///
-/// Builder-style Clap uses the returned `clap_schema::Operation` when registering a command path.
-/// Derive-based code can pass it to `CliContract::command_for` or
-/// `CliContract::extended_schema_for_operation` to query the command already wired through the
-/// handler's input type. It has no syntax for declaring an output type manually.
-/// Application-defined schema extensions can be added with `Operation::extend`.
-#[proc_macro]
-pub fn operation(input: TokenStream) -> TokenStream {
-    let path = parse_macro_input!(input as Path);
-    match handler_helper_path(path) {
-        Ok(helper) => quote!(#helper()).into(),
-        Err(error) => error.into_compile_error().into(),
-    }
-}
-
-/// How a handler is bound to a command input type for derive registration.
-enum HandlerBinding {
-    /// Builder-only handler with no command input type.
-    None,
-    /// Inherent handler whose receiver or typed argument is `Self`.
-    SelfType,
-    /// Free or associated handler bound to one named command input type.
-    Type(Box<Type>),
-}
-
-/// Expands a free or associated handler and its metadata companion.
+/// Expands a free handler and its operation-type contract implementation.
 fn expand_item_handler(function: &ItemFn) -> syn::Result<TokenStream2> {
     validate_handler_signature(&function.sig)?;
-    let helper = handler_helper_ident(&function.sig.ident);
-    let binding_helper = operation_binding_ident();
     let output = declared_return_type(&function.sig)?;
-    let visibility = &function.vis;
     let conditional = conditional_attributes(&function.attrs)?;
     let crate_path = clap_schema_path();
-    let binding = handler_binding(&function.sig)?;
-
-    let helper_body = match &binding {
-        HandlerBinding::None => quote! {
-            #[doc = "Identity marker for this annotated handler."]
-            struct __ClapSchemaHandlerIdentity;
-            #crate_path::__private::operation_from_result::<
-                #output,
-                __ClapSchemaHandlerIdentity,
-            >()
-        },
-        HandlerBinding::SelfType => quote! {
-            #crate_path::__private::operation_from_result::<#output, Self>()
-        },
-        HandlerBinding::Type(command) => quote! {
-            #crate_path::__private::operation_from_result::<#output, #command>()
-        },
-    };
-
-    let binding = match binding {
-        HandlerBinding::None => None,
-        HandlerBinding::SelfType => Some(quote! {
-            #(#conditional)*
-            #[doc(hidden)]
-            #[doc = "Generated clap_schema type-driven operation binding."]
-            pub fn #binding_helper() -> #crate_path::Operation {
-                #crate_path::__private::operation_from_result::<#output, Self>()
-            }
-        }),
-        HandlerBinding::Type(command) => Some(quote! {
-            #(#conditional)*
-            impl #command {
-                #[doc(hidden)]
-                #[doc = "Generated clap_schema type-driven operation binding."]
-                pub fn #binding_helper() -> #crate_path::Operation {
-                    #crate_path::__private::operation_from_result::<#output, #command>()
-                }
-            }
-        }),
-    };
+    let operation = free_handler_operation_type(&function.sig)?;
 
     Ok(quote! {
         #function
 
         #(#conditional)*
-        #[doc(hidden)]
-        #[doc = "Generated clap_schema operation metadata."]
-        #visibility fn #helper() -> #crate_path::Operation {
-            #helper_body
+        impl #crate_path::__private::HandlerContract for #operation {
+            fn __clap_schema_handler_descriptor() -> #crate_path::__private::OperationDescriptor {
+                #crate_path::__private::operation_from_result::<#output, Self>()
+            }
         }
-
-        #binding
     })
 }
 
-/// Expands an inherent receiver method and its metadata companion.
-fn expand_impl_handler(method: &ImplItemFn) -> syn::Result<TokenStream2> {
-    validate_handler_signature(&method.sig)?;
-    if method.sig.inputs.iter().filter(|input| matches!(input, syn::FnArg::Typed(_))).count() != 0 {
+/// Expands a dedicated inherent handler impl and its operation-type contract implementation.
+fn expand_handler_impl(item_impl: &ItemImpl) -> syn::Result<TokenStream2> {
+    if item_impl.trait_.is_some() {
         return Err(syn::Error::new_spanned(
-            &method.sig.inputs,
-            "receiver handlers cannot declare an additional command input",
+            item_impl,
+            "#[clap_schema::handler] requires an inherent impl block",
+        ));
+    }
+    if !item_impl.generics.params.is_empty() {
+        return Err(syn::Error::new_spanned(
+            &item_impl.generics,
+            "clap_schema handler impls require a concrete non-generic operation type",
         ));
     }
 
-    let helper = handler_helper_ident(&method.sig.ident);
-    let binding_helper = operation_binding_ident();
+    let mut methods = item_impl.items.iter().filter_map(|item| match item {
+        ImplItem::Fn(method) => Some(method),
+        _ => None,
+    });
+    let Some(method) = methods.next() else {
+        return Err(syn::Error::new_spanned(
+            item_impl,
+            "#[clap_schema::handler] impl blocks must contain exactly one function; put helpers in a separate impl block",
+        ));
+    };
+    if methods.next().is_some() {
+        return Err(syn::Error::new_spanned(
+            item_impl,
+            "#[clap_schema::handler] impl blocks must contain exactly one function; put helpers in a separate impl block",
+        ));
+    }
+
+    if !matches!(method.sig.inputs.first(), Some(syn::FnArg::Receiver(_))) {
+        return Err(syn::Error::new_spanned(
+            &method.sig,
+            "#[clap_schema::handler] impl blocks require a receiver method so Self is the operation identity",
+        ));
+    }
+
+    validate_handler_signature(&method.sig)?;
     let output = declared_return_type(&method.sig)?;
-    let visibility = &method.vis;
-    let conditional = conditional_attributes(&method.attrs)?;
+    let mut conditional = conditional_attributes(&item_impl.attrs)?;
+    conditional.extend(conditional_attributes(&method.attrs)?);
     let crate_path = clap_schema_path();
+    let operation = &item_impl.self_ty;
+    let generics = &item_impl.generics;
+    let (impl_generics, _, where_clause) = generics.split_for_impl();
 
     Ok(quote! {
-        #method
+        #item_impl
 
         #(#conditional)*
-        #[doc(hidden)]
-        #[doc = "Generated clap_schema operation metadata."]
-        #visibility fn #helper() -> #crate_path::Operation {
-            #crate_path::__private::operation_from_result::<#output, Self>()
-        }
-
-        #(#conditional)*
-        #[doc(hidden)]
-        #[doc = "Generated clap_schema type-driven operation binding."]
-        pub fn #binding_helper() -> #crate_path::Operation {
-            #crate_path::__private::operation_from_result::<#output, Self>()
+        impl #impl_generics #crate_path::__private::HandlerContract for #operation #where_clause {
+            fn __clap_schema_handler_descriptor() -> #crate_path::__private::OperationDescriptor {
+                #crate_path::__private::operation_from_result::<#output, Self>()
+            }
         }
     })
 }
@@ -281,12 +256,8 @@ fn validate_handler_signature(signature: &syn::Signature) -> syn::Result<()> {
     Ok(())
 }
 
-/// Resolves the command input type that a handler binds for derive registration.
-fn handler_binding(signature: &syn::Signature) -> syn::Result<HandlerBinding> {
-    if signature.inputs.iter().any(|input| matches!(input, syn::FnArg::Receiver(_))) {
-        return Ok(HandlerBinding::SelfType);
-    }
-
+/// Resolves the Rust operation type of a free handler.
+fn free_handler_operation_type(signature: &syn::Signature) -> syn::Result<Type> {
     let inputs = signature
         .inputs
         .iter()
@@ -295,26 +266,26 @@ fn handler_binding(signature: &syn::Signature) -> syn::Result<HandlerBinding> {
             syn::FnArg::Receiver(_) => None,
         })
         .collect::<Vec<_>>();
-    match inputs.as_slice() {
-        [] => Ok(HandlerBinding::None),
-        [input] => {
-            let input = command_input_type(input);
-            if is_self_type(&input) {
-                Ok(HandlerBinding::SelfType)
-            } else if matches!(input, Type::Path(_)) {
-                Ok(HandlerBinding::Type(Box::new(input)))
-            } else {
-                Err(syn::Error::new_spanned(
-                    input,
-                    "clap_schema command inputs must be named types",
-                ))
-            }
-        }
-        _ => Err(syn::Error::new_spanned(
+    let [input] = inputs.as_slice() else {
+        return Err(syn::Error::new_spanned(
             &signature.inputs,
-            "clap_schema handlers accept at most one typed command input",
-        )),
+            "free clap_schema handlers require exactly one typed operation input; use a dedicated #[clap_schema::handler] impl block when runtime context parameters are needed",
+        ));
+    };
+    let input = command_input_type(input);
+    if is_self_type(&input) {
+        return Err(syn::Error::new_spanned(
+            input,
+            "associated handlers must put #[clap_schema::handler] on a dedicated inherent impl block",
+        ));
     }
+    if !matches!(input, Type::Path(_)) {
+        return Err(syn::Error::new_spanned(
+            input,
+            "clap_schema operation inputs must be named types",
+        ));
+    }
+    Ok(input)
 }
 
 /// Removes borrowing/grouping syntax from a handler command input.
@@ -336,11 +307,6 @@ fn is_self_type(ty: &Type) -> bool {
         && path.path.leading_colon.is_none()
         && path.path.segments.len() == 1
         && path.path.segments.first().is_some_and(|segment| segment.ident == "Self")
-}
-
-/// Returns the payload-level operation binding helper shared by all derive registration.
-fn operation_binding_ident() -> Ident {
-    format_ident!("__clap_schema_operation")
 }
 
 /// Returns the handler's declared return type.
@@ -378,26 +344,6 @@ fn contains_impl_trait(ty: &Type) -> bool {
     }
 }
 
-/// Returns the generated metadata companion identifier for a handler name.
-fn handler_helper_ident(handler: &Ident) -> Ident {
-    format_ident!("__clap_schema_operation_{}", handler)
-}
-
-/// Rewrites a handler path to the generated metadata companion path.
-fn handler_helper_path(mut path: Path) -> syn::Result<Path> {
-    let Some(last) = path.segments.last_mut() else {
-        return Err(syn::Error::new_spanned(path, "expected a handler path"));
-    };
-    if !matches!(last.arguments, PathArguments::None) {
-        return Err(syn::Error::new_spanned(
-            &last.arguments,
-            "handler paths cannot contain generic arguments",
-        ));
-    }
-    last.ident = handler_helper_ident(&last.ident);
-    Ok(path)
-}
-
 /// Expands a `CliSchema` derive into root operation registration.
 fn expand_cli_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
     let crate_path = clap_schema_path();
@@ -414,9 +360,8 @@ fn expand_cli_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
         }
     });
     let root_operation = executable.then(|| {
-        let binding = operation_binding_ident();
         quote! {
-            registry.operation(&[], Self::#binding());
+            registry.operation::<Self>(&[]);
         }
     });
     let child_registration = commands.map(|commands| {
@@ -478,7 +423,6 @@ fn expand_command_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
     let name = input.ident;
     let generics = input.generics;
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
-    let binding = operation_binding_ident();
     let mut steps = Vec::new();
 
     for variant in data.variants {
@@ -588,7 +532,7 @@ fn expand_command_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
         let payload = payload.ok_or_else(|| {
             syn::Error::new_spanned(
                 &variant.ident,
-                "contract-visible executable commands require a single tuple Args payload accepted by #[clap_schema::handler]",
+                "contract-visible executable commands require a single tuple Args payload implementing clap_schema::Operation",
             )
         })?;
         if schema.executable && !schema.subcommands {
@@ -605,12 +549,18 @@ fn expand_command_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
         }
 
         let register_operation = (!schema.subcommands || schema.executable).then(|| {
-            let extended = schema.extended.as_ref().map(|extended| {
-                quote! { .extend::<#extended>() }
-            });
-            quote! {
-                registry.operation(prefix, <#payload>::#binding() #extended);
-            }
+            schema.extended.as_ref().map_or_else(
+                || {
+                    quote! {
+                        registry.operation::<#payload>(prefix);
+                    }
+                },
+                |extended| {
+                    quote! {
+                        registry.operation_extended::<#payload, #extended>(prefix);
+                    }
+                },
+            )
         });
         let register_children = schema.subcommands.then(|| quote! {
                 type __ClapSchemaChildren =
@@ -710,10 +660,6 @@ fn parse_root_schema(attrs: &[Attribute]) -> syn::Result<RootSchema> {
                     return Err(meta.error("`executable` is a flag and does not accept a value"));
                 }
                 result.executable = true;
-            } else if meta.path.is_ident("handler") {
-                return Err(meta.error(
-                    "handler paths are no longer declared in #[schema(...)]; remove `handler = ...`, add `executable` when the root itself executes, and let #[clap_schema::handler] bind the root type",
-                ));
             } else if meta.path.is_ident("extend") {
                 if result.extended.is_some() {
                     return Err(meta.error("duplicate root extension type"));
@@ -876,10 +822,6 @@ fn parse_variant_schema(attrs: &[Attribute]) -> syn::Result<VariantSchema> {
                     return Err(meta.error("`executable` is a flag and does not accept a value"));
                 }
                 result.executable = true;
-            } else if meta.path.is_ident("handler") {
-                return Err(meta.error(
-                    "handler paths are no longer declared in #[schema(...)]; remove `handler = ...` and let #[clap_schema::handler] bind the variant payload type directly",
-                ));
             } else if meta.path.is_ident("subcommands") {
                 if result.subcommands {
                     return Err(meta.error("duplicate subcommands flag"));

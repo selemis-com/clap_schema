@@ -17,8 +17,10 @@ mod tests {
             "clap_schema handlers use a plain non-generic function signature",
             "clap_schema handlers require a concrete Result<T, E> output type",
             "clap_schema handlers must return Result<T, E>",
-            "clap_schema handlers accept at most one typed command input",
-            "handler paths cannot contain generic arguments",
+            "free clap_schema handlers require exactly one typed operation input",
+            "receiver handlers must put #[clap_schema::handler] on a dedicated inherent impl block",
+            "#[clap_schema::handler] impl blocks require a receiver method so Self is the operation identity",
+            "#[clap_schema::handler] impl blocks must contain exactly one function",
         ] {
             assert!(stderr.contains(expected), "missing diagnostic: {expected}\n{stderr}");
         }
@@ -31,7 +33,6 @@ mod tests {
         let stderr = String::from_utf8(output.stderr).expect("UTF-8 compiler diagnostics");
         for expected in [
             "duplicate executable flag",
-            "handler paths are no longer declared in #[schema(...)]",
             "duplicate root extension type",
             "unsupported #[schema(...)] root option",
             "CliSchema can only be derived for structs",
@@ -57,21 +58,21 @@ mod tests {
     }
 
     #[test]
-    fn derive_wiring_requires_exactly_one_handler_per_payload_type() {
-        let missing = support::ui_output("missing_handler_binding");
+    fn operation_requires_exactly_one_handler_contract() {
+        let missing = support::ui_output("missing_handler_contract");
         assert!(!missing.status.success());
         let stderr = String::from_utf8(missing.stderr).expect("UTF-8 compiler diagnostics");
         assert!(
-            stderr.contains("__clap_schema_operation"),
-            "missing type-driven handler diagnostic:\n{stderr}"
+            stderr.contains("HandlerContract"),
+            "missing handler contract diagnostic:\n{stderr}"
         );
 
-        let duplicate = support::ui_output("duplicate_handler_binding");
-        assert!(!duplicate.status.success());
-        let stderr = String::from_utf8(duplicate.stderr).expect("UTF-8 compiler diagnostics");
+        let conflicting = support::ui_output("conflicting_handler_contract");
+        assert!(!conflicting.status.success());
+        let stderr = String::from_utf8(conflicting.stderr).expect("UTF-8 compiler diagnostics");
         assert!(
-            stderr.contains("__clap_schema_operation"),
-            "missing duplicate handler binding diagnostic:\n{stderr}"
+            stderr.contains("conflicting implementations") && stderr.contains("HandlerContract"),
+            "missing conflicting handler contract diagnostic:\n{stderr}"
         );
     }
 }

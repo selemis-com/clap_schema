@@ -37,6 +37,8 @@ struct GetArgs {
     id: String,
 }
 
+impl clap_schema::Operation for GetArgs {}
+
 /// Arguments accepted by the contract-discovery command.
 #[derive(Debug, Args)]
 struct SchemaArgs {

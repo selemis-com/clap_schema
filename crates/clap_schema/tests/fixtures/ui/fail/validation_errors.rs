@@ -10,10 +10,6 @@ struct Second;
 struct DuplicateRootExecutable;
 
 #[derive(CliSchema)]
-#[schema(handler = run)]
-struct LegacyRootHandler;
-
-#[derive(CliSchema)]
 #[schema(extend = First, extend = Second)]
 struct DuplicateRootMetadata;
 
@@ -91,12 +87,6 @@ enum ConflictingDispositionModes {
 #[derive(CommandSchema)]
 enum MissingPayload {
     Run,
-}
-
-#[derive(CommandSchema)]
-enum LegacyVariantHandler {
-    #[schema(handler = run)]
-    Run(Args),
 }
 
 #[derive(CommandSchema)]

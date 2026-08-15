@@ -3,6 +3,8 @@ use clap::Args;
 #[derive(Args)]
 struct RunArgs {}
 
+impl clap_schema::Operation for RunArgs {}
+
 #[clap_schema::handler]
 fn first(_command: RunArgs) -> Result<(), ()> {
     Ok(())
