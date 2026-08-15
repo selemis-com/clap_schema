@@ -1,77 +1,236 @@
-//! End-to-end derive and handler output-contract tests.
+//! End-to-end derive tests over a realistic nested CLI.
 #![expect(dead_code, reason = "test data types are reflected rather than executed")]
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use clap_schema::{CliSchema, CommandSchema};
 use schemars::JsonSchema;
 use serde::Serialize;
 
 #[derive(Debug, Parser, CliSchema)]
-#[command(name = "demo")]
+#[command(name = "kivalish", about = "Example collaborative-object CLI")]
 struct Cli {
+    /// Override the configured service root URL.
+    #[arg(long, global = true, default_value = "https://example.test")]
+    url: String,
+
+    /// Emit machine-readable JSON output.
+    #[arg(short = 'j', long, global = true)]
+    json: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
 
 #[derive(Debug, Subcommand, CommandSchema)]
-#[command(rename_all = "snake_case")]
 enum Commands {
-    /// Create one thing.
-    #[schema(handler = create_thing)]
-    CreateThing(CreateThingArgs),
-
-    /// Nested administration.
+    /// Manage objects and their access grants.
     #[command(subcommand)]
+    Objects(ObjectCommands),
+
+    /// Search visible objects.
+    #[schema(handler = search)]
+    Search {
+        /// Query text.
+        #[arg(long)]
+        query: String,
+
+        /// Maximum number of matches.
+        #[arg(long, default_value = "25")]
+        limit: u16,
+    },
+
+    #[command(flatten)]
+    Utilities(UtilityCommands),
+
+    /// Internal maintenance commands.
+    #[command(subcommand, hide = true)]
     Admin(AdminCommands),
 
-    /// Deliberately renamed by Clap.
-    #[command(name = "rm", visible_alias = "delete")]
-    #[schema(handler = remove_thing)]
-    RemoveThing(RemoveThingArgs),
-
-    /// Internal maintenance command.
-    #[command(name = "internal", hide = true)]
-    #[schema(handler = internal)]
-    Internal(StatusArgs),
-
+    /// Discover commands and successful-output contracts.
     #[schema(skip)]
     Schema,
 }
 
 #[derive(Debug, Subcommand, CommandSchema)]
+enum ObjectCommands {
+    /// Return one object.
+    #[command(visible_alias = "show")]
+    #[schema(handler = get_object)]
+    Get(ObjectKeyArgs),
+
+    /// List objects visible in a workspace.
+    #[schema(handler = list_objects)]
+    List(ListObjectsArgs),
+
+    /// Permanently remove one object.
+    #[schema(handler = delete_object)]
+    Delete(ObjectKeyArgs),
+
+    /// Inspect or modify direct object grants.
+    #[schema(handler = inspect_access, subcommands = AccessCommands)]
+    Access(AccessArgs),
+}
+
+#[derive(Debug, Subcommand, CommandSchema)]
+enum AccessCommands {
+    /// Grant a user or linked group a role on an object.
+    #[command(visible_alias = "add")]
+    #[schema(handler = grant_access)]
+    Grant(GrantArgs),
+
+    /// Revoke one direct object grant.
+    #[schema(handler = revoke_access)]
+    Revoke(GrantArgs),
+}
+
+#[derive(Debug, Subcommand, CommandSchema)]
+enum UtilityCommands {
+    /// Show the identity associated with the current credentials.
+    #[schema(handler = whoami)]
+    Whoami,
+}
+
+#[derive(Debug, Subcommand, CommandSchema)]
 enum AdminCommands {
-    /// Get service status.
-    #[schema(handler = status)]
+    /// Read internal service status.
+    #[schema(handler = admin_status)]
     Status(StatusArgs),
 }
 
 #[derive(Debug, Args)]
-struct CreateThingArgs {
+struct ObjectKeyArgs {
+    /// Workspace containing the object.
+    workspace_id: String,
+
+    /// Object identifier within the workspace.
+    object_id: String,
+
+    /// Return a historical object version when supplied.
     #[arg(long)]
-    name: String,
+    version_id: Option<String>,
+}
 
+#[derive(Debug, Args)]
+struct ListObjectsArgs {
+    /// Workspace whose objects should be listed.
+    workspace_id: String,
+
+    /// Maximum number of objects to return.
+    #[arg(long, default_value = "50")]
+    limit: u16,
+
+    /// Sort order for the result page.
+    #[arg(long, visible_alias = "sort", value_enum, default_value = "newest")]
+    order: SortOrder,
+
+    /// Include archived objects.
     #[arg(long)]
-    enabled: bool,
+    archived: bool,
 
-    #[arg(long, default_value = "safe", value_parser = ["fast", "safe"])]
-    mode: String,
-
+    /// Internal token that must not appear in discovery.
     #[arg(long, hide = true)]
     internal_token: Option<String>,
 }
 
 #[derive(Debug, Args)]
-struct RemoveThingArgs {
-    id: String,
+struct AccessArgs {
+    /// Workspace containing the object.
+    workspace_id: String,
+
+    /// Object whose grants should be inspected or modified.
+    object_id: String,
+
+    #[command(subcommand)]
+    command: Option<AccessCommands>,
+}
+
+#[derive(Debug, Args)]
+struct GrantArgs {
+    /// Workspace containing the object.
+    workspace_id: String,
+
+    /// Object receiving the direct grant.
+    object_id: String,
+
+    /// User principal. Exactly one principal selector is required by Clap.
+    #[arg(long, required_unless_present = "group_id", conflicts_with = "group_id")]
+    user_id: Option<String>,
+
+    /// Linked-group principal. Exactly one principal selector is required by Clap.
+    #[arg(long, required_unless_present = "user_id", conflicts_with = "user_id")]
+    group_id: Option<String>,
+
+    /// Role assigned to the principal.
+    #[arg(long, value_enum)]
+    role: AccessRole,
 }
 
 #[derive(Debug, Args)]
 struct StatusArgs {}
 
+#[derive(Debug, Clone, ValueEnum)]
+#[value(rename_all = "kebab-case")]
+enum SortOrder {
+    Newest,
+    Oldest,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema, ValueEnum)]
+#[value(rename_all = "kebab-case")]
+#[serde(rename_all = "kebab-case")]
+enum AccessRole {
+    Viewer,
+    Editor,
+}
+
 #[derive(Debug, Serialize, JsonSchema)]
-struct Thing {
+#[serde(rename_all = "snake_case")]
+enum ObjectKind {
+    Document,
+    Note,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+struct ObjectRecord {
     id: String,
-    name: String,
+    workspace_id: String,
+    title: String,
+    kind: ObjectKind,
+    tags: Vec<String>,
+    metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+struct Page<T> {
+    items: Vec<T>,
+    next_cursor: Option<String>,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum Principal {
+    User { user_id: String },
+    Group { group_id: String },
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+struct ObjectGrant {
+    id: String,
+    object_id: String,
+    principal: Principal,
+    role: AccessRole,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+struct AccessSummary {
+    object_id: String,
+    direct_grants: u64,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+struct Identity {
+    user_id: String,
+    display_name: String,
 }
 
 #[derive(Debug, Serialize, JsonSchema)]
@@ -80,40 +239,51 @@ struct Status {
 }
 
 #[derive(Debug)]
-enum CreateThingError {
-    Duplicate,
-}
-
-#[derive(Debug)]
-enum RemoveThingError {
-    NotFound,
-}
-
-#[derive(Debug)]
-enum StatusError {
-    Unavailable,
-}
-
-type CreateThingResult<T> = Result<T, CreateThingError>;
+struct TestError;
 
 #[clap_schema::handler]
-async fn create_thing(_command: CreateThingArgs) -> CreateThingResult<Thing> {
-    Err(CreateThingError::Duplicate)
+async fn get_object(_command: ObjectKeyArgs) -> Result<ObjectRecord, TestError> {
+    Err(TestError)
 }
 
 #[clap_schema::handler]
-async fn remove_thing(_command: RemoveThingArgs) -> Result<(), RemoveThingError> {
-    Err(RemoveThingError::NotFound)
+async fn list_objects(_command: ListObjectsArgs) -> Result<Page<ObjectRecord>, TestError> {
+    Err(TestError)
 }
 
 #[clap_schema::handler]
-async fn status(_command: StatusArgs) -> Result<Status, StatusError> {
-    Err(StatusError::Unavailable)
+async fn delete_object(_command: ObjectKeyArgs) -> Result<(), TestError> {
+    Err(TestError)
 }
 
 #[clap_schema::handler]
-async fn internal(_command: StatusArgs) -> Result<Status, StatusError> {
-    Err(StatusError::Unavailable)
+async fn inspect_access(_command: AccessArgs) -> Result<AccessSummary, TestError> {
+    Err(TestError)
+}
+
+#[clap_schema::handler]
+async fn grant_access(_command: GrantArgs) -> Result<ObjectGrant, TestError> {
+    Err(TestError)
+}
+
+#[clap_schema::handler]
+async fn revoke_access(_command: GrantArgs) -> Result<(), TestError> {
+    Err(TestError)
+}
+
+#[clap_schema::handler]
+async fn search() -> Result<Page<ObjectRecord>, TestError> {
+    Err(TestError)
+}
+
+#[clap_schema::handler]
+async fn whoami() -> Result<Identity, TestError> {
+    Err(TestError)
+}
+
+#[clap_schema::handler]
+async fn admin_status(_command: StatusArgs) -> Result<Status, TestError> {
+    Err(TestError)
 }
 
 #[cfg(test)]
@@ -121,85 +291,185 @@ mod tests {
     use super::*;
 
     #[test]
-    fn derive_uses_clap_names_and_discovers_nested_commands() -> clap_schema::Result<()> {
+    fn complex_topology_uses_canonical_paths_and_visibility() -> clap_schema::Result<()> {
         let contract = Cli::schema()?;
 
-        assert!(contract.operation(&["create_thing"]).is_some());
-        assert!(contract.operation(&["admin", "status"]).is_some());
-        assert!(contract.operation(&["rm"]).is_some());
-        assert!(contract.operation(&["internal"]).is_none());
-        assert!(contract.operation_for_invocation(&["internal"]).is_some());
+        for path in [
+            &["objects", "get"][..],
+            &["objects", "list"][..],
+            &["objects", "delete"][..],
+            &["objects", "access"][..],
+            &["objects", "access", "grant"][..],
+            &["objects", "access", "revoke"][..],
+            &["search"][..],
+            &["whoami"][..],
+        ] {
+            assert!(contract.operation(path).is_some(), "missing visible operation: {path:?}");
+        }
+
+        assert!(contract.operation(&["utilities", "whoami"]).is_none());
+        assert!(contract.operation(&["admin", "status"]).is_none());
+        assert!(contract.operation_for_invocation(&["admin", "status"]).is_some());
         assert!(contract.operation(&["schema"]).is_none());
         assert!(contract.operation_for_invocation(&["schema"]).is_none());
-        Ok(())
-    }
 
-    #[test]
-    fn handler_signature_is_the_success_output_source_of_truth() -> clap_schema::Result<()> {
-        let contract = Cli::schema()?;
-        let create = contract.operation(&["create_thing"]).expect("create contract");
-        let create_output = create.output.as_ref().expect("typed output");
-        assert_eq!(create_output["type"], "object");
-        assert!(create_output.get("$schema").is_none());
-        assert!(create_output.get("title").is_none());
+        let aliased = contract.command(&["objects", "show"])?;
+        assert_eq!(aliased.path, vec!["objects".to_owned(), "get".to_owned()]);
+        assert_eq!(aliased.aliases, vec!["show".to_owned()]);
 
-        let status = contract.operation(&["admin", "status"]).expect("status contract");
-        assert_eq!(status.output.as_ref().expect("typed output")["type"], "object");
-
-        let remove = contract.operation(&["rm"]).expect("remove contract");
-        assert!(remove.output.is_none());
-        Ok(())
-    }
-    #[test]
-    fn discovery_uses_clap_topology_aliases_and_visibility() -> clap_schema::Result<()> {
-        let contract = Cli::schema()?;
-
-        let remove = contract.command(&["delete"])?;
-        assert_eq!(remove.path, vec!["rm".to_owned()]);
-        assert_eq!(remove.aliases, vec!["delete".to_owned()]);
-        assert!(remove.usage.starts_with("demo rm"));
-        assert!(remove.executable);
-        assert!(!remove.has_subcommands);
-        assert!(remove.output.is_none());
-
-        let create = contract.command(&["create_thing"])?;
-        assert!(create.arguments.is_empty());
-        let name = create.options.iter().find(|argument| argument.id == "name").expect("name");
-        assert_eq!(name.long.as_deref(), Some("name"));
-        assert!(name.required);
-
-        let enabled =
-            create.options.iter().find(|argument| argument.id == "enabled").expect("enabled");
-        assert_eq!(enabled.long.as_deref(), Some("enabled"));
-
-        let mode = create.options.iter().find(|argument| argument.id == "mode").expect("mode");
-        assert_eq!(mode.default_values, vec!["safe".to_owned()]);
-        assert_eq!(mode.possible_values, vec!["fast".to_owned(), "safe".to_owned()]);
-        assert!(!create.options.iter().any(|argument| argument.id == "internal_token"));
-
-        let positional = contract.command(&["rm"])?;
-        assert_eq!(positional.arguments.len(), 1);
-        assert_eq!(positional.arguments[0].id, "id");
-        assert_eq!(positional.arguments[0].index, Some(1));
-        assert!(positional.arguments[0].required);
-
-        let admin = contract.command(&["admin"])?;
-        assert!(!admin.executable);
-        assert!(admin.has_subcommands);
-
-        let catalog = contract.catalog(&[])?;
-        assert_eq!(
-            catalog.iter().map(|entry| entry.path.join(" ")).collect::<Vec<_>>(),
-            ["admin status", "create_thing", "rm"]
-        );
-        assert!(contract.command(&["internal"]).is_err());
+        assert!(contract.command(&["admin"]).is_err());
         assert!(contract.command(&["schema"]).is_err());
+        Ok(())
+    }
 
-        let full = contract.full(&["admin"])?;
-        assert_eq!(full.path, vec!["admin".to_owned()]);
-        assert_eq!(full.subcommands.len(), 1);
-        assert_eq!(full.subcommands[0].path, vec!["admin".to_owned(), "status".to_owned()]);
-        assert!(full.subcommands[0].output.is_some());
+    #[test]
+    fn discovery_combines_usage_and_compact_clap_argument_context() -> clap_schema::Result<()> {
+        let contract = Cli::schema()?;
+        let get = contract.command(&["objects", "get"])?;
+
+        assert!(get.usage.starts_with("kivalish objects get"));
+        assert_eq!(
+            get.arguments.iter().map(|argument| argument.id.as_str()).collect::<Vec<_>>(),
+            ["workspace_id", "object_id"]
+        );
+        assert_eq!(get.arguments[0].index, Some(1));
+        assert_eq!(get.arguments[1].index, Some(2));
+        assert!(get.arguments.iter().all(|argument| argument.required));
+
+        let version = get
+            .options
+            .iter()
+            .find(|argument| argument.id == "version_id")
+            .expect("version option");
+        assert_eq!(version.long.as_deref(), Some("version-id"));
+        assert_eq!(version.value_names, vec!["VERSION_ID".to_owned()]);
+
+        let json = get.options.iter().find(|argument| argument.id == "json").expect("json option");
+        assert_eq!(json.short, Some('j'));
+        assert_eq!(json.long.as_deref(), Some("json"));
+        assert!(json.value_names.is_empty());
+
+        let url = get.options.iter().find(|argument| argument.id == "url").expect("url option");
+        assert_eq!(url.default_values, vec!["https://example.test".to_owned()]);
+
+        let list = contract.command(&["objects", "list"])?;
+        let order =
+            list.options.iter().find(|argument| argument.id == "order").expect("order option");
+        assert_eq!(order.aliases, vec!["sort".to_owned()]);
+        assert_eq!(order.default_values, vec!["newest".to_owned()]);
+        assert_eq!(order.possible_values, vec!["newest".to_owned(), "oldest".to_owned()]);
+        assert!(!list.options.iter().any(|argument| argument.id == "internal_token"));
+
+        let grant = contract.command(&["objects", "access", "add"])?;
+        assert_eq!(grant.path, vec!["objects".to_owned(), "access".to_owned(), "grant".to_owned()]);
+        let user_id = grant
+            .options
+            .iter()
+            .find(|argument| argument.id == "user_id")
+            .expect("user principal option");
+        let group_id = grant
+            .options
+            .iter()
+            .find(|argument| argument.id == "group_id")
+            .expect("group principal option");
+        assert!(!user_id.required);
+        assert!(!group_id.required);
+        assert!(grant.options.iter().any(|argument| argument.id == "role"));
+        assert!(!grant.usage.is_empty());
+
+        let search = contract.command(&["search"])?;
+        assert!(search.arguments.is_empty());
+        let query =
+            search.options.iter().find(|argument| argument.id == "query").expect("query option");
+        assert!(query.required);
+        let limit =
+            search.options.iter().find(|argument| argument.id == "limit").expect("limit option");
+        assert_eq!(limit.default_values, vec!["25".to_owned()]);
+        Ok(())
+    }
+
+    #[test]
+    fn catalogs_and_recursive_views_preserve_executable_groups() -> clap_schema::Result<()> {
+        let contract = Cli::schema()?;
+        let root_catalog = contract.catalog(&[])?;
+        assert_eq!(
+            root_catalog.iter().map(|entry| entry.path.join(" ")).collect::<Vec<_>>(),
+            vec![
+                "objects access".to_owned(),
+                "objects access grant".to_owned(),
+                "objects access revoke".to_owned(),
+                "objects delete".to_owned(),
+                "objects get".to_owned(),
+                "objects list".to_owned(),
+                "search".to_owned(),
+                "whoami".to_owned(),
+            ]
+        );
+
+        let access_catalog = contract.catalog(&["objects", "access"])?;
+        assert_eq!(
+            access_catalog.iter().map(|entry| entry.path.join(" ")).collect::<Vec<_>>(),
+            vec!["objects access grant".to_owned(), "objects access revoke".to_owned()]
+        );
+
+        let objects = contract.full(&["objects"])?;
+        let access = objects
+            .subcommands
+            .iter()
+            .find(|command| command.name == "access")
+            .expect("access subtree");
+        assert!(access.executable);
+        assert!(access.output.is_some());
+        assert_eq!(access.subcommands.len(), 2);
+        assert!(access.subcommands.iter().any(|command| command.name == "grant"));
+        let revoke = access
+            .subcommands
+            .iter()
+            .find(|command| command.name == "revoke")
+            .expect("revoke command");
+        assert!(revoke.executable);
+        assert!(revoke.output.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn handler_outputs_follow_serialization_view_for_complex_types() -> clap_schema::Result<()> {
+        let contract = Cli::schema()?;
+
+        let get = contract.operation(&["objects", "get"]).expect("get operation");
+        let get_output = get.output.as_ref().expect("get output");
+        assert_eq!(get_output["type"], "object");
+        assert!(get_output.get("$schema").is_none());
+        assert!(get_output.get("title").is_none());
+        let get_schema = serde_json::to_string(get_output).expect("serialize get schema");
+        assert!(get_schema.contains("document"));
+        assert!(get_schema.contains("note"));
+        assert!(get_schema.contains("metadata"));
+
+        let list = contract.operation(&["objects", "list"]).expect("list operation");
+        let list_schema = serde_json::to_string(list.output.as_ref().expect("list output"))
+            .expect("serialize list schema");
+        assert!(list_schema.contains("items"));
+        assert!(list_schema.contains("next_cursor"));
+        assert!(list_schema.contains("document"));
+
+        let grant = contract.operation(&["objects", "access", "grant"]).expect("grant operation");
+        let grant_schema = serde_json::to_string(grant.output.as_ref().expect("grant output"))
+            .expect("serialize grant schema");
+        for expected in ["user_id", "group_id", "viewer", "editor"] {
+            assert!(grant_schema.contains(expected), "missing schema fragment: {expected}");
+        }
+
+        assert!(
+            contract.operation(&["objects", "delete"]).expect("delete operation").output.is_none()
+        );
+        assert!(
+            contract
+                .operation(&["objects", "access", "revoke"])
+                .expect("revoke operation")
+                .output
+                .is_none()
+        );
         Ok(())
     }
 }

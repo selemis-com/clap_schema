@@ -1,8 +1,9 @@
-//! Checked successful-output contracts for [`clap`] applications.
+//! Checked successful-output contracts and read-only command discovery for [`clap`] applications.
 //!
-//! Clap and `--help` already describe how to invoke a binary. `clap_schema`
-//! focuses on the part agents cannot reliably infer: the JSON shape produced by
-//! a successful operation.
+//! Clap remains authoritative for how a binary is invoked. `clap_schema` binds each
+//! contract-visible operation to the JSON shape produced by its real handler and can
+//! project a compact agent-facing view of the same built Clap command tree without
+//! defining a second input grammar.
 //!
 //! Every contract-visible operation is bound to one canonical
 //! `#[clap_schema::handler]`. The handler's declared `Result<T, E>` is the sole
@@ -123,9 +124,12 @@
 //! applications that expose a schema-discovery command, [`CliContract::command`],
 //! [`CliContract::catalog`], and [`CliContract::full`] reflect canonical paths,
 //! aliases, descriptions, visibility, usage, and a compact visible-argument summary
-//! directly from Clap's built command tree. Clap-generated help remains authoritative
-//! for complete invocation semantics. A present output schema means the operation's
-//! successful value is JSON-renderable.
+//! directly from Clap's built command tree. The summary is intentionally limited to
+//! identifiers, visible names and aliases, positional indexes, value names, help,
+//! unconditional requiredness, visible defaults, and visible finite possible values.
+//! Clap-generated help remains authoritative for custom parsers and argument
+//! relationships. A present output schema means the operation's successful value is
+//! JSON-renderable.
 //!
 //! The remaining trust boundary is the output type itself: custom `Serialize`
 //! and `JsonSchema` implementations can disagree. Derived Serde/Schemars
@@ -158,7 +162,7 @@ pub trait CliSchema: clap::CommandFactory {
     #[doc(hidden)]
     fn __clap_schema_register(registry: &mut __private::Registry) -> Result<()>;
 
-    /// Builds the successful-output contract for this CLI.
+    /// Builds the successful-output contract and read-only discovery view for this CLI.
     ///
     /// # Errors
     ///

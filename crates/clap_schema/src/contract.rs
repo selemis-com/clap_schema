@@ -50,9 +50,10 @@ pub enum Error {
 
 /// Builds and validates successful-output contracts for builder-style Clap applications.
 ///
-/// Clap remains authoritative for invocation syntax and parser behavior. The
-/// builder only associates canonical command paths with [`crate::operation!`]
-/// values derived from real `#[clap_schema::handler]` return types.
+/// Clap remains authoritative for invocation syntax and parser behavior. The builder
+/// associates canonical command paths with [`crate::operation!`] values derived from
+/// real `#[clap_schema::handler]` return types and reflects the same built command tree
+/// into the crate's read-only discovery view.
 #[derive(Debug)]
 pub struct ContractBuilder {
     /// Root Clap command tree used to validate registered operation paths.

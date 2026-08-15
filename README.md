@@ -1,6 +1,6 @@
 # clap_schema
 
-`clap_schema` adds checked successful-output contracts to Rust CLIs built with Clap.
+`clap_schema` adds checked successful-output contracts and read-only command discovery to Rust CLIs built with Clap.
 
 The boundary is intentionally narrow:
 
@@ -11,7 +11,7 @@ The boundary is intentionally narrow:
 - Schemars derives the JSON Schema for that serialized type.
 - `clap_schema::write_json` serializes the same successful `T` at runtime.
 
-There is no input-schema layer, output-selector model, protocol version, or API for manually declaring a successful output type beside the real handler. Schema-discovery commands can query the same generated contract for visible command metadata and structured argument context reflected directly from Clap's built command tree.
+There is no input-schema layer, output-selector model, protocol version, or API for manually declaring a successful output type beside the real handler. The serialized contract stays output-only. Schema-discovery commands can additionally query a read-only view of visible command metadata and compact argument context reflected directly from Clap's built command tree.
 
 ## Example
 
@@ -54,7 +54,7 @@ async fn create(_command: CreateArgs) -> Result<Item, Error> {
 }
 ```
 
-The generated contract contains only the information that is not already available from Clap:
+The serialized `CliContract` contains only handler-derived successful-output contracts:
 
 ```json
 {
@@ -98,9 +98,9 @@ let subtree = contract.full(&[])?;
 # Ok::<(), clap_schema::Error>(())
 ```
 
-Paths may use command aliases accepted by Clap, while returned paths are canonical. Shallow and recursive command views include Clap's generated usage synopsis plus compact `arguments` and `options` summaries. The summaries expose only straightforward facts from the built command: identifiers, visible flag names and aliases, positional indexes, value names, help text, unconditional requiredness, visible UTF-8 defaults, and visible finite possible values.
+Paths may use command aliases accepted by Clap, while returned paths are canonical. Shallow and recursive command views include Clap's generated usage synopsis plus compact `arguments` and `options` summaries. The summaries expose only straightforward facts from the built command: identifiers, visible flag names and aliases, positional indexes, value names, help text, unconditional requiredness, visible UTF-8 defaults, and visible finite possible values. Boolean/count flags are represented as options but do not invent value placeholders.
 
-This is contextual discovery, not an input schema or a second parser. Clap and its generated `--help` remain authoritative for complete invocation semantics, including custom parsers and argument relationships. Catalogs remain compact and contain visible executable descendants; `full` recursively includes visible groups and operations. Clap-hidden commands and `#[schema(skip)]` commands are absent from discovery and cannot be addressed through it.
+This is contextual discovery, not an input schema or a second parser. Clap and its generated `--help` remain authoritative for complete invocation semantics, including custom parsers, conditional requirements, conflicts, groups, and other argument relationships. `catalog(path)` returns visible executable descendants beneath the selected node and does not include the selected node itself. `full(path)` returns the selected visible node plus its recursive visible subtree. Clap-hidden commands and `#[schema(skip)]` commands are absent from discovery and cannot be addressed through it. Hidden handler registrations remain available only through `operation_for_invocation` for execution-time checks after Clap has already resolved an invocation; schema-skipped commands are never registered.
 
 Generated successful-output schemas use draft 2020-12 serialization semantics but omit the redundant root `$schema` marker and Rust-type `title`. Nested schema metadata is left untouched.
 

@@ -25,7 +25,7 @@ struct Cli {
     #[arg(long, global = true)]
     json: bool,
 
-    /// Selects the top-level command group or contract command.
+    /// Selects the top-level command group or schema command.
     #[command(subcommand)]
     command: Commands,
 }
@@ -41,7 +41,7 @@ enum Commands {
     #[command(subcommand)]
     Builds(BuildCommands),
 
-    /// Print the CLI contract.
+    /// Discover commands and successful-output contracts.
     #[schema(skip)]
     Schema,
 }
@@ -123,7 +123,7 @@ struct BuildKeyArgs {
     build_id: String,
 }
 
-/// Clap transport arguments used to construct a build-run request.
+/// CLI arguments used to construct a build-run request.
 #[derive(Debug, Args)]
 struct RunBuildArgs {
     /// Repository to build.
@@ -137,7 +137,7 @@ struct RunBuildArgs {
     #[arg(long)]
     variables: Option<String>,
 
-    /// Path to a complete JSON request used instead of individual transport fields.
+    /// Path to a complete JSON request used instead of individual CLI fields.
     #[arg(long)]
     input: Option<PathBuf>,
 }
@@ -366,12 +366,15 @@ async fn dispatch_json<W: Write + Send>(
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = dispatch_json::<Vec<u8>>;
     let contract = Cli::schema()?;
-    println!("{}", serde_json::to_string_pretty(&contract)?);
-    println!(
-        "{}",
-        serde_json::to_string_pretty(
-            contract.operation(&["builds", "artifacts", "list"]).expect("artifact list command")
-        )?
-    );
+    let build = contract.command(&["builds", "run"])?;
+    let builds = contract.full(&["builds"])?;
+    let catalog = contract.catalog(&[])?;
+
+    assert!(build.executable);
+    assert!(build.output.is_some());
+    assert!(builds.subcommands.iter().any(|command| command.name == "artifacts"));
+    assert!(catalog.iter().any(|command| command.path.join(" ") == "builds artifacts list"));
+
+    println!("{}", serde_json::to_string_pretty(&build)?);
     Ok(())
 }

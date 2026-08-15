@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Complete agent-facing machine-output contract for one CLI.
+/// Successful-output contracts plus an in-memory discovery view for one CLI.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CliContract {
     /// Schema-visible executable operations and their successful-output contracts.
