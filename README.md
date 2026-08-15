@@ -39,7 +39,6 @@ struct Cli {
 #[derive(Subcommand, CommandSchema)]
 enum Commands {
     /// Return one item.
-    #[schema(handler = get)]
     Get(GetArgs),
 }
 
@@ -68,7 +67,11 @@ assert!(command.output.is_some());
 # Ok::<(), clap_schema::Error>(())
 ```
 
+The command-to-handler relationship is type-driven: `#[clap_schema::handler]` binds its command input type, and `CommandSchema` resolves the operation through the variant's payload type. There is no handler path to repeat on the command definition. Changing or removing that association therefore becomes a compile error instead of leaving a stale schema registration.
+
 The output schema comes from the declared successful handler type, not from a separate `#[schema(output = ...)]` declaration. At runtime, use `write_json` when you want the emitted JSON and generated schema to stay parameterized by the same `T`.
+
+Derive-based executable commands use one named tuple payload, such as `Get(GetArgs)`. Commands with no arguments use an empty `Args` type. This gives each operation a concrete Rust type that can carry exactly one handler association. The payload type must be local to the crate that defines its annotated handler so the macro can install the compile-time binding. Foreign payload types and dynamically assembled command trees remain covered by `ContractBuilder` and `operation!`.
 
 ## Command discovery
 
@@ -130,7 +133,7 @@ struct Cli {
 }
 
 // On an executable CommandSchema variant:
-// #[schema(handler = list, extend = PaginationMetadata)]
+// #[schema(extend = PaginationMetadata)]
 ```
 
 `extended_schema()` returns the application-wide schema. When Rust code already names a handler,
@@ -144,8 +147,9 @@ and operation-specific layers are composed with JSON Schema `allOf`.
 
 Builder-style Clap applications use the same model through `ContractBuilder` and `operation!(handler)`.
 Registration still names the canonical command path explicitly because builder-style Clap has no Rust
-subcommand relationship to derive it from. There is no separate output-type declaration. See the
-`builder_api` example.
+subcommand payload relationship from which to derive it. The explicit path is validated against the built
+Clap tree, while the operation's output still comes only from the annotated handler. See the `builder_api`
+example.
 
 ## Runnable examples
 

@@ -23,7 +23,6 @@ struct Cli {
 #[derive(Debug, Subcommand, CommandSchema)]
 enum Commands {
     /// Show one resource.
-    #[schema(handler = get)]
     Get(GetArgs),
 
     /// Discover commands and successful-output contracts.

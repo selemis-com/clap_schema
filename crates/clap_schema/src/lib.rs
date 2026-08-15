@@ -6,7 +6,9 @@
 //! defining a second input grammar.
 //!
 //! Every contract-visible operation is bound to one canonical
-//! `#[clap_schema::handler]`. The handler's declared `Result<T, E>` is the sole
+//! `#[clap_schema::handler]`. In derive-based applications, the handler binds its command input
+//! type and `CommandSchema` resolves the operation through the variant payload type, so no handler
+//! path is repeated on the command definition. The handler's declared `Result<T, E>` is the sole
 //! source of its successful output contract. For non-unit `T`, the crate
 //! requires `T: serde::Serialize + schemars::JsonSchema` and emits Schemars'
 //! serialization-view JSON Schema. `Result<(), E>` has no output contract.
@@ -30,7 +32,6 @@
 //!
 //! #[derive(Debug, Subcommand, CommandSchema)]
 //! enum Commands {
-//!     #[schema(handler = create)]
 //!     Create(CreateArgs),
 //! }
 //!
@@ -62,9 +63,13 @@
 //! # Ok::<(), clap_schema::Error>(())
 //! ```
 //!
-//! The explicit `handler = ...` association makes output identity independent
-//! of the Clap input carrier. The same `Args` type can be reused by multiple
-//! operations, and unit, struct-style, and tuple variants are supported.
+//! The `CreateArgs` payload is the compile-time association point between the Clap command and its
+//! handler. Removing the handler, changing it to another input type, or attaching a second handler
+//! to the same payload makes the derive wiring fail to compile instead of leaving stale
+//! registration metadata. Derive-based executable commands therefore use one named tuple payload;
+//! an empty `Args` type represents a command with no arguments. The payload type must be local to
+//! the crate that defines its annotated handler so the macro can install this compile-time
+//! association.
 //!
 //! # Nested command shapes
 //!
@@ -84,7 +89,7 @@
 //!
 //! #[derive(Subcommand, CommandSchema)]
 //! enum Commands {
-//!     #[schema(handler = stash_default, subcommands)]
+//!     #[schema(executable, subcommands)]
 //!     Stash(StashArgs),
 //! }
 //!
@@ -96,9 +101,11 @@
 //!
 //! #[derive(Subcommand, CommandSchema)]
 //! enum StashCommands {
-//!     #[schema(handler = list)]
-//!     List,
+//!     List(ListArgs),
 //! }
+//!
+//! #[derive(Args)]
+//! struct ListArgs {}
 //!
 //! #[clap_schema::handler]
 //! fn stash_default(_args: StashArgs) -> Result<(), std::convert::Infallible> {
@@ -106,7 +113,7 @@
 //! }
 //!
 //! #[clap_schema::handler]
-//! fn list() -> Result<(), std::convert::Infallible> {
+//! fn list(_args: ListArgs) -> Result<(), std::convert::Infallible> {
 //!     Ok(())
 //! }
 //!
@@ -122,16 +129,17 @@
 //! ```
 //!
 //! The child enum type is therefore read from the same field Clap parses instead of being repeated
-//! in schema metadata. `handler` and `subcommands` may appear together when the parent operation is
-//! executable without selecting a child. Omit `handler` when the parent only groups child commands.
+//! in schema metadata. `subcommands` alone represents a group-only parent; add `executable` when
+//! the payload also has a handler and the parent may execute without selecting a child.
 //!
 //! # Handler forms
 //!
-//! `#[handler]` supports synchronous, `const fn`, and asynchronous functions;
-//! free functions; associated functions; and inherent methods with `self`,
-//! `&self`, or `&mut self`. Arguments do not participate in the contract.
-//! Generic handlers and opaque `impl Trait` return types are rejected because
-//! they do not identify one concrete successful output contract.
+//! `#[handler]` supports synchronous, `const fn`, and asynchronous functions; free functions;
+//! associated functions whose command input is `Self`; and inherent methods with `self`, `&self`,
+//! or `&mut self`. A free handler may have zero typed arguments for builder-style use or one named
+//! command input for derive registration. Receiver methods bind `Self`. More than one typed command
+//! input, generic handlers, and opaque `impl Trait` return types are rejected because they do not
+//! identify one concrete input/output contract.
 //!
 //! # Builder-style Clap
 //!
@@ -197,7 +205,7 @@
 //!
 //! #[derive(Debug, Subcommand, CommandSchema)]
 //! enum Commands {
-//!     #[schema(handler = list, extend = PaginationMetadata)]
+//!     #[schema(extend = PaginationMetadata)]
 //!     List(ListArgs),
 //! }
 //!
@@ -286,7 +294,8 @@ pub use operation::{Operation, WriteJsonError, write_json};
 
 /// Trait implemented by a machine-contract-aware root Clap parser.
 ///
-/// Prefer `#[derive(CliSchema)]` for derive-based Clap applications. Root derives may declare an
+/// Prefer `#[derive(CliSchema)]` for derive-based Clap applications. Add `#[schema(executable)]`
+/// to bind a `#[handler]` that accepts the root parser type. Root derives may declare an
 /// application-defined extension schema with `#[schema(extend = Type)]`.
 pub trait CliSchema: clap::CommandFactory {
     /// Registers root and subcommand operations generated by the derive.
@@ -318,7 +327,9 @@ pub trait CommandGroup: clap::Args {
 
 /// Trait implemented by subcommand enums that contribute operation contracts.
 ///
-/// Prefer `#[derive(CommandSchema)]` for derive-based Clap applications.
+/// Prefer `#[derive(CommandSchema)]` for derive-based Clap applications. Executable variants use
+/// one named tuple payload whose `#[handler]` installs the operation binding consumed by the
+/// derive.
 pub trait CommandSchema: clap::Subcommand {
     /// Registers executable operation contracts below `prefix`.
     #[doc(hidden)]

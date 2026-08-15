@@ -63,16 +63,7 @@ enum Commands {
     Objects(ObjectCommands),
 
     /// Search visible objects.
-    #[schema(handler = search)]
-    Search {
-        /// Query text.
-        #[arg(long)]
-        query: String,
-
-        /// Maximum number of matches.
-        #[arg(long, default_value = "25")]
-        limit: u16,
-    },
+    Search(SearchArgs),
 
     #[command(flatten)]
     Utilities(UtilityCommands),
@@ -90,19 +81,18 @@ enum Commands {
 enum ObjectCommands {
     /// Return one object.
     #[command(visible_alias = "show")]
-    #[schema(handler = get_object)]
-    Get(ObjectKeyArgs),
+    Get(GetObjectArgs),
 
     /// List objects visible in a workspace.
-    #[schema(handler = list_objects, extend = PaginationMetadata)]
+    #[schema(extend = PaginationMetadata)]
     List(ListObjectsArgs),
 
     /// Permanently remove one object.
-    #[schema(handler = delete_object, extend = DestructiveMetadata)]
-    Delete(ObjectKeyArgs),
+    #[schema(extend = DestructiveMetadata)]
+    Delete(DeleteObjectArgs),
 
     /// Inspect or modify direct object grants.
-    #[schema(handler = inspect_access, subcommands)]
+    #[schema(executable, subcommands)]
     Access(AccessArgs),
 }
 
@@ -110,26 +100,46 @@ enum ObjectCommands {
 enum AccessCommands {
     /// Grant a user or linked group a role on an object.
     #[command(visible_alias = "add")]
-    #[schema(handler = grant_access, extend = AuthorizationMetadata)]
-    Grant(GrantArgs),
+    #[schema(extend = AuthorizationMetadata)]
+    Grant(GrantAccessArgs),
 
     /// Revoke one direct object grant.
-    #[schema(handler = revoke_access)]
-    Revoke(GrantArgs),
+    Revoke(RevokeAccessArgs),
 }
 
 #[derive(Debug, Subcommand, CommandSchema)]
 enum UtilityCommands {
     /// Show the identity associated with the current credentials.
-    #[schema(handler = whoami)]
-    Whoami,
+    Whoami(WhoamiArgs),
 }
 
 #[derive(Debug, Subcommand, CommandSchema)]
 enum AdminCommands {
     /// Read internal service status.
-    #[schema(handler = admin_status)]
     Status(StatusArgs),
+}
+
+#[derive(Debug, Args)]
+struct SearchArgs {
+    /// Query text.
+    #[arg(long)]
+    query: String,
+
+    /// Maximum number of matches.
+    #[arg(long, default_value = "25")]
+    limit: u16,
+}
+
+#[derive(Debug, Args)]
+struct GetObjectArgs {
+    #[command(flatten)]
+    key: ObjectKeyArgs,
+}
+
+#[derive(Debug, Args)]
+struct DeleteObjectArgs {
+    #[command(flatten)]
+    key: ObjectKeyArgs,
 }
 
 #[derive(Debug, Args)]
@@ -199,6 +209,21 @@ struct GrantArgs {
     #[arg(long, value_enum)]
     role: AccessRole,
 }
+
+#[derive(Debug, Args)]
+struct GrantAccessArgs {
+    #[command(flatten)]
+    grant: GrantArgs,
+}
+
+#[derive(Debug, Args)]
+struct RevokeAccessArgs {
+    #[command(flatten)]
+    grant: GrantArgs,
+}
+
+#[derive(Debug, Args)]
+struct WhoamiArgs {}
 
 #[derive(Debug, Args)]
 struct StatusArgs {}
@@ -277,7 +302,7 @@ struct Status {
 struct TestError;
 
 #[clap_schema::handler]
-async fn get_object(_command: ObjectKeyArgs) -> Result<ObjectRecord, TestError> {
+async fn get_object(_command: GetObjectArgs) -> Result<ObjectRecord, TestError> {
     Err(TestError)
 }
 
@@ -287,7 +312,7 @@ async fn list_objects(_command: ListObjectsArgs) -> Result<Page<ObjectRecord>, T
 }
 
 #[clap_schema::handler]
-async fn delete_object(_command: ObjectKeyArgs) -> Result<(), TestError> {
+async fn delete_object(_command: DeleteObjectArgs) -> Result<(), TestError> {
     Err(TestError)
 }
 
@@ -297,22 +322,22 @@ async fn inspect_access(_command: AccessArgs) -> Result<AccessSummary, TestError
 }
 
 #[clap_schema::handler]
-async fn grant_access(_command: GrantArgs) -> Result<ObjectGrant, TestError> {
+async fn grant_access(_command: GrantAccessArgs) -> Result<ObjectGrant, TestError> {
     Err(TestError)
 }
 
 #[clap_schema::handler]
-async fn revoke_access(_command: GrantArgs) -> Result<(), TestError> {
+async fn revoke_access(_command: RevokeAccessArgs) -> Result<(), TestError> {
     Err(TestError)
 }
 
 #[clap_schema::handler]
-async fn search() -> Result<Page<ObjectRecord>, TestError> {
+async fn search(_command: SearchArgs) -> Result<Page<ObjectRecord>, TestError> {
     Err(TestError)
 }
 
 #[clap_schema::handler]
-async fn whoami() -> Result<Identity, TestError> {
+async fn whoami(_command: WhoamiArgs) -> Result<Identity, TestError> {
     Err(TestError)
 }
 

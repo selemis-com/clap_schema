@@ -21,7 +21,6 @@ struct Cli {
 #[derive(Debug, Subcommand, CommandSchema)]
 enum Commands {
     /// Create one item.
-    #[schema(handler = create)]
     Create(CreateArgs),
 }
 

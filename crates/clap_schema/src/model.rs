@@ -27,9 +27,9 @@ pub struct CliContract {
     /// Effective application-plus-operation extended schemas keyed by canonical visible path.
     #[serde(skip)]
     pub(crate) effective_extended_schemas: Vec<(Vec<String>, Value)>,
-    /// Canonical visible command paths keyed by their annotated handler identity.
+    /// Canonical visible command paths keyed by their operation identity.
     #[serde(skip)]
-    pub(crate) handler_paths: Vec<(TypeId, Vec<String>)>,
+    pub(crate) operation_paths: Vec<(TypeId, Vec<String>)>,
 }
 
 impl CliContract {
@@ -255,9 +255,9 @@ impl CliContract {
         }
     }
 
-    /// Resolves a handler identity only when it names one visible command unambiguously.
+    /// Resolves an operation identity only when it names one visible command unambiguously.
     fn unique_path_for(&self, operation: Operation) -> Option<&[String]> {
-        let mut matches = self.handler_paths.iter().filter_map(|(candidate, path)| {
+        let mut matches = self.operation_paths.iter().filter_map(|(candidate, path)| {
             (*candidate == operation.id).then_some(path.as_slice())
         });
         let path = matches.next()?;

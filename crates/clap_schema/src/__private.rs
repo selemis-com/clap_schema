@@ -29,7 +29,7 @@ where
     type Output = T;
 }
 
-/// Builds operation metadata from a handler's return type and generated identity token.
+/// Builds operation metadata from a handler's return type and compile-time operation identity.
 pub fn operation_from_result<R, I>() -> Operation
 where
     R: HandlerResult,

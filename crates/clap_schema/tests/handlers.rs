@@ -16,19 +16,12 @@ mod tests {
 
     #[derive(Subcommand, CommandSchema)]
     enum Commands {
-        #[schema(handler = free_sync)]
         FreeSync(FreeSyncArgs),
-        #[schema(handler = free_const)]
         FreeConst(FreeConstArgs),
-        #[schema(handler = free_async)]
         FreeAsync(FreeAsyncArgs),
-        #[schema(handler = AssociatedArgs::run)]
         Associated(AssociatedArgs),
-        #[schema(handler = OwnedArgs::run)]
         Owned(OwnedArgs),
-        #[schema(handler = BorrowedArgs::run)]
         Borrowed(BorrowedArgs),
-        #[schema(handler = MutableArgs::run)]
         Mutable(MutableArgs),
     }
 

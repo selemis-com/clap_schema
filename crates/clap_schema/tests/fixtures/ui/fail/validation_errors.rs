@@ -6,11 +6,12 @@ struct First;
 struct Second;
 
 #[derive(CliSchema)]
-struct MissingRootOperation;
+#[schema(executable, executable)]
+struct DuplicateRootExecutable;
 
 #[derive(CliSchema)]
-#[schema(handler = one, handler = two)]
-struct DuplicateRootHandler;
+#[schema(handler = run)]
+struct LegacyRootHandler;
 
 #[derive(CliSchema)]
 #[schema(extend = First, extend = Second)]
@@ -39,13 +40,13 @@ struct CommandsMustBeEnum;
 #[derive(CommandSchema)]
 enum InvalidSkippedMetadata {
     #[command(skip)]
-    #[schema(handler = run)]
+    #[schema(executable)]
     Run,
 }
 
 #[derive(CommandSchema)]
 enum InvalidSchemaSkip {
-    #[schema(skip, handler = run)]
+    #[schema(skip, executable)]
     Run(Args),
 }
 
@@ -58,7 +59,7 @@ enum InvalidFlattenShape {
 #[derive(CommandSchema)]
 enum InvalidFlattenMetadata {
     #[command(flatten)]
-    #[schema(handler = run)]
+    #[schema(executable)]
     Flat(Child),
 }
 
@@ -71,7 +72,7 @@ enum InvalidNestedShape {
 #[derive(CommandSchema)]
 enum InvalidNestedMetadata {
     #[command(subcommand)]
-    #[schema(handler = run)]
+    #[schema(executable)]
     Nested(Child),
 }
 
@@ -88,13 +89,19 @@ enum ConflictingDispositionModes {
 }
 
 #[derive(CommandSchema)]
-enum MissingHandler {
+enum MissingPayload {
+    Run,
+}
+
+#[derive(CommandSchema)]
+enum LegacyVariantHandler {
+    #[schema(handler = run)]
     Run(Args),
 }
 
 #[derive(CommandSchema)]
-enum DuplicateHandler {
-    #[schema(handler = one, handler = two)]
+enum DuplicateExecutableFlag {
+    #[schema(executable, executable, subcommands)]
     Run(Args),
 }
 
@@ -106,7 +113,19 @@ enum DuplicateSubcommandsFlag {
 
 #[derive(CommandSchema)]
 enum DuplicateMetadataType {
-    #[schema(handler = run, extend = First, extend = Second)]
+    #[schema(extend = First, extend = Second)]
+    Run(Args),
+}
+
+#[derive(CommandSchema)]
+enum ExecutableWithoutSubcommands {
+    #[schema(executable)]
+    Run(Args),
+}
+
+#[derive(CommandSchema)]
+enum GroupExtensionWithoutExecutable {
+    #[schema(subcommands, extend = First)]
     Run(Args),
 }
 

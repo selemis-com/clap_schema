@@ -9,12 +9,13 @@ use crate::schema::{ExtendedSchemaFactory, SchemaFactory, extended_schema_factor
 
 /// Contract descriptor for one executable operation.
 ///
-/// Values are anchored to a canonical `#[clap_schema::handler]` through [`crate::operation!`] or
-/// the derive macros. The successful output type cannot be declared separately from that handler;
-/// applications may only extend the operation with an application-defined schema.
+/// Values are anchored to a canonical `#[clap_schema::handler]`. Derive-based commands obtain the
+/// descriptor through the handler's command input type; builder-style applications use
+/// [`crate::operation!`]. The successful output type cannot be declared separately from that
+/// handler; applications may only extend the operation with an application-defined schema.
 #[derive(Debug, Clone, Copy)]
 pub struct Operation {
-    /// Stable in-process identity of the annotated handler.
+    /// Stable in-process identity of the command input or, for builder-only handlers, the handler.
     pub(crate) id: TypeId,
     /// Optional successful output schema factory.
     pub(crate) output: Option<SchemaFactory>,

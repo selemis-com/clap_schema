@@ -7,7 +7,7 @@ mod support;
 mod tests {
     use std::convert::Infallible;
 
-    use clap::{Command, Parser, Subcommand};
+    use clap::{Args, Command, Parser, Subcommand};
     use clap_schema::{CliSchema, CommandSchema, ContractBuilder};
     use schemars::JsonSchema;
     use serde::Serialize;
@@ -40,8 +40,17 @@ mod tests {
     }
 
     #[derive(Parser, CliSchema)]
-    #[schema(handler = create)]
+    struct DiscoveryOnlyRoot;
+
+    #[derive(Parser, CliSchema)]
+    #[schema(executable)]
     struct RootCli;
+
+    #[expect(dead_code, reason = "handler is referenced through generated operation metadata")]
+    #[clap_schema::handler]
+    fn root(_command: RootCli) -> Result<Created, Infallible> {
+        Ok(Created { id: "1".to_owned(), name: "root".to_owned() })
+    }
 
     #[derive(Parser, CliSchema)]
     struct RenamedCli {
@@ -52,13 +61,15 @@ mod tests {
     #[derive(Subcommand, CommandSchema)]
     enum RenamedCommands {
         #[command(name = "fetch")]
-        #[schema(handler = fetch)]
-        Get,
+        Get(FetchArgs),
     }
+
+    #[derive(Args)]
+    struct FetchArgs {}
 
     #[expect(dead_code, reason = "handler is referenced through generated operation metadata")]
     #[clap_schema::handler]
-    fn fetch() -> Result<Created, Infallible> {
+    fn fetch(_command: FetchArgs) -> Result<Created, Infallible> {
         Ok(Created { id: "1".to_owned(), name: "example".to_owned() })
     }
 
@@ -88,11 +99,18 @@ mod tests {
     }
 
     #[test]
+    fn derive_root_without_executable_has_no_operation() -> clap_schema::Result<()> {
+        let contract = DiscoveryOnlyRoot::schema()?;
+        assert!(contract.operations.is_empty());
+        Ok(())
+    }
+
+    #[test]
     fn derive_supports_an_executable_root() -> clap_schema::Result<()> {
         let contract = RootCli::schema()?;
         assert!(
             contract
-                .command_for(clap_schema::operation!(create))
+                .command_for(clap_schema::operation!(root))
                 .and_then(|command| command.output)
                 .is_some()
         );
@@ -100,7 +118,7 @@ mod tests {
     }
 
     #[test]
-    fn handler_identity_tracks_claps_canonical_command_name() -> clap_schema::Result<()> {
+    fn type_driven_operation_tracks_claps_canonical_command_name() -> clap_schema::Result<()> {
         let contract = RenamedCli::schema()?;
         let command = contract
             .command_for(clap_schema::operation!(fetch))

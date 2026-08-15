@@ -22,7 +22,7 @@ struct Cli {
 #[derive(Debug, Subcommand, CommandSchema)]
 enum Commands {
     /// List resources with cursor pagination.
-    #[schema(handler = list, extend = PaginationMetadata)]
+    #[schema(extend = PaginationMetadata)]
     List(ListArgs),
 }
 

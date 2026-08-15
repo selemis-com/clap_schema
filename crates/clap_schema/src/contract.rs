@@ -54,7 +54,7 @@ pub enum Error {
 ///
 /// Clap remains authoritative for invocation syntax and parser behavior. The builder
 /// associates canonical command paths with [`crate::operation!`] values derived from
-/// real `#[clap_schema::handler]` return types and reflects the same built command tree
+/// real `#[clap_schema::handler]` signatures and reflects the same built command tree
 /// into the crate's read-only discovery view. Applications may additionally declare an
 /// application-wide schema extension with [`ContractBuilder::extend`] and supplement individual
 /// operations through [`Operation::extend`](crate::Operation::extend).
@@ -134,7 +134,7 @@ impl ContractBuilder {
         let mut registered_operations = Vec::with_capacity(operations.len());
         let mut visible_operations = Vec::with_capacity(operations.len());
         let mut effective_extended_schemas = Vec::new();
-        let mut handler_paths = Vec::with_capacity(operations.len());
+        let mut operation_paths = Vec::with_capacity(operations.len());
         for (path, operation) in operations {
             let resolved = command_at(&root, &path)?;
             let operation_id = operation.id;
@@ -151,7 +151,7 @@ impl ContractBuilder {
                     );
                     effective_extended_schemas.push((path.clone(), effective));
                 }
-                handler_paths.push((operation_id, path.clone()));
+                operation_paths.push((operation_id, path.clone()));
                 visible_operations.push(operation_contract.clone());
             }
             registered_operations.push(operation_contract);
@@ -159,10 +159,10 @@ impl ContractBuilder {
         registered_operations.sort_by(|left, right| left.path.cmp(&right.path));
         visible_operations.sort_by(|left, right| left.path.cmp(&right.path));
         effective_extended_schemas.sort_by(|left, right| left.0.cmp(&right.0));
-        handler_paths.sort_by(|left, right| left.1.cmp(&right.1));
-        let operation_paths =
+        operation_paths.sort_by(|left, right| left.1.cmp(&right.1));
+        let visible_paths =
             visible_operations.iter().map(|operation| operation.path.clone()).collect::<Vec<_>>();
-        let discovery = discovery_tree(&root, &operation_paths);
+        let discovery = discovery_tree(&root, &visible_paths);
 
         Ok(CliContract {
             operations: visible_operations,
@@ -170,7 +170,7 @@ impl ContractBuilder {
             discovery,
             extended_schema: application_extended_schema,
             effective_extended_schemas,
-            handler_paths,
+            operation_paths,
         })
     }
 }

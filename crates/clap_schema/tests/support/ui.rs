@@ -38,7 +38,7 @@ impl UiProject {
 
         let facade = repository_root().to_string_lossy().replace('\\', "/");
         let manifest = format!(
-            "[package]\nname = \"clap_schema-ui-{fixture}\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[dependencies]\nclap_schema = {{ path = \"{facade}\" }}\n"
+            "[package]\nname = \"clap_schema-ui-{fixture}\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[dependencies]\nclap = {{ version = \"4.6.6\", features = [\"derive\"] }}\nclap_schema = {{ path = \"{facade}\" }}\n"
         );
         fs::write(root.join("Cargo.toml"), manifest).unwrap_or_else(|error| {
             panic!("failed to write temporary UI manifest `{}`: {error}", root.display())
