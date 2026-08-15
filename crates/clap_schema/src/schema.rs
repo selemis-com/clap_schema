@@ -76,3 +76,25 @@ where
 fn schema_generator() -> SchemaGenerator {
     SchemaSettings::draft2020_12().for_serialize().into_generator()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Named fixture whose generated root schema would normally contain a Rust type title.
+    #[derive(JsonSchema)]
+    #[expect(dead_code, reason = "fixture is reflected into JSON Schema")]
+    struct Fixture {
+        /// Example field retained in the generated schema.
+        value: String,
+    }
+
+    #[test]
+    fn root_schemas_omit_dialect_and_type_title() {
+        let schema = schema_for::<Fixture>();
+
+        assert!(schema.get("$schema").is_none());
+        assert!(schema.get("title").is_none());
+        assert!(schema["properties"].get("value").is_some());
+    }
+}

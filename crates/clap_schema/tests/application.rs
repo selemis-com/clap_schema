@@ -369,44 +369,53 @@ mod tests {
     use super::*;
 
     #[test]
-    fn complex_topology_uses_canonical_paths_and_visibility() -> clap_schema::Result<()> {
-        let contract = Cli::schema()?;
-
-        for path in [
-            &["objects", "get"][..],
-            &["objects", "list"][..],
-            &["objects", "delete"][..],
-            &["objects", "access"][..],
-            &["objects", "access", "grant"][..],
-            &["objects", "access", "revoke"][..],
-            &["search"][..],
-            &["whoami"][..],
-        ] {
-            assert!(contract.command(path).is_ok(), "missing visible command: {path:?}");
+    fn complex_topology_preserves_canonical_visible_paths() -> clap_schema::Result<()> {
+        fn collect_paths(document: &clap_schema::SchemaDocument, paths: &mut Vec<Vec<String>>) {
+            for child in &document.subcommands {
+                let clap_schema::SchemaSubcommand::Resolved(child) = child else {
+                    panic!("full schema must resolve every child");
+                };
+                paths.push(child.command.path.clone());
+                collect_paths(child, paths);
+            }
         }
 
-        assert!(contract.command(&["utilities", "whoami"]).is_err());
-        assert!(contract.command(&["admin", "status"]).is_err());
+        let contract = Cli::schema()?;
+        let full = contract.schema(&clap_schema::SchemaRequest::default().with_full(true))?;
+        let mut paths = Vec::new();
+        collect_paths(&full, &mut paths);
+        assert_eq!(
+            paths,
+            [
+                &["objects"][..],
+                &["objects", "access"][..],
+                &["objects", "access", "grant"][..],
+                &["objects", "access", "revoke"][..],
+                &["objects", "delete"][..],
+                &["objects", "get"][..],
+                &["objects", "list"][..],
+                &["search"][..],
+                &["whoami"][..],
+            ]
+            .into_iter()
+            .map(|path| path.iter().map(|segment| (*segment).to_owned()).collect::<Vec<_>>())
+            .collect::<Vec<_>>()
+        );
+
         assert!(contract.command_for::<StatusArgs>().is_none());
-        assert!(contract.command(&["schema"]).is_err());
 
         let aliased = contract.command(&["objects", "show"])?;
         assert_eq!(aliased.path, vec!["objects".to_owned(), "get".to_owned()]);
         assert_eq!(aliased.aliases, vec!["show".to_owned()]);
-
-        assert!(contract.command(&["admin"]).is_err());
-        assert!(contract.command(&["schema"]).is_err());
         Ok(())
     }
 
     #[test]
-    fn application_metadata_remains_schema_only() -> clap_schema::Result<()> {
+    fn application_extensions_compose_and_resolve() -> clap_schema::Result<()> {
         let contract = Cli::schema()?;
         let metadata = contract.extended_schema().expect("application metadata schema");
 
         assert_eq!(metadata["type"], "object");
-        assert!(metadata.get("$schema").is_none());
-        assert!(metadata.get("title").is_none());
         assert!(metadata["properties"].get("mutates").is_some());
         assert!(metadata["properties"].get("retry").is_some());
 
@@ -610,8 +619,6 @@ mod tests {
         let get = contract.command_for::<GetObjectArgs>().expect("get operation");
         let get_output = get.output.as_ref().expect("get output");
         assert_eq!(get_output["type"], "object");
-        assert!(get_output.get("$schema").is_none());
-        assert!(get_output.get("title").is_none());
         let get_schema = serde_json::to_string(get_output).expect("serialize get schema");
         assert!(get_schema.contains("document"));
         assert!(get_schema.contains("note"));

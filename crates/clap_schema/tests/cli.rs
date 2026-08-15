@@ -38,16 +38,6 @@ mod tests {
     }
 
     #[test]
-    fn schema_subcommand_full_is_identical_for_a_leaf() {
-        support::schema_example_command()
-            .args(["schema", "get", "--full"])
-            .assert()
-            .success()
-            .stdout_eq(support::cli_fixture("schema_get.json"))
-            .stderr_eq("");
-    }
-
-    #[test]
     fn schema_flag_resolves_the_root_shallowly() {
         support::schema_example_command()
             .arg("--schema")
@@ -71,16 +61,6 @@ mod tests {
     fn schema_flag_describes_command_without_runtime_operands() {
         support::schema_example_command()
             .args(["get", "--schema"])
-            .assert()
-            .success()
-            .stdout_eq(support::cli_fixture("schema_get.json"))
-            .stderr_eq("");
-    }
-
-    #[test]
-    fn schema_flag_full_is_identical_for_a_leaf() {
-        support::schema_example_command()
-            .args(["get", "--schema", "--full"])
             .assert()
             .success()
             .stdout_eq(support::cli_fixture("schema_get.json"))

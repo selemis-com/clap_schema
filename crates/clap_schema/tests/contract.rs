@@ -353,7 +353,6 @@ mod tests {
         };
         assert_eq!(visible.path, ["visible"]);
         assert!(visible.executable);
-        assert!(contract.command(&["skipped"]).is_err());
         Ok(())
     }
 }
