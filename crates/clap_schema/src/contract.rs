@@ -222,7 +222,7 @@ struct ResolvedCommand {
 }
 
 /// Resolves the single application-wide extension allowed by the contract model.
-fn unique_application_extension(
+const fn unique_application_extension(
     extended: &[ExtendedSchemaFactory],
 ) -> Result<Option<ExtendedSchemaFactory>> {
     match extended {

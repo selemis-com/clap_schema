@@ -257,10 +257,7 @@ mod tests {
             .extend::<CreateMetadata>()
             .build()
             .expect_err("duplicate application extension");
-        assert!(matches!(
-            duplicate_extension,
-            clap_schema::Error::DuplicateApplicationExtension
-        ));
+        assert!(matches!(duplicate_extension, clap_schema::Error::DuplicateApplicationExtension));
     }
 
     #[test]
