@@ -570,6 +570,73 @@ mod tests {
     }
 
     #[test]
+    fn schema_requests_control_only_child_resolution_depth() -> clap_schema::Result<()> {
+        let contract = Cli::schema()?;
+
+        let shallow = contract.schema(&clap_schema::SchemaRequest::new(["objects"]))?;
+        assert_eq!(shallow.command.path, ["objects"]);
+        assert_eq!(shallow.subcommands.len(), 4);
+        assert!(
+            shallow
+                .subcommands
+                .iter()
+                .all(|child| matches!(child, clap_schema::SchemaSubcommand::Summary(_)))
+        );
+
+        let access = shallow
+            .subcommands
+            .iter()
+            .find_map(|child| match child {
+                clap_schema::SchemaSubcommand::Summary(summary)
+                    if summary.path == ["objects", "access"] =>
+                {
+                    Some(summary)
+                }
+                _ => None,
+            })
+            .expect("access summary");
+        assert!(access.executable);
+        assert!(access.has_subcommands);
+
+        let full =
+            contract.schema(&clap_schema::SchemaRequest::new(["objects"]).with_full(true))?;
+        assert_eq!(full.command, shallow.command);
+        assert_eq!(full.subcommands.len(), shallow.subcommands.len());
+        assert!(
+            full.subcommands
+                .iter()
+                .all(|child| matches!(child, clap_schema::SchemaSubcommand::Resolved(_)))
+        );
+
+        let access = full
+            .subcommands
+            .iter()
+            .find_map(|child| match child {
+                clap_schema::SchemaSubcommand::Resolved(command)
+                    if command.command.path == ["objects", "access"] =>
+                {
+                    Some(command)
+                }
+                _ => None,
+            })
+            .expect("resolved access command");
+        assert_eq!(access.subcommands.len(), 2);
+        assert!(
+            access
+                .subcommands
+                .iter()
+                .all(|child| matches!(child, clap_schema::SchemaSubcommand::Resolved(_)))
+        );
+
+        let leaf = clap_schema::SchemaRequest::new(["objects", "get"]);
+        let shallow_leaf = contract.schema(&leaf)?;
+        let full_leaf = contract.schema(&leaf.with_full(true))?;
+        assert_eq!(shallow_leaf, full_leaf);
+        assert!(shallow_leaf.subcommands.is_empty());
+        Ok(())
+    }
+
+    #[test]
     fn handler_outputs_follow_serialization_view_for_complex_types() -> clap_schema::Result<()> {
         let contract = Cli::schema()?;
 

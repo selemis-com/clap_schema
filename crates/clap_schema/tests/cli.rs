@@ -8,12 +8,22 @@ mod tests {
     use super::support;
 
     #[test]
-    fn schema_subcommand_lists_executable_commands() {
+    fn schema_subcommand_resolves_the_root_shallowly() {
         support::schema_example_command()
             .arg("schema")
             .assert()
             .success()
-            .stdout_eq(support::cli_fixture("schema_catalog.json"))
+            .stdout_eq(support::cli_fixture("schema_root.json"))
+            .stderr_eq("");
+    }
+
+    #[test]
+    fn schema_subcommand_full_resolves_root_children() {
+        support::schema_example_command()
+            .args(["schema", "--full"])
+            .assert()
+            .success()
+            .stdout_eq(support::cli_fixture("schema_root_full.json"))
             .stderr_eq("");
     }
 
@@ -28,12 +38,32 @@ mod tests {
     }
 
     #[test]
-    fn schema_flag_lists_executable_commands() {
+    fn schema_subcommand_full_is_identical_for_a_leaf() {
+        support::schema_example_command()
+            .args(["schema", "get", "--full"])
+            .assert()
+            .success()
+            .stdout_eq(support::cli_fixture("schema_get.json"))
+            .stderr_eq("");
+    }
+
+    #[test]
+    fn schema_flag_resolves_the_root_shallowly() {
         support::schema_example_command()
             .arg("--schema")
             .assert()
             .success()
-            .stdout_eq(support::cli_fixture("schema_catalog.json"))
+            .stdout_eq(support::cli_fixture("schema_root.json"))
+            .stderr_eq("");
+    }
+
+    #[test]
+    fn schema_flag_full_resolves_root_children() {
+        support::schema_example_command()
+            .args(["--schema", "--full"])
+            .assert()
+            .success()
+            .stdout_eq(support::cli_fixture("schema_root_full.json"))
             .stderr_eq("");
     }
 
@@ -41,6 +71,16 @@ mod tests {
     fn schema_flag_describes_command_without_runtime_operands() {
         support::schema_example_command()
             .args(["get", "--schema"])
+            .assert()
+            .success()
+            .stdout_eq(support::cli_fixture("schema_get.json"))
+            .stderr_eq("");
+    }
+
+    #[test]
+    fn schema_flag_full_is_identical_for_a_leaf() {
+        support::schema_example_command()
+            .args(["get", "--schema", "--full"])
             .assert()
             .success()
             .stdout_eq(support::cli_fixture("schema_get.json"))

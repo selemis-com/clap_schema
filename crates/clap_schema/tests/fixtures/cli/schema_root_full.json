@@ -1,0 +1,61 @@
+{
+  "name": "agentctl",
+  "path": [],
+  "description": "Top-level arguments for the agent-control CLI",
+  "usage": "agentctl [OPTIONS] <COMMAND>",
+  "options": [
+    {
+      "id": "json",
+      "long": "json",
+      "help": "Emits command results as JSON when enabled"
+    }
+  ],
+  "has_subcommands": true,
+  "subcommands": [
+    {
+      "name": "get",
+      "path": [
+        "get"
+      ],
+      "description": "Show one resource",
+      "usage": "agentctl get [OPTIONS] <ID>",
+      "arguments": [
+        {
+          "id": "id",
+          "index": 1,
+          "value_names": [
+            "ID"
+          ],
+          "help": "Identifier of the resource to fetch",
+          "required": true
+        }
+      ],
+      "options": [
+        {
+          "id": "json",
+          "long": "json",
+          "help": "Emits command results as JSON when enabled"
+        }
+      ],
+      "executable": true,
+      "output": {
+        "description": "Resource returned by the get command.",
+        "properties": {
+          "id": {
+            "description": "Stable resource identifier.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Human-readable resource name.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object"
+      }
+    }
+  ]
+}

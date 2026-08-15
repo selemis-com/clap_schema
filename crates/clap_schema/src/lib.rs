@@ -60,7 +60,8 @@
 //! let output = create.output.as_ref().expect("create output");
 //! assert_eq!(output.get("type").and_then(serde_json::Value::as_str), Some("object"));
 //! assert!(create.options.iter().any(|argument| argument.long.as_deref() == Some("name")));
-//! assert_eq!(contract.catalog(&[])?.len(), 1);
+//! let root = contract.schema(&clap_schema::SchemaRequest::default())?;
+//! assert_eq!(root.subcommands.len(), 1);
 //! # Ok::<(), clap_schema::Error>(())
 //! ```
 //!
@@ -260,8 +261,10 @@
 //! # Scope
 //!
 //! The wire model does not define a second input schema or parser. For
-//! applications that expose a schema-discovery command, [`CliContract::command`],
-//! [`CliContract::catalog`], and [`CliContract::full`] reflect canonical paths,
+//! applications that expose schema discovery, [`CliContract::schema`] resolves a [`SchemaRequest`]
+//! into one selected command whose children are either shallow summaries or recursively resolved
+//! contracts. Lower-level [`CliContract::command`], [`CliContract::catalog`], and
+//! [`CliContract::full`] views remain available. All discovery views reflect canonical paths,
 //! aliases, descriptions, visibility, usage, and a compact visible-argument summary
 //! directly from Clap's built command tree. Applications may separately expose an app-defined
 //! extension schema without making metadata values part of this crate. The argument summary is
@@ -300,6 +303,7 @@ pub use clap_schema_derive::{CliSchema, CommandGroup, CommandSchema, handler};
 pub use contract::{ContractBuilder, Error, Result};
 pub use model::{
     ArgumentInfo, CliContract, CommandInfo, CommandNode, CommandSummary, OperationContract,
+    SchemaCommandSummary, SchemaDocument, SchemaRequest, SchemaSubcommand,
 };
 pub use operation::{Operation, WriteJsonError, write_json};
 

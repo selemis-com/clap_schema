@@ -15,10 +15,18 @@ use crate::{
 /// Result type returned by `clap_schema`.
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Contract construction error.
+/// Contract construction and discovery error.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    /// Command-local schema discovery has unsupported trailing arguments.
+    #[error("--schema accepts only an optional trailing --full")]
+    InvalidSchemaFlagArguments,
+
+    /// A command-local schema path contains a non-UTF-8 segment.
+    #[error("schema command paths must be valid UTF-8")]
+    NonUtf8SchemaPath,
+
     /// A declared operation path does not exist in Clap.
     #[error("unknown clap command path: {path}", path = format_path(.path))]
     UnknownCommand {

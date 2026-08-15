@@ -79,7 +79,51 @@ Derive-based executable commands use one named tuple payload, such as `Get(GetAr
 
 ## Command discovery
 
-A generated `CliContract` supports type-based lookup alongside three path-based discovery views:
+A generated `CliContract` resolves user- or agent-selected discovery through one request type:
+
+```rust
+let shallow = contract.schema(&clap_schema::SchemaRequest::new(["objects"]))?;
+let full = contract.schema(
+    &clap_schema::SchemaRequest::new(["objects"]).with_full(true),
+)?;
+# let _ = (shallow, full);
+# Ok::<(), clap_schema::Error>(())
+```
+
+The selected command itself is always fully described. Resolution depth applies only to its child
+commands:
+
+- `full = false` returns direct children as compact command summaries.
+- `full = true` recursively resolves every visible child into its complete command contract.
+- A leaf produces the same document in either mode because there are no children to expand.
+
+This gives command-local discovery predictable semantics: `tool --schema` resolves the root command
+and exposes its top-level command structure, while `tool --schema --full` resolves the same root and
+recursively includes the schema of every visible descendant. The same rule applies below the root.
+
+Applications can expose a dedicated namespace, command-local introspection, or both. Both routing
+forms should normalize to the same `SchemaRequest`:
+
+```text
+tool schema
+tool schema --full
+tool schema objects
+tool schema objects get
+tool schema objects --full
+
+tool --schema
+tool --schema --full
+tool objects --schema
+tool objects get --schema
+tool objects --schema --full
+```
+
+The runnable `schema_subcommand` example demonstrates both forms. `SchemaRequest::from_command_args`
+extracts the command-local form; tokens before `--schema` are a command path rather than a normal
+invocation, so required runtime operands are not needed merely to inspect a command.
+
+Lower-level discovery primitives remain available when an application needs a different document
+shape:
 
 | API | Purpose |
 | --- | --- |
@@ -89,31 +133,15 @@ A generated `CliContract` supports type-based lookup alongside three path-based 
 | `full(path)` | Inspect a command or group and its recursive visible subtree |
 
 Use type-based lookup from static Rust code so Clap renames cannot leave path literals behind. If
-one operation type is intentionally registered at multiple commands, the association is ambiguous and the path
-API remains explicit. Path-based queries are also the right choice for user- or agent-selected paths
-and accept visible Clap aliases; returned paths are always canonical.
+one operation type is intentionally registered at multiple commands, the association is ambiguous
+and the path API remains explicit. Path-based queries accept visible Clap aliases; returned paths
+are always canonical.
 
-Shallow and recursive views include Clap-rendered usage plus compact positional/option context:
+Resolved command contracts include Clap-rendered usage plus compact positional/option context:
 identifiers, visible names and aliases, positional indexes, value names, help, unconditional
-requiredness, visible defaults, and visible finite possible values.
-
-This context is deliberately not a second argv grammar. Clap-generated `--help` remains authoritative for custom parsers, conditional requirements, conflicts, groups, and other invocation relationships.
-
-The discovery model is independent of how an application routes those queries. A CLI can expose a
-dedicated namespace, command-local introspection, or both, backed by the same `CliContract` APIs:
-
-```text
-tool schema
-tool schema objects get
-tool schema objects --full
-
-tool --schema
-tool objects get --schema
-```
-
-The runnable `schema_subcommand` example demonstrates both forms. The command-local form treats the
-tokens before `--schema` as a command path rather than a normal invocation, so required runtime
-operands are not needed merely to inspect a command.
+requiredness, visible defaults, and visible finite possible values. This context is deliberately not
+a second argv grammar. Clap-generated `--help` remains authoritative for custom parsers, conditional
+requirements, conflicts, groups, and other invocation relationships.
 
 ## Application-defined extensions
 
@@ -164,7 +192,7 @@ The repository keeps the example set intentionally small:
 | --- | --- |
 | `basic` | Derive API, handler-derived output schema, and runtime `write_json` |
 | `operation_identity` | Rust operation identity across a nested Clap command, handler contract, and runtime dispatch |
-| `schema_subcommand` | Dedicated `schema <command>` and command-local `<command> --schema` discovery |
+| `schema_subcommand` | Unified shallow/full discovery through `schema <command>` and `<command> --schema` |
 | `application_extension` | Application-owned metadata values paired with clap_schema-generated extension schemas |
 | `builder_api` | The same contract model with Clap's builder API |
 

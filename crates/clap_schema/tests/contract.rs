@@ -5,10 +5,10 @@ mod support;
 
 #[cfg(test)]
 mod tests {
-    use std::convert::Infallible;
+    use std::{convert::Infallible, ffi::OsString};
 
     use clap::{Args, Command, Parser, Subcommand};
-    use clap_schema::{CliSchema, CommandSchema, ContractBuilder};
+    use clap_schema::{CliSchema, CommandSchema, ContractBuilder, SchemaRequest};
     use schemars::JsonSchema;
     use serde::Serialize;
     use snapbox::assert_data_eq;
@@ -305,6 +305,22 @@ mod tests {
         let inherited =
             contract.extended_schema_for(&["create"])?.expect("inherited application extension");
         assert_eq!(inherited, application);
+        Ok(())
+    }
+
+    #[test]
+    fn command_local_schema_flags_normalize_to_one_request() -> clap_schema::Result<()> {
+        let args = ["objects", "get", "--schema", "--full"].map(OsString::from);
+        let request = SchemaRequest::from_command_args(&args)?.expect("schema request");
+        assert_eq!(request.path, ["objects", "get"]);
+        assert!(request.full);
+
+        let normal_args = ["objects", "get"].map(OsString::from);
+        assert!(SchemaRequest::from_command_args(&normal_args)?.is_none());
+
+        let invalid_args = ["objects", "--schema", "extra"].map(OsString::from);
+        let error = SchemaRequest::from_command_args(&invalid_args).expect_err("invalid suffix");
+        assert!(matches!(error, clap_schema::Error::InvalidSchemaFlagArguments));
         Ok(())
     }
 

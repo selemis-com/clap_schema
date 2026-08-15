@@ -1,6 +1,6 @@
 //! Serializable successful-output contracts and command discovery views.
 
-use std::any::TypeId;
+use std::{any::TypeId, ffi::OsString};
 
 use serde::Serialize;
 use serde_json::Value;
@@ -172,6 +172,23 @@ impl CliContract {
             .or(self.extended_schema.as_ref())
     }
 
+    /// Resolves one schema-discovery request.
+    ///
+    /// The selected command is always described completely. In shallow mode, direct child
+    /// commands are exposed as compact summaries. When `request.full` is true, every visible child
+    /// is recursively resolved into the same complete command shape. Leaves therefore produce the
+    /// same document in either mode because they have no children to expand.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::Error::UnknownCommand`] when the request path is not present in the
+    /// schema-visible command tree.
+    pub fn schema(&self, request: &SchemaRequest) -> crate::Result<SchemaDocument> {
+        let path = request.path.iter().map(String::as_str).collect::<Vec<_>>();
+        let node = self.discovery.resolve(&path)?;
+        Ok(self.schema_document(node, request.full))
+    }
+
     /// Resolves a visible command or command group by canonical name or Clap alias.
     ///
     /// Returned paths are always canonical and exclude the executable name. When static Rust code
@@ -236,6 +253,33 @@ impl CliContract {
         }
     }
 
+    /// Builds one schema-discovery document at the requested child-resolution depth.
+    fn schema_document(&self, node: &DiscoveryNode, full: bool) -> SchemaDocument {
+        let command = self.command_info(node);
+        let subcommands = node
+            .children
+            .iter()
+            .map(|child| {
+                if full {
+                    SchemaSubcommand::Resolved(Box::new(self.schema_document(child, true)))
+                } else {
+                    SchemaSubcommand::Summary(self.schema_command_summary(child))
+                }
+            })
+            .collect();
+        SchemaDocument { command, subcommands }
+    }
+
+    /// Builds a compact public reference to one internal discovery node.
+    fn schema_command_summary(&self, node: &DiscoveryNode) -> SchemaCommandSummary {
+        SchemaCommandSummary {
+            path: node.path.clone(),
+            description: node.description.clone(),
+            executable: self.operation_for_owned_path(&node.path).is_some(),
+            has_subcommands: !node.children.is_empty(),
+        }
+    }
+
     /// Builds a recursive public view of one internal discovery node.
     fn command_node(&self, node: &DiscoveryNode) -> CommandNode {
         let info = self.command_info(node);
@@ -286,6 +330,96 @@ impl CliContract {
     }
 }
 
+/// One schema-discovery request.
+///
+/// `path` selects a visible command or command group by canonical name or Clap alias. `full`
+/// controls only child resolution depth: the selected command itself is always fully described.
+/// Applications can normalize both `schema <path> [--full]` and command-local
+/// `<path> --schema [--full]` syntax into this same request type.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SchemaRequest {
+    /// Command path excluding the executable name. An empty path selects the root command.
+    pub path: Vec<String>,
+    /// Whether visible child commands should be recursively resolved.
+    pub full: bool,
+}
+
+impl SchemaRequest {
+    /// Extracts command-local `<path> --schema [--full]` syntax from argv excluding the executable.
+    ///
+    /// Tokens before `--schema` are treated only as a command path, not as a runtime invocation.
+    /// Required operands and options therefore do not need to be supplied merely to inspect a
+    /// command. Returns `Ok(None)` when `--schema` is absent.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::Error::InvalidSchemaFlagArguments`] when anything other than an optional
+    /// trailing `--full` follows `--schema`, and [`crate::Error::NonUtf8SchemaPath`] when a path
+    /// segment is not valid UTF-8.
+    pub fn from_command_args(args: &[OsString]) -> crate::Result<Option<Self>> {
+        let Some(index) = args.iter().position(|argument| argument == "--schema") else {
+            return Ok(None);
+        };
+
+        let full = match &args[index + 1..] {
+            [] => false,
+            [flag] if flag == "--full" => true,
+            _ => return Err(crate::Error::InvalidSchemaFlagArguments),
+        };
+
+        let path = args[..index]
+            .iter()
+            .map(|segment| segment.to_str().map(ToOwned::to_owned))
+            .collect::<Option<Vec<_>>>()
+            .ok_or(crate::Error::NonUtf8SchemaPath)?;
+
+        Ok(Some(Self { path, full }))
+    }
+
+    /// Creates a shallow schema request for `path`.
+    #[must_use]
+    pub fn new<I, S>(path: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        Self { path: path.into_iter().map(Into::into).collect(), full: false }
+    }
+
+    /// Sets whether child commands are recursively resolved.
+    #[must_use]
+    pub const fn with_full(mut self, full: bool) -> Self {
+        self.full = full;
+        self
+    }
+}
+
+/// Resolved schema-discovery document for one selected command.
+///
+/// The selected command is flattened into the document itself. In shallow mode, `subcommands`
+/// contains [`SchemaCommandSummary`] entries for direct children. In full mode, each child is
+/// another fully resolved `SchemaDocument`. The wire shape is therefore stable while `--full`
+/// changes only the amount of child detail returned.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SchemaDocument {
+    /// Complete contract for the selected command itself.
+    #[serde(flatten)]
+    pub command: CommandInfo,
+    /// Direct child commands at the requested resolution depth.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub subcommands: Vec<SchemaSubcommand>,
+}
+
+/// One child entry in a [`SchemaDocument`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum SchemaSubcommand {
+    /// Compact child reference used by shallow schema discovery.
+    Summary(SchemaCommandSummary),
+    /// Recursively resolved child used by full schema discovery.
+    Resolved(Box<SchemaDocument>),
+}
+
 /// Contract for one executable operation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct OperationContract {
@@ -327,6 +461,22 @@ pub struct CommandInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output: Option<Value>,
     /// Whether the node has schema-visible child commands.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub has_subcommands: bool,
+}
+
+/// Compact schema-discovery reference to one direct child command.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SchemaCommandSummary {
+    /// Canonical command path excluding the executable name.
+    pub path: Vec<String>,
+    /// Command description reflected from Clap help metadata.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Whether this command is an executable operation.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub executable: bool,
+    /// Whether this command has schema-visible child commands.
     #[serde(default, skip_serializing_if = "is_false")]
     pub has_subcommands: bool,
 }

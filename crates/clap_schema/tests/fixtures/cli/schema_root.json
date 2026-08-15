@@ -1,0 +1,23 @@
+{
+  "name": "agentctl",
+  "path": [],
+  "description": "Top-level arguments for the agent-control CLI",
+  "usage": "agentctl [OPTIONS] <COMMAND>",
+  "options": [
+    {
+      "id": "json",
+      "long": "json",
+      "help": "Emits command results as JSON when enabled"
+    }
+  ],
+  "has_subcommands": true,
+  "subcommands": [
+    {
+      "path": [
+        "get"
+      ],
+      "description": "Show one resource",
+      "executable": true
+    }
+  ]
+}
