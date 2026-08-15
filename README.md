@@ -4,14 +4,14 @@
 
 The boundary is intentionally narrow:
 
-- Clap and `--help` own command discovery, invocation syntax, and input validation.
+- Clap owns command topology, help metadata, invocation syntax, and input validation.
 - A canonical Rust handler owns each executable operation.
 - The handler's `Result<T, E>` owns the successful output type.
 - Non-unit `T` must implement `serde::Serialize` and `schemars::JsonSchema`.
 - Schemars derives the JSON Schema for that serialized type.
 - `clap_schema::write_json` serializes the same successful `T` at runtime.
 
-There is no input-schema layer, output-selector model, protocol version, or API for manually declaring a successful output type beside the real handler.
+There is no input-schema layer, output-selector model, protocol version, or API for manually declaring a successful output type beside the real handler. Schema-discovery commands can query the same generated contract for visible command metadata without reproducing Clap's argument model.
 
 ## Example
 
@@ -86,6 +86,23 @@ let contract = clap_schema::ContractBuilder::new(command)
     .build()?;
 # Ok::<(), clap_schema::Error>(())
 ```
+
+## Command discovery
+
+`CliContract` also exposes a read-only discovery view reflected from the same Clap command tree:
+
+```rust
+let contract = Cli::schema()?;
+let create = contract.command(&["create"])?;
+let commands = contract.catalog(&[])?;
+let subtree = contract.full(&[])?;
+# let _ = (create, commands, subtree);
+# Ok::<(), clap_schema::Error>(())
+```
+
+Paths may use command aliases accepted by Clap, while returned paths are canonical. Catalogs contain visible executable descendants; `full` recursively includes visible groups and operations. Clap-hidden commands and `#[schema(skip)]` commands are absent from discovery and cannot be addressed through it.
+
+This is intended to support standalone commands such as `tool schema`, `tool schema objects`, and `tool schema objects --full` while leaving invocation syntax to `--help`.
 
 The crate-level API documentation, examples, and this README are the authoritative documentation.
 

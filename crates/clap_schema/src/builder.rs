@@ -22,15 +22,13 @@ pub struct ContractBuilder {
     root: Command,
     /// Handler-derived operations keyed by canonical command path.
     operations: Vec<(Vec<String>, Operation)>,
-    /// Whether commands hidden from Clap help are included in the contract.
-    include_hidden: bool,
 }
 
 impl ContractBuilder {
     /// Creates a contract builder around a Clap command tree.
     #[must_use]
     pub const fn new(root: Command) -> Self {
-        Self { root, operations: Vec::new(), include_hidden: false }
+        Self { root, operations: Vec::new() }
     }
 
     /// Registers one executable operation by canonical command path.
@@ -47,13 +45,6 @@ impl ContractBuilder {
         self
     }
 
-    /// Includes commands hidden from Clap help in the generated contract.
-    #[must_use]
-    pub const fn include_hidden(mut self, include: bool) -> Self {
-        self.include_hidden = include;
-        self
-    }
-
     /// Builds and validates the contract.
     ///
     /// # Errors
@@ -61,24 +52,28 @@ impl ContractBuilder {
     /// Returns an error when an operation path does not exist in the actual
     /// Clap tree, or when the same operation path is registered more than once.
     pub fn build(self) -> Result<CliContract> {
-        let Self { mut root, operations, include_hidden } = self;
+        let Self { mut root, operations } = self;
         root.build();
         reject_duplicate_paths(&operations)?;
 
-        let mut built = Vec::with_capacity(operations.len());
+        let mut registered_operations = Vec::with_capacity(operations.len());
+        let mut visible_operations = Vec::with_capacity(operations.len());
         for (path, operation) in operations {
             let resolved = reflect::command_at(&root, &path)?;
-            if resolved.hidden && !include_hidden {
-                continue;
+            let operation =
+                OperationContract { path, output: operation.output.map(|factory| factory()) };
+            if !resolved.hidden {
+                visible_operations.push(operation.clone());
             }
-            built.push(OperationContract {
-                path,
-                output: operation.output.map(|factory| factory()),
-            });
+            registered_operations.push(operation);
         }
-        built.sort_by(|left, right| left.path.cmp(&right.path));
+        registered_operations.sort_by(|left, right| left.path.cmp(&right.path));
+        visible_operations.sort_by(|left, right| left.path.cmp(&right.path));
+        let operation_paths =
+            visible_operations.iter().map(|operation| operation.path.clone()).collect::<Vec<_>>();
+        let discovery = reflect::discovery_tree(&root, &operation_paths);
 
-        Ok(CliContract { operations: built })
+        Ok(CliContract { operations: visible_operations, registered_operations, discovery })
     }
 }
 

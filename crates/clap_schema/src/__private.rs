@@ -55,8 +55,7 @@ where
     let mut registry = Registry::default();
     T::__clap_schema_register(&mut registry)?;
 
-    let mut builder =
-        ContractBuilder::new(T::command()).include_hidden(T::__clap_schema_include_hidden());
+    let mut builder = ContractBuilder::new(T::command());
     for (path, operation) in registry.entries {
         builder = builder.operation(path, operation);
     }

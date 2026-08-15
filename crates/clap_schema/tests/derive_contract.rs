@@ -25,9 +25,14 @@ enum Commands {
     Admin(AdminCommands),
 
     /// Deliberately renamed by Clap.
-    #[command(name = "rm")]
+    #[command(name = "rm", visible_alias = "delete")]
     #[schema(handler = remove_thing)]
     RemoveThing(RemoveThingArgs),
+
+    /// Internal maintenance command.
+    #[command(name = "internal", hide = true)]
+    #[schema(handler = internal)]
+    Internal(StatusArgs),
 
     #[schema(skip)]
     Schema,
@@ -100,6 +105,11 @@ async fn status(_command: StatusArgs) -> Result<Status, StatusError> {
     Err(StatusError::Unavailable)
 }
 
+#[clap_schema::handler]
+async fn internal(_command: StatusArgs) -> Result<Status, StatusError> {
+    Err(StatusError::Unavailable)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,7 +121,10 @@ mod tests {
         assert!(contract.operation(&["create_thing"]).is_some());
         assert!(contract.operation(&["admin", "status"]).is_some());
         assert!(contract.operation(&["rm"]).is_some());
+        assert!(contract.operation(&["internal"]).is_none());
+        assert!(contract.operation_for_invocation(&["internal"]).is_some());
         assert!(contract.operation(&["schema"]).is_none());
+        assert!(contract.operation_for_invocation(&["schema"]).is_none());
         Ok(())
     }
 
@@ -126,6 +139,36 @@ mod tests {
 
         let remove = contract.operation(&["rm"]).expect("remove contract");
         assert!(remove.output.is_none());
+        Ok(())
+    }
+    #[test]
+    fn discovery_uses_clap_topology_aliases_and_visibility() -> clap_schema::Result<()> {
+        let contract = Cli::schema()?;
+
+        let remove = contract.command(&["delete"])?;
+        assert_eq!(remove.path, vec!["rm".to_owned()]);
+        assert_eq!(remove.aliases, vec!["delete".to_owned()]);
+        assert!(remove.executable);
+        assert!(!remove.has_subcommands);
+        assert!(remove.output.is_none());
+
+        let admin = contract.command(&["admin"])?;
+        assert!(!admin.executable);
+        assert!(admin.has_subcommands);
+
+        let catalog = contract.catalog(&[])?;
+        assert_eq!(
+            catalog.iter().map(|entry| entry.path.join(" ")).collect::<Vec<_>>(),
+            ["admin status", "create_thing", "rm"]
+        );
+        assert!(contract.command(&["internal"]).is_err());
+        assert!(contract.command(&["schema"]).is_err());
+
+        let full = contract.full(&["admin"])?;
+        assert_eq!(full.path, vec!["admin".to_owned()]);
+        assert_eq!(full.subcommands.len(), 1);
+        assert_eq!(full.subcommands[0].path, vec!["admin".to_owned(), "status".to_owned()]);
+        assert!(full.subcommands[0].output.is_some());
         Ok(())
     }
 }

@@ -1,4 +1,4 @@
-//! Expose the generated contract through the CLI itself.
+//! Expose generated discovery and output contracts through a standalone schema command.
 #![expect(dead_code, reason = "example data types are reflected rather than executed")]
 
 use clap::{Args, Parser, Subcommand};
@@ -26,7 +26,7 @@ enum Commands {
     #[schema(handler = get)]
     Get(GetArgs),
 
-    /// Print the machine-readable CLI contract.
+    /// Discover commands and successful-output contracts.
     #[schema(skip)]
     Schema(SchemaArgs),
 }
@@ -41,6 +41,10 @@ struct GetArgs {
 /// Arguments accepted by the contract-discovery command.
 #[derive(Debug, Args)]
 struct SchemaArgs {
+    /// Recursively expand a selected command group.
+    #[arg(long)]
+    full: bool,
+
     /// Optional command path, such as `get`.
     path: Vec<String>,
 }
@@ -69,15 +73,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let Cli { json, command } = cli;
+
     match command {
         Commands::Schema(request) => {
             let contract = Cli::schema()?;
-            if request.path.is_empty() {
-                println!("{}", serde_json::to_string_pretty(&contract)?);
+            let path = request.path.iter().map(String::as_str).collect::<Vec<_>>();
+            if request.full {
+                println!("{}", serde_json::to_string_pretty(&contract.full(&path)?)?);
             } else {
-                let path = request.path.iter().map(String::as_str).collect::<Vec<_>>();
-                let operation = contract.operation(&path).ok_or("unknown contract operation")?;
-                println!("{}", serde_json::to_string_pretty(operation)?);
+                let command = contract.command(&path)?;
+                if command.has_subcommands {
+                    println!("{}", serde_json::to_string_pretty(&contract.catalog(&path)?)?);
+                } else {
+                    println!("{}", serde_json::to_string_pretty(&command)?);
+                }
             }
         }
         Commands::Get(request) => {

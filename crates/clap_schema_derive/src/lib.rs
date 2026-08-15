@@ -18,7 +18,6 @@ use syn::{
 /// # `#[schema(...)]` options
 ///
 /// - `handler = path` binds an executable root operation to its canonical handler.
-/// - `include_hidden` includes Clap-hidden commands in the contract.
 #[proc_macro_derive(CliSchema, attributes(schema, command))]
 pub fn derive_cli_schema(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -227,7 +226,7 @@ fn handler_helper_path(mut path: Path) -> syn::Result<Path> {
 /// Expands a `CliSchema` derive into root operation registration.
 fn expand_cli_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
     let crate_path = clap_schema_path();
-    let RootSchema { handler, include_hidden } = parse_root_schema(&input.attrs)?;
+    let RootSchema { handler } = parse_root_schema(&input.attrs)?;
     let commands = find_subcommand_field(&input)?;
     if handler.is_none() && commands.is_none() {
         return Err(syn::Error::new_spanned(
@@ -260,9 +259,6 @@ fn expand_cli_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
 
     Ok(quote! {
         impl #impl_generics #crate_path::CliSchema for #name #type_generics #where_clause {
-            fn __clap_schema_include_hidden() -> bool {
-                #include_hidden
-            }
 
             fn __clap_schema_register(
                 registry: &mut #crate_path::__private::Registry,
@@ -489,8 +485,6 @@ fn expand_command_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
 struct RootSchema {
     /// Optional executable root handler.
     handler: Option<Path>,
-    /// Whether hidden Clap commands are included.
-    include_hidden: bool,
 }
 
 /// Parses root `#[schema(...)]` metadata.
@@ -503,8 +497,6 @@ fn parse_root_schema(attrs: &[Attribute]) -> syn::Result<RootSchema> {
                     return Err(meta.error("duplicate root handler"));
                 }
                 result.handler = Some(meta.value()?.parse()?);
-            } else if meta.path.is_ident("include_hidden") {
-                result.include_hidden = true;
             } else {
                 return Err(meta.error("unsupported #[schema(...)] root option"));
             }

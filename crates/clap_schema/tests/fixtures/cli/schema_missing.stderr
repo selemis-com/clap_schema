@@ -1,1 +1,1 @@
-Error: "unknown contract operation"
+Error: UnknownCommand { path: ["missing"] }

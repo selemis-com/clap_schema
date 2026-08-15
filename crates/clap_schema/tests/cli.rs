@@ -8,12 +8,12 @@ mod tests {
     use super::support;
 
     #[test]
-    fn schema_subcommand_prints_the_contract() {
+    fn schema_subcommand_lists_executable_commands() {
         support::schema_example_command()
             .arg("schema")
             .assert()
             .success()
-            .stdout_eq(support::cli_fixture("schema_contract.json"))
+            .stdout_eq(support::cli_fixture("schema_catalog.json"))
             .stderr_eq("");
     }
 
