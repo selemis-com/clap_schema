@@ -7,7 +7,7 @@ use schemars::JsonSchema;
 
 use crate::{
     Operation,
-    model::{ArgumentInfo, CliContract, DiscoveryNode, OperationContract},
+    model::{ArgumentInfo, CliContract, DiscoveryNode, OperationEntry},
     operation::OperationDescriptor,
     schema::{ExtendedSchemaFactory, compose_extended_schemas, extended_schema_factory},
 };
@@ -176,46 +176,35 @@ impl ContractBuilder {
         reject_duplicate_paths(&operations)?;
 
         let application_extended_schema = extended.map(ExtendedSchemaFactory::root);
-        let mut registered_operations = Vec::with_capacity(operations.len());
-        let mut visible_operations = Vec::with_capacity(operations.len());
-        let mut effective_extended_schemas = Vec::new();
-        let mut operation_paths = Vec::with_capacity(operations.len());
+        let mut operation_entries = Vec::with_capacity(operations.len());
         for (path, operation) in operations {
             let resolved = command_at(&root, &path)?;
-            let operation_id = operation.id;
-            let operation_extended = operation.extended;
-            let operation_contract = OperationContract {
-                path: path.clone(),
-                output: operation.output.map(|factory| factory()),
-            };
-            if !resolved.hidden {
-                if let Some(operation) = operation_extended {
-                    let effective = extended.map_or_else(
+            let visible = !resolved.hidden;
+            let extended_schema = if visible {
+                operation.extended.map(|operation| {
+                    extended.map_or_else(
                         || operation.root(),
                         |application| compose_extended_schemas(application, operation),
-                    );
-                    effective_extended_schemas.push((path.clone(), effective));
-                }
-                operation_paths.push((operation_id, path.clone()));
-                visible_operations.push(operation_contract.clone());
-            }
-            registered_operations.push(operation_contract);
+                    )
+                })
+            } else {
+                None
+            };
+            operation_entries.push(OperationEntry {
+                id: operation.id,
+                path,
+                output: operation.output.map(|factory| factory()),
+                extended_schema,
+                visible,
+            });
         }
-        registered_operations.sort_by(|left, right| left.path.cmp(&right.path));
-        visible_operations.sort_by(|left, right| left.path.cmp(&right.path));
-        effective_extended_schemas.sort_by(|left, right| left.0.cmp(&right.0));
-        operation_paths.sort_by(|left, right| left.1.cmp(&right.1));
-        let visible_paths =
-            visible_operations.iter().map(|operation| operation.path.clone()).collect::<Vec<_>>();
-        let discovery = discovery_tree(&root, &visible_paths);
+        operation_entries.sort_by(|left, right| left.path.cmp(&right.path));
+        let discovery = discovery_tree(&root, &operation_entries);
 
         Ok(CliContract {
-            operations: visible_operations,
-            registered_operations,
+            operations: operation_entries,
             discovery,
             extended_schema: application_extended_schema,
-            effective_extended_schemas,
-            operation_paths,
         })
     }
 }
@@ -253,8 +242,8 @@ fn command_at(root: &Command, path: &[String]) -> Result<ResolvedCommand> {
 }
 
 /// Builds the visible command topology needed to discover registered operations.
-fn discovery_tree(root: &Command, operation_paths: &[Vec<String>]) -> DiscoveryNode {
-    build_discovery_node(root, Vec::new(), operation_paths, true)
+fn discovery_tree(root: &Command, operations: &[OperationEntry]) -> DiscoveryNode {
+    build_discovery_node(root, Vec::new(), operations, true)
         .expect("the root discovery node is always retained")
 }
 
@@ -262,7 +251,7 @@ fn discovery_tree(root: &Command, operation_paths: &[Vec<String>]) -> DiscoveryN
 fn build_discovery_node(
     command: &Command,
     path: Vec<String>,
-    operation_paths: &[Vec<String>],
+    operations: &[OperationEntry],
     root: bool,
 ) -> Option<DiscoveryNode> {
     if !root && command.is_hide_set() {
@@ -273,13 +262,13 @@ fn build_discovery_node(
     for child in command.get_subcommands() {
         let mut child_path = path.clone();
         child_path.push(child.get_name().to_owned());
-        if let Some(child) = build_discovery_node(child, child_path, operation_paths, false) {
+        if let Some(child) = build_discovery_node(child, child_path, operations, false) {
             children.push(child);
         }
     }
     children.sort_by(|left, right| left.name.cmp(&right.name));
 
-    let executable = operation_paths.iter().any(|operation_path| operation_path == &path);
+    let executable = operations.iter().any(|operation| operation.visible && operation.path == path);
     if !root && !executable && children.is_empty() {
         return None;
     }

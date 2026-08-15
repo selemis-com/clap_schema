@@ -13,18 +13,12 @@ use crate::Operation;
 /// produce the canonical serializable discovery representation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliContract {
-    /// Schema-visible executable operations and their successful-output contracts.
-    pub(crate) operations: Vec<OperationContract>,
-    /// Every registered operation, including Clap-hidden operations.
-    pub(crate) registered_operations: Vec<OperationContract>,
+    /// Canonical operation records, including Clap-hidden registrations.
+    pub(crate) operations: Vec<OperationEntry>,
     /// Visible command topology reflected from the same Clap tree.
     pub(crate) discovery: DiscoveryNode,
     /// Optional application-defined schema extension.
     pub(crate) extended_schema: Option<Value>,
-    /// Effective application-plus-operation extended schemas keyed by canonical visible path.
-    pub(crate) effective_extended_schemas: Vec<(Vec<String>, Value)>,
-    /// Canonical visible command paths keyed by their operation identity.
-    pub(crate) operation_paths: Vec<(TypeId, Vec<String>)>,
 }
 
 impl CliContract {
@@ -121,12 +115,7 @@ impl CliContract {
     /// to avoid repeating its canonical command path.
     pub fn extended_schema_for(&self, path: &[&str]) -> crate::Result<Option<&Value>> {
         let node = self.discovery.resolve(path)?;
-        if let Some((_, schema)) =
-            self.effective_extended_schemas.iter().find(|(candidate, _)| candidate == &node.path)
-        {
-            return Ok(Some(schema));
-        }
-        Ok(self.extended_schema.as_ref())
+        Ok(self.extended_schema_for_canonical_path(&node.path))
     }
 
     /// Returns the effective extended schema for a visible Rust operation type.
@@ -141,10 +130,7 @@ impl CliContract {
         T: Operation,
     {
         let path = self.unique_path_for::<T>()?;
-        self.effective_extended_schemas
-            .iter()
-            .find_map(|(candidate, schema)| (candidate == path).then_some(schema))
-            .or(self.extended_schema.as_ref())
+        self.extended_schema_for_canonical_path(path)
     }
 
     /// Resolves one schema-discovery request.
@@ -230,17 +216,23 @@ impl CliContract {
         T: Operation,
     {
         let operation = TypeId::of::<T>();
-        let mut matches = self
-            .operation_paths
-            .iter()
-            .filter_map(|(candidate, path)| (*candidate == operation).then_some(path.as_slice()));
+        let mut matches = self.operations.iter().filter_map(|entry| {
+            (entry.visible && entry.id == operation).then_some(entry.path.as_slice())
+        });
         let path = matches.next()?;
         matches.next().is_none().then_some(path)
     }
 
-    /// Finds an operation using an already-canonical owned path.
-    fn operation_for_owned_path(&self, path: &[String]) -> Option<&OperationContract> {
-        self.operations.iter().find(|operation| operation.path == path)
+    /// Finds a schema-visible operation using an already-canonical path.
+    fn operation_for_owned_path(&self, path: &[String]) -> Option<&OperationEntry> {
+        self.operations.iter().find(|entry| entry.visible && entry.path == path)
+    }
+
+    /// Applies operation-local extension precedence over the application-wide extension.
+    fn extended_schema_for_canonical_path(&self, path: &[String]) -> Option<&Value> {
+        self.operation_for_owned_path(path)
+            .and_then(|entry| entry.extended_schema.as_ref())
+            .or(self.extended_schema.as_ref())
     }
 }
 
@@ -334,13 +326,19 @@ pub enum SchemaSubcommand {
     Resolved(Box<SchemaDocument>),
 }
 
-/// Internal contract for one executable operation.
+/// Canonical internal record for one registered operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct OperationContract {
+pub(crate) struct OperationEntry {
+    /// Stable in-process Rust operation identity.
+    pub(crate) id: TypeId,
     /// Canonical subcommand path excluding the executable name.
     pub(crate) path: Vec<String>,
     /// JSON Schema for the successful value, absent for `Result<(), E>`.
     pub(crate) output: Option<Value>,
+    /// Effective operation-specific extension schema, when one is declared.
+    pub(crate) extended_schema: Option<Value>,
+    /// Whether this operation is visible through schema discovery.
+    pub(crate) visible: bool,
 }
 
 /// Shallow discovery information for one visible command or command group.
