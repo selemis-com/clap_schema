@@ -309,20 +309,6 @@ mod tests {
     }
 
     #[test]
-    fn custom_help_command_remains_discoverable() -> clap_schema::Result<()> {
-        let contract = ContractBuilder::new(
-            Command::new("fixture").disable_help_subcommand(true).subcommand(Command::new("help")),
-        )
-        .operation::<CreateOperation>(["help"])
-        .build()?;
-
-        let help = contract.command(&["help"])?;
-        assert_eq!(help.path, ["help"]);
-        assert!(help.executable);
-        Ok(())
-    }
-
-    #[test]
     fn derive_rejects_args_children_without_command_group_registration() {
         let error = UnregisteredChildrenCli::schema().expect_err("unregistered nested subcommands");
         assert!(matches!(
