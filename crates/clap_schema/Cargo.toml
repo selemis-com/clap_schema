@@ -12,6 +12,14 @@ documentation = "https://docs.rs/clap_schema"
 keywords = ["clap", "agents", "cli", "schema", "json-schema"]
 categories = ["command-line-interface", "development-tools"]
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = [
+  "-Zunstable-options",
+  "--generate-link-to-definition",
+  "--show-type-layout",
+]
+
 [lints]
 workspace = true
 
@@ -29,8 +37,4 @@ clap_schema_derive.workspace = true
 [dev-dependencies]
 # Vendor
 clap = { workspace = true, features = ["derive", "env"] }
-snapbox.workspace = true
-
-
-[package.metadata.docs.rs]
-rustdoc-args = ["--cfg", "docsrs"]
+snapbox = { version = "1.2.2", features = ["cmd", "examples"] }

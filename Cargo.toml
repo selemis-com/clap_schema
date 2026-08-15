@@ -168,7 +168,6 @@ quote = "1.0.47"
 schemars = "1.2.2"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
-snapbox = { version = "1.2.2", features = ["cmd", "examples"] }
 syn = { version = "2.0.119", features = ["full"] }
 thiserror = "2.0.20"
 
