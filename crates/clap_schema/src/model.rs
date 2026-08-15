@@ -205,37 +205,6 @@ impl CliContract {
         Ok(self.command_info(node))
     }
 
-    /// Lists visible executable descendants beneath a command or command group.
-    ///
-    /// The selected command itself is not included. Entries use canonical paths
-    /// and are sorted lexicographically.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`crate::Error::UnknownCommand`] when `path` does not resolve to
-    /// a schema-visible command or group.
-    pub fn catalog(&self, path: &[&str]) -> crate::Result<Vec<CommandSummary>> {
-        let node = self.discovery.resolve(path)?;
-        let mut entries = Vec::new();
-        self.collect_catalog(node, &mut entries);
-        entries.sort_by(|left, right| left.path.cmp(&right.path));
-        Ok(entries)
-    }
-
-    /// Returns the complete visible recursive subtree rooted at `path`.
-    ///
-    /// Unlike [`Self::catalog`], the returned [`CommandNode`] includes the selected node itself as
-    /// well as all schema-visible descendants.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`crate::Error::UnknownCommand`] when `path` does not resolve to
-    /// a schema-visible command or group.
-    pub fn full(&self, path: &[&str]) -> crate::Result<CommandNode> {
-        let node = self.discovery.resolve(path)?;
-        Ok(self.command_node(node))
-    }
-
     /// Builds a shallow public view of one internal discovery node.
     fn command_info(&self, node: &DiscoveryNode) -> CommandInfo {
         let operation = self.operation_for_owned_path(&node.path);
@@ -277,36 +246,6 @@ impl CliContract {
             description: node.description.clone(),
             executable: self.operation_for_owned_path(&node.path).is_some(),
             has_subcommands: !node.children.is_empty(),
-        }
-    }
-
-    /// Builds a recursive public view of one internal discovery node.
-    fn command_node(&self, node: &DiscoveryNode) -> CommandNode {
-        let info = self.command_info(node);
-        CommandNode {
-            name: info.name,
-            path: info.path,
-            aliases: info.aliases,
-            description: info.description,
-            usage: info.usage,
-            arguments: info.arguments,
-            options: info.options,
-            executable: info.executable,
-            output: info.output,
-            subcommands: node.children.iter().map(|child| self.command_node(child)).collect(),
-        }
-    }
-
-    /// Collects executable descendants beneath an internal node.
-    fn collect_catalog(&self, node: &DiscoveryNode, entries: &mut Vec<CommandSummary>) {
-        for child in &node.children {
-            if self.operation_for_owned_path(&child.path).is_some() {
-                entries.push(CommandSummary {
-                    path: child.path.clone(),
-                    description: child.description.clone(),
-                });
-            }
-            self.collect_catalog(child, entries);
         }
     }
 
@@ -479,51 +418,6 @@ pub struct SchemaCommandSummary {
     /// Whether this command has schema-visible child commands.
     #[serde(default, skip_serializing_if = "is_false")]
     pub has_subcommands: bool,
-}
-
-/// Compact catalog entry for one visible executable command.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct CommandSummary {
-    /// Canonical command path excluding the executable name.
-    pub path: Vec<String>,
-    /// Command description reflected from Clap help metadata.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-}
-
-/// Complete recursive discovery node for a visible command subtree.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct CommandNode {
-    /// Canonical command name.
-    pub name: String,
-    /// Canonical path excluding the executable name.
-    pub path: Vec<String>,
-    /// Aliases that Clap exposes in generated help.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub aliases: Vec<String>,
-    /// Command description reflected from Clap help metadata.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    /// Invocation synopsis rendered by Clap.
-    ///
-    /// This is presentation output, not a structured grammar; Clap may collapse groups of options
-    /// behind placeholders such as `[OPTIONS]`.
-    pub usage: String,
-    /// Visible positional arguments reflected directly from Clap.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub arguments: Vec<ArgumentInfo>,
-    /// Visible non-positional options reflected directly from Clap.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub options: Vec<ArgumentInfo>,
-    /// Whether this node is an executable operation.
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub executable: bool,
-    /// Successful output schema when the operation returns a non-unit value.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub output: Option<Value>,
-    /// Visible child commands, recursively expanded.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub subcommands: Vec<Self>,
 }
 
 /// Compact context for one visible Clap argument or option.

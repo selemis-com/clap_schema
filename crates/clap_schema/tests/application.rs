@@ -526,50 +526,6 @@ mod tests {
     }
 
     #[test]
-    fn catalogs_and_recursive_views_preserve_executable_groups() -> clap_schema::Result<()> {
-        let contract = Cli::schema()?;
-        let root_catalog = contract.catalog(&[])?;
-        assert_eq!(
-            root_catalog.iter().map(|entry| entry.path.join(" ")).collect::<Vec<_>>(),
-            vec![
-                "objects access".to_owned(),
-                "objects access grant".to_owned(),
-                "objects access revoke".to_owned(),
-                "objects delete".to_owned(),
-                "objects get".to_owned(),
-                "objects list".to_owned(),
-                "search".to_owned(),
-                "whoami".to_owned(),
-            ]
-        );
-
-        let access_catalog = contract.catalog(&["objects", "access"])?;
-        assert_eq!(
-            access_catalog.iter().map(|entry| entry.path.join(" ")).collect::<Vec<_>>(),
-            vec!["objects access grant".to_owned(), "objects access revoke".to_owned()]
-        );
-
-        let objects = contract.full(&["objects"])?;
-        let access = objects
-            .subcommands
-            .iter()
-            .find(|command| command.name == "access")
-            .expect("access subtree");
-        assert!(access.executable);
-        assert!(access.output.is_some());
-        assert_eq!(access.subcommands.len(), 2);
-        assert!(access.subcommands.iter().any(|command| command.name == "grant"));
-        let revoke = access
-            .subcommands
-            .iter()
-            .find(|command| command.name == "revoke")
-            .expect("revoke command");
-        assert!(revoke.executable);
-        assert!(revoke.output.is_none());
-        Ok(())
-    }
-
-    #[test]
     fn schema_requests_control_only_child_resolution_depth() -> clap_schema::Result<()> {
         let contract = Cli::schema()?;
 
@@ -620,6 +576,8 @@ mod tests {
                 _ => None,
             })
             .expect("resolved access command");
+        assert!(access.command.executable);
+        assert!(access.command.output.is_some());
         assert_eq!(access.subcommands.len(), 2);
         assert!(
             access
@@ -627,6 +585,20 @@ mod tests {
                 .iter()
                 .all(|child| matches!(child, clap_schema::SchemaSubcommand::Resolved(_)))
         );
+        let revoke = access
+            .subcommands
+            .iter()
+            .find_map(|child| match child {
+                clap_schema::SchemaSubcommand::Resolved(command)
+                    if command.command.path == ["objects", "access", "revoke"] =>
+                {
+                    Some(command)
+                }
+                _ => None,
+            })
+            .expect("resolved revoke command");
+        assert!(revoke.command.executable);
+        assert!(revoke.command.output.is_none());
 
         let leaf = clap_schema::SchemaRequest::new(["objects", "get"]);
         let shallow_leaf = contract.schema(&leaf)?;

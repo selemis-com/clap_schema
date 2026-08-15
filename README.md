@@ -122,15 +122,16 @@ The runnable `schema_subcommand` example demonstrates both forms. `SchemaRequest
 extracts the command-local form; tokens before `--schema` are a command path rather than a normal
 invocation, so required runtime operands are not needed merely to inspect a command.
 
-Lower-level discovery primitives remain available when an application needs a different document
-shape:
+Lower-level exact lookup remains available when an application already knows which command it
+wants to inspect:
 
 | API | Purpose |
 | --- | --- |
 | `command_for::<OperationType>()` | Inspect a command already identified by its Rust operation type |
 | `command(path)` | Inspect one visible command or group selected by path |
-| `catalog(path)` | List visible executable descendants beneath a command or group |
-| `full(path)` | Inspect a command or group and its recursive visible subtree |
+
+`schema(request)` is the single discovery-document API. Use `SchemaRequest::with_full(true)` to
+change child resolution depth rather than switching to a second traversal or document shape.
 
 Use type-based lookup from static Rust code so Clap renames cannot leave path literals behind. If
 one operation type is intentionally registered at multiple commands, the association is ambiguous

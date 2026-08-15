@@ -263,14 +263,14 @@
 //! The wire model does not define a second input schema or parser. For
 //! applications that expose schema discovery, [`CliContract::schema`] resolves a [`SchemaRequest`]
 //! into one selected command whose children are either shallow summaries or recursively resolved
-//! contracts. Lower-level [`CliContract::command`], [`CliContract::catalog`], and
-//! [`CliContract::full`] views remain available. All discovery views reflect canonical paths,
-//! aliases, descriptions, visibility, usage, and a compact visible-argument summary
-//! directly from Clap's built command tree. Applications may separately expose an app-defined
-//! extension schema without making metadata values part of this crate. The argument summary is
-//! intentionally limited to identifiers, visible names and aliases, positional indexes, value
-//! names, help, unconditional requiredness, visible defaults, and visible finite possible values.
-//! Clap-generated help remains authoritative for custom parsers and argument
+//! contracts. [`CliContract::command`] and [`CliContract::command_for`] remain available as exact
+//! lookup helpers when an application already knows which command it wants. Discovery reflects
+//! canonical paths, aliases, descriptions, visibility, usage, and a compact visible-argument
+//! summary directly from Clap's built command tree. Applications may separately expose an
+//! app-defined extension schema without making metadata values part of this crate. The argument
+//! summary is intentionally limited to identifiers, visible names and aliases, positional indexes,
+//! value names, help, unconditional requiredness, visible defaults, and visible finite possible
+//! values. Clap-generated help remains authoritative for custom parsers and argument
 //! relationships. A present output schema means the operation's successful value is
 //! JSON-renderable.
 //!
@@ -302,8 +302,8 @@ pub mod __private;
 pub use clap_schema_derive::{CliSchema, CommandGroup, CommandSchema, handler};
 pub use contract::{ContractBuilder, Error, Result};
 pub use model::{
-    ArgumentInfo, CliContract, CommandInfo, CommandNode, CommandSummary, OperationContract,
-    SchemaCommandSummary, SchemaDocument, SchemaRequest, SchemaSubcommand,
+    ArgumentInfo, CliContract, CommandInfo, OperationContract, SchemaCommandSummary,
+    SchemaDocument, SchemaRequest, SchemaSubcommand,
 };
 pub use operation::{Operation, WriteJsonError, write_json};
 

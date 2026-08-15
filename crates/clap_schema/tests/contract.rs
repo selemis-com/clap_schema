@@ -344,9 +344,14 @@ mod tests {
         let contract = DispositionCli::schema()?;
 
         assert!(contract.command_for::<VisibleArgs>().is_some());
-        let catalog = contract.catalog(&[])?;
-        assert_eq!(catalog.len(), 1);
-        assert_eq!(catalog[0].path, ["visible"]);
+        let root = contract.schema(&SchemaRequest::default())?;
+        assert_eq!(root.subcommands.len(), 1);
+        let visible = match &root.subcommands[0] {
+            clap_schema::SchemaSubcommand::Summary(summary) => summary,
+            clap_schema::SchemaSubcommand::Resolved(_) => panic!("shallow root schema"),
+        };
+        assert_eq!(visible.path, ["visible"]);
+        assert!(visible.executable);
         assert!(contract.command(&["skipped"]).is_err());
         Ok(())
     }
