@@ -1,6 +1,6 @@
 # clap_schema
 
-JSON Schema generation for Clap, including typed output schemas.
+JSON Schema generation for Clap.
 
 `clap_schema` lets a CLI describe itself without maintaining a second command model. Clap remains the source of truth for invocation syntax and validation; the Rust handler that actually executes a command is the source of truth for its successful machine output.
 
