@@ -1,4 +1,4 @@
-//! Application-owned metadata values paired with `clap_schema` metadata schemas.
+//! Application-owned metadata values paired with `clap_schema` extension schemas.
 #![expect(dead_code, reason = "example data types are reflected rather than executed")]
 
 use std::convert::Infallible;
@@ -11,7 +11,7 @@ use serde::Serialize;
 /// Example resource CLI with an application-wide metadata vocabulary.
 #[derive(Debug, Parser, CliSchema)]
 #[command(name = "resourcectl")]
-#[schema(metadata = CommandMetadata)]
+#[schema(extend = CommandMetadata)]
 struct Cli {
     /// Selects the operation to inspect.
     #[command(subcommand)]
@@ -22,7 +22,7 @@ struct Cli {
 #[derive(Debug, Subcommand, CommandSchema)]
 enum Commands {
     /// List resources with cursor pagination.
-    #[schema(handler = list, metadata = PaginationMetadata)]
+    #[schema(handler = list, extend = PaginationMetadata)]
     List(ListArgs),
 }
 
@@ -86,9 +86,9 @@ fn list(_command: ListArgs) -> Result<ResourcePage, Infallible> {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let contract = Cli::schema()?;
-    let metadata_schema = contract
-        .metadata_schema_for_operation(clap_schema::operation!(list))
-        .expect("list metadata schema");
+    let extended_schema = contract
+        .extended_schema_for_operation(clap_schema::operation!(list))
+        .expect("list extended schema");
 
     let metadata = ListMetadataValue {
         command: CommandMetadata { effect: Effect::Read, idempotent: true },
@@ -101,8 +101,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Application-owned metadata value:");
     println!("{}", serde_json::to_string_pretty(&metadata)?);
 
-    println!("\nclap_schema effective metadata schema:");
-    println!("{}", serde_json::to_string_pretty(metadata_schema)?);
+    println!("\nclap_schema effective extended schema:");
+    println!("{}", serde_json::to_string_pretty(extended_schema)?);
 
     Ok(())
 }

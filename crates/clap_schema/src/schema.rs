@@ -6,17 +6,17 @@ use serde_json::Value;
 /// Function pointer that lazily generates one normalized root JSON Schema value.
 pub(crate) type SchemaFactory = fn() -> Value;
 
-/// Schema factories retained for one application-defined metadata type.
+/// Schema factories retained for one application-defined extension type.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct MetadataSchemaFactory {
-    /// Generates the metadata type as a standalone normalized root schema.
+pub(crate) struct ExtendedSchemaFactory {
+    /// Generates the extension type as a standalone normalized root schema.
     root: SchemaFactory,
-    /// Generates the metadata type as a subschema in a shared definition namespace.
+    /// Generates the extension type as a subschema in a shared definition namespace.
     subschema: fn(&mut SchemaGenerator) -> Schema,
 }
 
-impl MetadataSchemaFactory {
-    /// Generates the standalone schema for this metadata layer.
+impl ExtendedSchemaFactory {
+    /// Generates the standalone schema for this extension layer.
     pub(crate) fn root(self) -> Value {
         (self.root)()
     }
@@ -38,18 +38,18 @@ where
     schema
 }
 
-/// Returns both standalone and shared-generator factories for one metadata type.
-pub(crate) fn metadata_schema_factory<T>() -> MetadataSchemaFactory
+/// Returns both standalone and shared-generator factories for one extension type.
+pub(crate) fn extended_schema_factory<T>() -> ExtendedSchemaFactory
 where
     T: ?Sized + JsonSchema,
 {
-    MetadataSchemaFactory { root: schema_for::<T>, subschema: metadata_subschema_for::<T> }
+    ExtendedSchemaFactory { root: schema_for::<T>, subschema: extended_subschema_for::<T> }
 }
 
-/// Composes application-wide and operation-specific metadata schemas using one definition scope.
-pub(crate) fn compose_metadata_schemas(
-    application: MetadataSchemaFactory,
-    operation: MetadataSchemaFactory,
+/// Composes application-wide and operation-specific extension schemas using one definition scope.
+pub(crate) fn compose_extended_schemas(
+    application: ExtendedSchemaFactory,
+    operation: ExtendedSchemaFactory,
 ) -> Value {
     let mut generator = schema_generator();
     let application = (application.subschema)(&mut generator).to_value();
@@ -64,8 +64,8 @@ pub(crate) fn compose_metadata_schemas(
     Value::Object(schema)
 }
 
-/// Generates one metadata type inside a shared Schemars definition namespace.
-fn metadata_subschema_for<T>(generator: &mut SchemaGenerator) -> Schema
+/// Generates one extension type inside a shared Schemars definition namespace.
+fn extended_subschema_for<T>(generator: &mut SchemaGenerator) -> Schema
 where
     T: ?Sized + JsonSchema,
 {

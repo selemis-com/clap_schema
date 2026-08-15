@@ -10,7 +10,7 @@ The model is deliberately small:
 - `#[clap_schema::handler]` marks the real implementation of an executable operation.
 - The handler's `Result<T, E>` determines the successful output type. Non-unit `T` must implement `Serialize + JsonSchema`; `Result<(), E>` is outputless.
 - `write_json` serializes the same successful `T` used to generate the output schema.
-- Applications can add their own metadata schemas without making `clap_schema` own metadata values or semantics.
+- Applications can add their own extension schemas without making `clap_schema` own metadata values or semantics.
 
 ## Installation
 
@@ -100,9 +100,9 @@ tool schema objects get
 tool schema objects --full
 ```
 
-## Application metadata
+## Application-defined extensions
 
-Applications can declare their own metadata vocabulary as JSON Schema without giving `clap_schema` ownership of concrete metadata values.
+Applications can declare their own extension vocabulary as JSON Schema without giving `clap_schema` ownership of concrete values or semantics.
 
 ```rust
 #[derive(schemars::JsonSchema)]
@@ -116,21 +116,21 @@ struct PaginationMetadata {
 }
 
 #[derive(clap::Parser, clap_schema::CliSchema)]
-#[schema(metadata = CommandMetadata)]
+#[schema(extend = CommandMetadata)]
 struct Cli {
     // ...
 }
 
 // On an executable CommandSchema variant:
-// #[schema(handler = list, metadata = PaginationMetadata)]
+// #[schema(handler = list, extend = PaginationMetadata)]
 ```
 
-`metadata_schema()` returns the application-wide schema. When Rust code already names a handler,
-`metadata_schema_for_operation(operation!(handler))` returns its effective schema without repeating
-the command path; `metadata_schema_for(path)` serves dynamic path-based discovery. Application-wide
+`extended_schema()` returns the application-wide schema. When Rust code already names a handler,
+`extended_schema_for_operation(operation!(handler))` returns its effective schema without repeating
+the command path; `extended_schema_for(path)` serves dynamic path-based discovery. Application-wide
 and operation-specific layers are composed with JSON Schema `allOf`.
 
-`clap_schema` never constructs or serializes metadata values. The application decides which values to emit and how they appear in its own machine-facing document. See the runnable `application_metadata` example for a complete value/schema workflow.
+`clap_schema` never constructs or serializes metadata values. The application decides which values to emit and how they appear in its own machine-facing document. See the runnable `application_extension` example for a complete value/schema workflow.
 
 ## Builder API
 
@@ -147,7 +147,7 @@ The repository keeps the example set intentionally small:
 | --- | --- |
 | `basic` | Derive API, handler-derived output schema, and runtime `write_json` |
 | `schema_subcommand` | A standalone agent-facing schema/discovery command |
-| `application_metadata` | Application-owned metadata values paired with clap_schema-generated metadata schemas |
+| `application_extension` | Application-owned metadata values paired with clap_schema-generated extension schemas |
 | `builder_api` | The same contract model with Clap's builder API |
 
 Run one with:

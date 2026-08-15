@@ -13,7 +13,7 @@ struct MissingRootOperation;
 struct DuplicateRootHandler;
 
 #[derive(CliSchema)]
-#[schema(metadata = First, metadata = Second)]
+#[schema(extend = First, extend = Second)]
 struct DuplicateRootMetadata;
 
 #[derive(CliSchema)]
@@ -106,7 +106,7 @@ enum DuplicateSubcommandsFlag {
 
 #[derive(CommandSchema)]
 enum DuplicateMetadataType {
-    #[schema(handler = run, metadata = First, metadata = Second)]
+    #[schema(handler = run, extend = First, extend = Second)]
     Run(Args),
 }
 

@@ -12,7 +12,7 @@ Keep the public model small. In particular, do not add a parallel input grammar,
 
 Prefer one authoritative source for facts the type system or Clap tree already knows. Static Rust code should use handler-based lookup instead of repeating canonical command paths, and Args-owned child command types should be derived from their actual `#[command(subcommand)]` field. Keep explicit paths for genuinely dynamic input and builder-style registration, where there is no derive relationship to recover.
 
-Application metadata is schema-only in this crate. Applications define the metadata vocabulary and own all concrete values, defaults, overrides, command association, and presentation. `clap_schema` may compose application-wide and operation-specific metadata schemas, but it must not define metadata semantics or invent value-merge behavior.
+The application-defined extension mechanism is schema-only in this crate. Applications define the metadata vocabulary and own all concrete values, defaults, overrides, command association, and presentation. `clap_schema` may compose application-wide and operation-specific extension schemas, but it must not define metadata semantics or invent value-merge behavior.
 
 ## Tests and examples
 

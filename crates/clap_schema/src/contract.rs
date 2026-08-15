@@ -8,7 +8,7 @@ use schemars::JsonSchema;
 use crate::{
     Operation,
     model::{ArgumentInfo, CliContract, DiscoveryNode, OperationContract},
-    schema::{MetadataSchemaFactory, compose_metadata_schemas, metadata_schema_factory},
+    schema::{ExtendedSchemaFactory, compose_extended_schemas, extended_schema_factory},
 };
 
 /// Result type returned by `clap_schema`.
@@ -56,23 +56,23 @@ pub enum Error {
 /// associates canonical command paths with [`crate::operation!`] values derived from
 /// real `#[clap_schema::handler]` return types and reflects the same built command tree
 /// into the crate's read-only discovery view. Applications may additionally declare an
-/// application-wide metadata schema with [`ContractBuilder::metadata`] and supplement individual
-/// operations through [`Operation::metadata`](crate::Operation::metadata).
+/// application-wide schema extension with [`ContractBuilder::extend`] and supplement individual
+/// operations through [`Operation::extend`](crate::Operation::extend).
 #[derive(Debug)]
 pub struct ContractBuilder {
     /// Root Clap command tree used to validate registered operation paths.
     root: Command,
     /// Handler-derived operations keyed by canonical command path.
     operations: Vec<(Vec<String>, Operation)>,
-    /// Optional application-defined metadata schema factory.
-    metadata: Option<MetadataSchemaFactory>,
+    /// Optional application-defined extension schema factory.
+    extended: Option<ExtendedSchemaFactory>,
 }
 
 impl ContractBuilder {
     /// Creates a contract builder around a Clap command tree.
     #[must_use]
     pub const fn new(root: Command) -> Self {
-        Self { root, operations: Vec::new(), metadata: None }
+        Self { root, operations: Vec::new(), extended: None }
     }
 
     /// Registers one executable operation by canonical command path.
@@ -91,31 +91,31 @@ impl ContractBuilder {
         self
     }
 
-    /// Declares the application-defined metadata type for this CLI.
+    /// Extends this CLI with an application-defined schema type.
     ///
     /// `clap_schema` generates and exposes only the JSON Schema for `T`. Applications remain
-    /// responsible for constructing, serializing, and attaching concrete metadata values to their
-    /// own schema responses, and for ensuring those values satisfy the declared schema. Repeated
-    /// calls replace the previous application-wide metadata type.
+    /// responsible for constructing, serializing, and attaching concrete values to their own
+    /// machine-facing responses, and for ensuring those values satisfy the declared schema.
+    /// Repeated calls replace the previous application-wide extension type.
     ///
     /// Operation-specific supplements are attached with
-    /// [`Operation::metadata`](crate::Operation::metadata) and can be queried together with
+    /// [`Operation::extend`](crate::Operation::extend) and can be queried together with
     /// this schema through
-    /// [`CliContract::metadata_schema_for`](crate::CliContract::metadata_schema_for) or, when the
+    /// [`CliContract::extended_schema_for`](crate::CliContract::extended_schema_for) or, when the
     /// handler is already known, through
-    /// [`CliContract::metadata_schema_for_operation`](crate::CliContract::metadata_schema_for_operation).
+    /// [`CliContract::extended_schema_for_operation`](crate::CliContract::extended_schema_for_operation).
     #[must_use]
-    pub fn metadata<T>(mut self) -> Self
+    pub fn extend<T>(mut self) -> Self
     where
         T: JsonSchema,
     {
-        self.metadata = Some(metadata_schema_factory::<T>());
+        self.extended = Some(extended_schema_factory::<T>());
         self
     }
 
-    /// Declares an already type-erased metadata schema factory for derive-generated registration.
-    pub(crate) const fn metadata_factory(mut self, metadata: MetadataSchemaFactory) -> Self {
-        self.metadata = Some(metadata);
+    /// Declares an already type-erased extension schema factory for derive-generated registration.
+    pub(crate) const fn extended_factory(mut self, extended: ExtendedSchemaFactory) -> Self {
+        self.extended = Some(extended);
         self
     }
 
@@ -126,30 +126,30 @@ impl ContractBuilder {
     /// Returns an error when an operation path does not exist in the actual Clap tree, or when
     /// the same operation path is registered more than once.
     pub fn build(self) -> Result<CliContract> {
-        let Self { mut root, operations, metadata } = self;
+        let Self { mut root, operations, extended } = self;
         root.build();
         reject_duplicate_paths(&operations)?;
 
-        let application_metadata_schema = metadata.map(MetadataSchemaFactory::root);
+        let application_extended_schema = extended.map(ExtendedSchemaFactory::root);
         let mut registered_operations = Vec::with_capacity(operations.len());
         let mut visible_operations = Vec::with_capacity(operations.len());
-        let mut effective_metadata_schemas = Vec::new();
+        let mut effective_extended_schemas = Vec::new();
         let mut handler_paths = Vec::with_capacity(operations.len());
         for (path, operation) in operations {
             let resolved = command_at(&root, &path)?;
             let operation_id = operation.id;
-            let operation_metadata = operation.metadata;
+            let operation_extended = operation.extended;
             let operation_contract = OperationContract {
                 path: path.clone(),
                 output: operation.output.map(|factory| factory()),
             };
             if !resolved.hidden {
-                if let Some(operation) = operation_metadata {
-                    let effective = metadata.map_or_else(
+                if let Some(operation) = operation_extended {
+                    let effective = extended.map_or_else(
                         || operation.root(),
-                        |application| compose_metadata_schemas(application, operation),
+                        |application| compose_extended_schemas(application, operation),
                     );
-                    effective_metadata_schemas.push((path.clone(), effective));
+                    effective_extended_schemas.push((path.clone(), effective));
                 }
                 handler_paths.push((operation_id, path.clone()));
                 visible_operations.push(operation_contract.clone());
@@ -158,7 +158,7 @@ impl ContractBuilder {
         }
         registered_operations.sort_by(|left, right| left.path.cmp(&right.path));
         visible_operations.sort_by(|left, right| left.path.cmp(&right.path));
-        effective_metadata_schemas.sort_by(|left, right| left.0.cmp(&right.0));
+        effective_extended_schemas.sort_by(|left, right| left.0.cmp(&right.0));
         handler_paths.sort_by(|left, right| left.1.cmp(&right.1));
         let operation_paths =
             visible_operations.iter().map(|operation| operation.path.clone()).collect::<Vec<_>>();
@@ -168,8 +168,8 @@ impl ContractBuilder {
             operations: visible_operations,
             registered_operations,
             discovery,
-            metadata_schema: application_metadata_schema,
-            effective_metadata_schemas,
+            extended_schema: application_extended_schema,
+            effective_extended_schemas,
             handler_paths,
         })
     }

@@ -67,15 +67,15 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         let contract =
             ContractBuilder::new(Command::new("fixture").subcommand(Command::new("create")))
-                .metadata::<ApplicationMetadata>()
-                .operation(["create"], clap_schema::operation!(create).metadata::<CreateMetadata>())
+                .extend::<ApplicationMetadata>()
+                .operation(["create"], clap_schema::operation!(create).extend::<CreateMetadata>())
                 .build()?;
 
-        let metadata = contract.metadata_schema().expect("metadata schema");
+        let metadata = contract.extended_schema().expect("metadata schema");
         assert_eq!(metadata["type"], "object");
         assert!(metadata["properties"].get("destructive").is_some());
         let effective = contract
-            .metadata_schema_for_operation(clap_schema::operation!(create))
+            .extended_schema_for_operation(clap_schema::operation!(create))
             .expect("effective metadata");
         assert_eq!(effective["allOf"].as_array().map(Vec::len), Some(2));
         let local_ref = effective["allOf"][1]["$ref"].as_str().expect("operation metadata ref");

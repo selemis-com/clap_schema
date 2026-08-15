@@ -41,7 +41,7 @@ struct AuthorizationMetadata {
 }
 
 #[derive(Debug, Parser, CliSchema)]
-#[schema(metadata = ApplicationMetadata)]
+#[schema(extend = ApplicationMetadata)]
 #[command(name = "kivalish", about = "Example collaborative-object CLI")]
 struct Cli {
     /// Override the configured service root URL.
@@ -94,11 +94,11 @@ enum ObjectCommands {
     Get(ObjectKeyArgs),
 
     /// List objects visible in a workspace.
-    #[schema(handler = list_objects, metadata = PaginationMetadata)]
+    #[schema(handler = list_objects, extend = PaginationMetadata)]
     List(ListObjectsArgs),
 
     /// Permanently remove one object.
-    #[schema(handler = delete_object, metadata = DestructiveMetadata)]
+    #[schema(handler = delete_object, extend = DestructiveMetadata)]
     Delete(ObjectKeyArgs),
 
     /// Inspect or modify direct object grants.
@@ -110,7 +110,7 @@ enum ObjectCommands {
 enum AccessCommands {
     /// Grant a user or linked group a role on an object.
     #[command(visible_alias = "add")]
-    #[schema(handler = grant_access, metadata = AuthorizationMetadata)]
+    #[schema(handler = grant_access, extend = AuthorizationMetadata)]
     Grant(GrantArgs),
 
     /// Revoke one direct object grant.
@@ -361,7 +361,7 @@ mod tests {
     fn application_metadata_is_schema_only_and_kept_out_of_the_base_wire_model()
     -> clap_schema::Result<()> {
         let contract = Cli::schema()?;
-        let metadata = contract.metadata_schema().expect("application metadata schema");
+        let metadata = contract.extended_schema().expect("application metadata schema");
 
         assert_eq!(metadata["type"], "object");
         assert!(metadata.get("$schema").is_none());
@@ -370,7 +370,7 @@ mod tests {
         assert!(metadata["properties"].get("retry").is_some());
 
         let effective = contract
-            .metadata_schema_for_operation(clap_schema::operation!(list_objects))
+            .extended_schema_for_operation(clap_schema::operation!(list_objects))
             .expect("effective metadata schema");
         let all_of = effective["allOf"].as_array().expect("allOf metadata composition");
         assert_eq!(all_of.len(), 2);
@@ -388,11 +388,11 @@ mod tests {
         assert!(effective.pointer(retry_ref.trim_start_matches('#')).is_some());
 
         let inherited = contract
-            .metadata_schema_for_operation(clap_schema::operation!(get_object))
+            .extended_schema_for_operation(clap_schema::operation!(get_object))
             .expect("inherited application metadata schema");
         assert_eq!(inherited, metadata);
         let aliased_metadata = contract
-            .metadata_schema_for(&["objects", "access", "add"])?
+            .extended_schema_for(&["objects", "access", "add"])?
             .expect("aliased effective metadata schema");
         let aliased_ref =
             aliased_metadata["allOf"][1]["$ref"].as_str().expect("operation metadata ref");
@@ -400,7 +400,7 @@ mod tests {
         assert!(aliased_metadata["$defs"][aliased_key]["properties"].get("minimum_role").is_some());
 
         let destructive = contract
-            .metadata_schema_for_operation(clap_schema::operation!(delete_object))
+            .extended_schema_for_operation(clap_schema::operation!(delete_object))
             .expect("destructive metadata schema");
         let destructive_ref =
             destructive["allOf"][1]["$ref"].as_str().expect("operation metadata ref");
@@ -412,7 +412,7 @@ mod tests {
         );
 
         let wire = serde_json::to_value(&contract).expect("serialize base contract");
-        assert!(wire.get("metadata_schema").is_none());
+        assert!(wire.get("extended_schema").is_none());
         assert!(wire.get("metadata").is_none());
         Ok(())
     }

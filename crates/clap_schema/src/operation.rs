@@ -1,29 +1,29 @@
-//! Handler-derived operation metadata and successful-output emission.
+//! Handler-derived operations and successful-output emission.
 
 use std::{any::TypeId, io::Write};
 
 use schemars::JsonSchema;
 use serde::Serialize;
 
-use crate::schema::{MetadataSchemaFactory, SchemaFactory, metadata_schema_factory, schema_for};
+use crate::schema::{ExtendedSchemaFactory, SchemaFactory, extended_schema_factory, schema_for};
 
-/// Contract metadata for one executable operation.
+/// Contract descriptor for one executable operation.
 ///
 /// Values are anchored to a canonical `#[clap_schema::handler]` through [`crate::operation!`] or
 /// the derive macros. The successful output type cannot be declared separately from that handler;
-/// applications may only supplement the operation with an application-defined metadata schema.
+/// applications may only extend the operation with an application-defined schema.
 #[derive(Debug, Clone, Copy)]
 pub struct Operation {
     /// Stable in-process identity of the annotated handler.
     pub(crate) id: TypeId,
     /// Optional successful output schema factory.
     pub(crate) output: Option<SchemaFactory>,
-    /// Optional operation-specific application metadata schema factory.
-    pub(crate) metadata: Option<MetadataSchemaFactory>,
+    /// Optional operation-specific application extension schema factory.
+    pub(crate) extended: Option<ExtendedSchemaFactory>,
 }
 
 impl Operation {
-    /// Builds operation metadata for one successful handler output type.
+    /// Builds an operation descriptor for one successful handler output type.
     pub(crate) fn for_output<T, I>() -> Self
     where
         T: JsonSchema + Serialize + 'static,
@@ -32,28 +32,28 @@ impl Operation {
         Self {
             id: TypeId::of::<I>(),
             output: (TypeId::of::<T>() != TypeId::of::<()>()).then_some(schema_for::<T>),
-            metadata: None,
+            extended: None,
         }
     }
 
-    /// Supplements the application-wide metadata schema for this operation.
+    /// Extends the application-wide schema for this operation.
     ///
     /// `clap_schema` records only the JSON Schema for `T`; applications remain responsible for
-    /// constructing and serializing concrete metadata values. When an application-wide metadata
-    /// schema is also declared, [`crate::CliContract::metadata_schema_for`] and
-    /// [`crate::CliContract::metadata_schema_for_operation`] compose both schemas with JSON Schema
+    /// constructing and serializing concrete extension values. When an application-wide extension
+    /// schema is also declared, [`crate::CliContract::extended_schema_for`] and
+    /// [`crate::CliContract::extended_schema_for_operation`] compose both schemas with JSON Schema
     /// `allOf`. The concrete value exposed by the application must therefore
     /// satisfy both schema layers.
     ///
-    /// This method changes schema metadata only. It does not attach a value to the operation or add
-    /// a `metadata` field to discovery output. Repeated calls replace the previous operation
-    /// metadata supplement.
+    /// This method changes only the application-defined schema extension. It does not attach a
+    /// concrete value to the operation or inject an extension field into discovery output. Repeated calls
+    /// replace the previous operation-specific extension.
     #[must_use]
-    pub fn metadata<T>(mut self) -> Self
+    pub fn extend<T>(mut self) -> Self
     where
         T: JsonSchema,
     {
-        self.metadata = Some(metadata_schema_factory::<T>());
+        self.extended = Some(extended_schema_factory::<T>());
         self
     }
 }

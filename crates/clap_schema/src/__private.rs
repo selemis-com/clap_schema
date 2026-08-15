@@ -10,7 +10,7 @@ use serde::Serialize;
 
 use crate::{
     CliContract, CliSchema, ContractBuilder, Operation, Result,
-    schema::{MetadataSchemaFactory, metadata_schema_factory},
+    schema::{ExtendedSchemaFactory, extended_schema_factory},
 };
 
 /// Successful `Result<T, E>` contract used by handler metadata.
@@ -42,7 +42,7 @@ where
 #[derive(Debug, Default)]
 pub struct Registry {
     entries: Vec<(Vec<String>, Operation)>,
-    metadata: Option<MetadataSchemaFactory>,
+    extended: Option<ExtendedSchemaFactory>,
 }
 
 impl Registry {
@@ -51,12 +51,12 @@ impl Registry {
         self.entries.push((path.to_vec(), operation));
     }
 
-    /// Declares the application-defined metadata schema type for the root CLI.
-    pub fn metadata<T>(&mut self)
+    /// Declares the application-defined extension schema type for the root CLI.
+    pub fn extend<T>(&mut self)
     where
         T: JsonSchema,
     {
-        self.metadata = Some(metadata_schema_factory::<T>());
+        self.extended = Some(extended_schema_factory::<T>());
     }
 }
 
@@ -69,8 +69,8 @@ where
     T::__clap_schema_register(&mut registry)?;
 
     let mut builder = ContractBuilder::new(T::command());
-    if let Some(metadata) = registry.metadata {
-        builder = builder.metadata_factory(metadata);
+    if let Some(extended) = registry.extended {
+        builder = builder.extended_factory(extended);
     }
     for (path, operation) in registry.entries {
         builder = builder.operation(path, operation);

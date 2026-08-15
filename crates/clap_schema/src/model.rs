@@ -7,9 +7,9 @@ use serde_json::Value;
 
 use crate::Operation;
 
-/// Successful-output contracts plus in-memory discovery and application metadata schemas.
+/// Successful-output contracts plus in-memory discovery and application-defined schema extensions.
 ///
-/// The default serialized form remains output-only; discovery and metadata schemas are queried
+/// The default serialized form remains output-only; discovery and extended schemas are queried
 /// explicitly by applications constructing richer machine-facing documents.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CliContract {
@@ -21,12 +21,12 @@ pub struct CliContract {
     /// Visible command topology reflected from the same Clap tree.
     #[serde(skip)]
     pub(crate) discovery: DiscoveryNode,
-    /// Optional application-defined metadata schema, kept out of the default wire model.
+    /// Optional application-defined schema extension, kept out of the default wire model.
     #[serde(skip)]
-    pub(crate) metadata_schema: Option<Value>,
-    /// Effective application-plus-operation metadata schemas keyed by canonical visible path.
+    pub(crate) extended_schema: Option<Value>,
+    /// Effective application-plus-operation extended schemas keyed by canonical visible path.
     #[serde(skip)]
-    pub(crate) effective_metadata_schemas: Vec<(Vec<String>, Value)>,
+    pub(crate) effective_extended_schemas: Vec<(Vec<String>, Value)>,
     /// Canonical visible command paths keyed by their annotated handler identity.
     #[serde(skip)]
     pub(crate) handler_paths: Vec<(TypeId, Vec<String>)>,
@@ -68,24 +68,24 @@ impl CliContract {
         self.registered_operations.iter().find(|operation| path_matches(&operation.path, path))
     }
 
-    /// Returns the application-defined metadata schema declared for this CLI, when present.
+    /// Returns the application-defined schema that extends this CLI, when present.
     ///
     /// The schema uses the same draft 2020-12 serialization-view settings as successful-output
-    /// schemas. `clap_schema` does not construct or serialize metadata values and does not inject
-    /// this schema into command discovery automatically. Applications decide how both the schema
-    /// and their concrete metadata values appear in their own machine-facing documents.
+    /// schemas. `clap_schema` does not construct or serialize extension values and does not inject
+    /// this schema into command discovery automatically. Applications decide how both the schema and
+    /// their concrete values appear in their own machine-facing documents.
     #[must_use]
-    pub const fn metadata_schema(&self) -> Option<&Value> {
-        self.metadata_schema.as_ref()
+    pub const fn extended_schema(&self) -> Option<&Value> {
+        self.extended_schema.as_ref()
     }
 
-    /// Returns the effective metadata schema for one visible command or operation.
+    /// Returns the effective extended schema for one visible command or operation.
     ///
-    /// The application-wide metadata schema applies throughout the schema-visible discovery tree.
-    /// When the selected executable operation declares an additional metadata schema, both
+    /// The application-wide extended schema applies throughout the schema-visible discovery tree.
+    /// When the selected executable operation declares an additional extension schema, both
     /// layers are composed with JSON Schema `allOf`; `clap_schema` never shallow-merges schema
     /// objects. A command group therefore sees only the application-wide schema, while an
-    /// executable operation may additionally narrow or supplement it. Concrete metadata values
+    /// executable operation may additionally narrow or supplement it. Concrete extension values
     /// remain entirely application-owned and must satisfy the effective schema the application
     /// chooses to expose. Because `allOf` validates the same value against every layer,
     /// applications must choose schemas that are mutually composable; `clap_schema` does not
@@ -120,13 +120,13 @@ impl CliContract {
     /// }
     ///
     /// let contract = ContractBuilder::new(Command::new("example").subcommand(Command::new("list")))
-    ///     .metadata::<CommonMetadata>()
-    ///     .operation(["list"], clap_schema::operation!(list).metadata::<PaginationMetadata>())
+    ///     .extend::<CommonMetadata>()
+    ///     .operation(["list"], clap_schema::operation!(list).extend::<PaginationMetadata>())
     ///     .build()?;
     ///
     /// let schema = contract
-    ///     .metadata_schema_for_operation(clap_schema::operation!(list))
-    ///     .expect("metadata schema");
+    ///     .extended_schema_for_operation(clap_schema::operation!(list))
+    ///     .expect("extended schema");
     /// assert_eq!(schema["allOf"].as_array().map(Vec::len), Some(2));
     /// # Ok::<(), clap_schema::Error>(())
     /// ```
@@ -134,31 +134,31 @@ impl CliContract {
     /// # Errors
     ///
     /// Returns [`crate::Error::UnknownCommand`] when `path` is not schema-visible. When static
-    /// Rust code already names the handler, prefer [`Self::metadata_schema_for_operation`] to avoid
+    /// Rust code already names the handler, prefer [`Self::extended_schema_for_operation`] to avoid
     /// repeating its canonical command path.
-    pub fn metadata_schema_for(&self, path: &[&str]) -> crate::Result<Option<&Value>> {
+    pub fn extended_schema_for(&self, path: &[&str]) -> crate::Result<Option<&Value>> {
         let node = self.discovery.resolve(path)?;
         if let Some((_, schema)) =
-            self.effective_metadata_schemas.iter().find(|(candidate, _)| candidate == &node.path)
+            self.effective_extended_schemas.iter().find(|(candidate, _)| candidate == &node.path)
         {
             return Ok(Some(schema));
         }
-        Ok(self.metadata_schema.as_ref())
+        Ok(self.extended_schema.as_ref())
     }
 
-    /// Returns the effective metadata schema for an annotated visible handler.
+    /// Returns the effective extended schema for an annotated visible handler.
     ///
     /// This avoids repeating a canonical command path in application code that already names the
     /// handler. Returns `None` when the handler is not schema-visible, is reused by multiple
-    /// visible commands, or has no applicable metadata schema. Use
-    /// [`Self::metadata_schema_for`] when the path comes from user or agent input.
+    /// visible commands, or has no applicable extended schema. Use
+    /// [`Self::extended_schema_for`] when the path comes from user or agent input.
     #[must_use]
-    pub fn metadata_schema_for_operation(&self, operation: Operation) -> Option<&Value> {
+    pub fn extended_schema_for_operation(&self, operation: Operation) -> Option<&Value> {
         let path = self.unique_path_for(operation)?;
-        self.effective_metadata_schemas
+        self.effective_extended_schemas
             .iter()
             .find_map(|(candidate, schema)| (candidate == path).then_some(schema))
-            .or(self.metadata_schema.as_ref())
+            .or(self.extended_schema.as_ref())
     }
 
     /// Resolves a visible command or command group by canonical name or Clap alias.
