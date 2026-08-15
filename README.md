@@ -11,7 +11,7 @@ The boundary is intentionally narrow:
 - Schemars derives the JSON Schema for that serialized type.
 - `clap_schema::write_json` serializes the same successful `T` at runtime.
 
-There is no input-schema layer, output-selector model, protocol version, or API for manually declaring a successful output type beside the real handler. Schema-discovery commands can query the same generated contract for visible command metadata without reproducing Clap's argument model.
+There is no input-schema layer, output-selector model, protocol version, or API for manually declaring a successful output type beside the real handler. Schema-discovery commands can query the same generated contract for visible command metadata and structured argument context reflected directly from Clap's built command tree.
 
 ## Example
 
@@ -98,7 +98,9 @@ let subtree = contract.full(&[])?;
 # Ok::<(), clap_schema::Error>(())
 ```
 
-Paths may use command aliases accepted by Clap, while returned paths are canonical. Shallow and recursive command views include Clap's generated usage synopsis so callers can construct ordinary invocations without duplicating Clap's argument model. Catalogs remain compact and contain visible executable descendants; `full` recursively includes visible groups and operations. Clap-hidden commands and `#[schema(skip)]` commands are absent from discovery and cannot be addressed through it.
+Paths may use command aliases accepted by Clap, while returned paths are canonical. Shallow and recursive command views include Clap's generated usage synopsis plus compact `arguments` and `options` summaries. The summaries expose only straightforward facts from the built command: identifiers, visible flag names and aliases, positional indexes, value names, help text, unconditional requiredness, visible UTF-8 defaults, and visible finite possible values.
+
+This is contextual discovery, not an input schema or a second parser. Clap and its generated `--help` remain authoritative for complete invocation semantics, including custom parsers and argument relationships. Catalogs remain compact and contain visible executable descendants; `full` recursively includes visible groups and operations. Clap-hidden commands and `#[schema(skip)]` commands are absent from discovery and cannot be addressed through it.
 
 Generated successful-output schemas use draft 2020-12 serialization semantics but omit the redundant root `$schema` marker and Rust-type `title`. Nested schema metadata is left untouched.
 

@@ -52,6 +52,9 @@ struct CreateThingArgs {
 
     #[arg(long)]
     enabled: bool,
+
+    #[arg(long, default_value = "safe", value_parser = ["fast", "safe"])]
+    mode: String,
 }
 
 #[derive(Debug, Args)]
@@ -155,6 +158,26 @@ mod tests {
         assert!(remove.executable);
         assert!(!remove.has_subcommands);
         assert!(remove.output.is_none());
+
+        let create = contract.command(&["create_thing"])?;
+        assert!(create.arguments.is_empty());
+        let name = create.options.iter().find(|argument| argument.id == "name").expect("name");
+        assert_eq!(name.long.as_deref(), Some("name"));
+        assert!(name.required);
+
+        let enabled =
+            create.options.iter().find(|argument| argument.id == "enabled").expect("enabled");
+        assert_eq!(enabled.long.as_deref(), Some("enabled"));
+
+        let mode = create.options.iter().find(|argument| argument.id == "mode").expect("mode");
+        assert_eq!(mode.default_values, vec!["safe".to_owned()]);
+        assert_eq!(mode.possible_values, vec!["fast".to_owned(), "safe".to_owned()]);
+
+        let positional = contract.command(&["rm"])?;
+        assert_eq!(positional.arguments.len(), 1);
+        assert_eq!(positional.arguments[0].id, "id");
+        assert_eq!(positional.arguments[0].index, Some(1));
+        assert!(positional.arguments[0].required);
 
         let admin = contract.command(&["admin"])?;
         assert!(!admin.executable);

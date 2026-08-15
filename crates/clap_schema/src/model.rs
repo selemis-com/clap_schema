@@ -84,6 +84,8 @@ impl CliContract {
             aliases: node.visible_aliases.clone(),
             description: node.description.clone(),
             usage: node.usage.clone(),
+            arguments: node.arguments.clone(),
+            options: node.options.clone(),
             executable: operation.is_some(),
             output: operation.and_then(|operation| operation.output.clone()),
             has_subcommands: !node.children.is_empty(),
@@ -99,6 +101,8 @@ impl CliContract {
             aliases: info.aliases,
             description: info.description,
             usage: info.usage,
+            arguments: info.arguments,
+            options: info.options,
             executable: info.executable,
             output: info.output,
             subcommands: node.children.iter().map(|child| self.command_node(child)).collect(),
@@ -149,6 +153,12 @@ pub struct CommandInfo {
     pub description: Option<String>,
     /// Canonical invocation synopsis rendered by Clap.
     pub usage: String,
+    /// Visible positional arguments reflected directly from Clap.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub arguments: Vec<ArgumentInfo>,
+    /// Visible non-positional options reflected directly from Clap.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<ArgumentInfo>,
     /// Whether this node has a registered executable handler.
     pub executable: bool,
     /// Successful output schema when the executable handler returns non-unit.
@@ -183,6 +193,12 @@ pub struct CommandNode {
     pub description: Option<String>,
     /// Canonical invocation synopsis rendered by Clap.
     pub usage: String,
+    /// Visible positional arguments reflected directly from Clap.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub arguments: Vec<ArgumentInfo>,
+    /// Visible non-positional options reflected directly from Clap.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<ArgumentInfo>,
     /// Whether this node has a registered executable handler.
     pub executable: bool,
     /// Successful output schema when the executable handler returns non-unit.
@@ -191,6 +207,45 @@ pub struct CommandNode {
     /// Visible child commands, recursively expanded.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub subcommands: Vec<Self>,
+}
+
+/// Compact context for one visible Clap argument or option.
+///
+/// This intentionally exposes only straightforward facts from Clap's built command model.
+/// Complete invocation semantics remain authoritative in Clap and its generated help.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArgumentInfo {
+    /// Clap argument identifier.
+    pub id: String,
+    /// Positional index when this is a positional argument.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index: Option<usize>,
+    /// Short option name when configured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub short: Option<char>,
+    /// Long option name when configured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub long: Option<String>,
+    /// Short aliases that Clap exposes in generated help.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub short_aliases: Vec<char>,
+    /// Long aliases that Clap exposes in generated help.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
+    /// Value placeholders such as `FILE` or `WORKSPACE_ID`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub value_names: Vec<String>,
+    /// Human-readable argument help reflected from Clap.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub help: Option<String>,
+    /// Whether Clap marks this argument as unconditionally required.
+    pub required: bool,
+    /// Visible UTF-8 default values for value-taking arguments.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub default_values: Vec<String>,
+    /// Visible finite values reported by the configured Clap value parser.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub possible_values: Vec<String>,
 }
 
 /// Internal schema-visible command topology reflected from Clap.
@@ -208,6 +263,10 @@ pub(crate) struct DiscoveryNode {
     pub(crate) description: Option<String>,
     /// Canonical invocation synopsis rendered by Clap.
     pub(crate) usage: String,
+    /// Visible positional arguments reflected directly from Clap.
+    pub(crate) arguments: Vec<ArgumentInfo>,
+    /// Visible non-positional options reflected directly from Clap.
+    pub(crate) options: Vec<ArgumentInfo>,
     /// Schema-visible child commands.
     pub(crate) children: Vec<Self>,
 }

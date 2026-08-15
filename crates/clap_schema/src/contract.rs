@@ -2,11 +2,11 @@
 
 use std::collections::HashSet;
 
-use clap::Command;
+use clap::{Arg, ArgAction, Command};
 
 use crate::{
     Operation,
-    model::{CliContract, DiscoveryNode, OperationContract},
+    model::{ArgumentInfo, CliContract, DiscoveryNode, OperationContract},
 };
 
 /// Result type returned by `clap_schema`.
@@ -191,8 +191,88 @@ fn build_discovery_node(
             .or_else(|| command.get_long_about())
             .map(ToString::to_string),
         usage: usage_synopsis(command),
+        arguments: reflected_positionals(command),
+        options: reflected_options(command),
         children,
     })
+}
+
+/// Reflects visible positional arguments directly from one built Clap command.
+fn reflected_positionals(command: &Command) -> Vec<ArgumentInfo> {
+    command
+        .get_positionals()
+        .filter(|argument| reflected_argument(argument))
+        .map(argument_info)
+        .collect()
+}
+
+/// Reflects visible non-positional options directly from one built Clap command.
+fn reflected_options(command: &Command) -> Vec<ArgumentInfo> {
+    command
+        .get_arguments()
+        .filter(|argument| !argument.is_positional())
+        .filter(|argument| reflected_argument(argument))
+        .map(argument_info)
+        .collect()
+}
+
+/// Returns whether an argument belongs in agent-facing discovery context.
+fn reflected_argument(argument: &Arg) -> bool {
+    if argument.is_hide_set() {
+        return false;
+    }
+    !matches!(
+        argument.get_action(),
+        ArgAction::Help | ArgAction::HelpShort | ArgAction::HelpLong | ArgAction::Version
+    )
+}
+
+/// Projects the small, stable subset of Clap argument metadata useful for discovery.
+fn argument_info(argument: &Arg) -> ArgumentInfo {
+    let takes_values = argument.get_action().takes_values();
+    let default_values = if takes_values && !argument.is_hide_default_value_set() {
+        argument
+            .get_default_values()
+            .iter()
+            .filter_map(|value| value.to_str())
+            .map(ToOwned::to_owned)
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let possible_values = if takes_values && !argument.is_hide_possible_values_set() {
+        argument
+            .get_possible_values()
+            .into_iter()
+            .filter(|value| !value.is_hide_set())
+            .map(|value| value.get_name().to_owned())
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    ArgumentInfo {
+        id: argument.get_id().to_string(),
+        index: argument.get_index(),
+        short: argument.get_short(),
+        long: argument.get_long().map(ToOwned::to_owned),
+        short_aliases: argument.get_visible_short_aliases().unwrap_or_default(),
+        aliases: argument
+            .get_visible_aliases()
+            .unwrap_or_default()
+            .into_iter()
+            .map(ToOwned::to_owned)
+            .collect(),
+        value_names: if takes_values {
+            argument.get_value_names().unwrap_or_default().iter().map(ToString::to_string).collect()
+        } else {
+            Vec::new()
+        },
+        help: argument.get_help().or_else(|| argument.get_long_help()).map(ToString::to_string),
+        required: argument.is_required_set(),
+        default_values,
+        possible_values,
+    }
 }
 
 /// Renders Clap's canonical usage statement without the presentation heading.

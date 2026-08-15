@@ -119,12 +119,13 @@
 //!
 //! # Scope
 //!
-//! The wire model intentionally does not duplicate argv bindings, parser
-//! constraints, input schemas, output selectors, or protocol versioning. For
+//! The wire model does not define a second input schema or parser. For
 //! applications that expose a schema-discovery command, [`CliContract::command`],
 //! [`CliContract::catalog`], and [`CliContract::full`] reflect canonical paths,
-//! aliases, descriptions, visibility, and group topology from the same Clap tree.
-//! A present output schema means the operation's successful value is JSON-renderable.
+//! aliases, descriptions, visibility, usage, and a compact visible-argument summary
+//! directly from Clap's built command tree. Clap-generated help remains authoritative
+//! for complete invocation semantics. A present output schema means the operation's
+//! successful value is JSON-renderable.
 //!
 //! The remaining trust boundary is the output type itself: custom `Serialize`
 //! and `JsonSchema` implementations can disagree. Derived Serde/Schemars
@@ -144,7 +145,9 @@ pub mod __private;
 
 pub use clap_schema_derive::{CliSchema, CommandSchema, handler, operation};
 pub use contract::{ContractBuilder, Error, Result};
-pub use model::{CliContract, CommandInfo, CommandNode, CommandSummary, OperationContract};
+pub use model::{
+    ArgumentInfo, CliContract, CommandInfo, CommandNode, CommandSummary, OperationContract,
+};
 pub use operation::{Operation, WriteJsonError, write_json};
 
 /// Trait implemented by a machine-contract-aware root Clap parser.
