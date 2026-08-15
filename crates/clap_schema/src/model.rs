@@ -30,6 +30,9 @@ pub struct CliContract {
 
 impl CliContract {
     /// Finds an operation by its canonical path, excluding the binary name.
+    ///
+    /// Unlike discovery queries, this method does not resolve Clap aliases. Use [`Self::command`]
+    /// when starting from a user- or agent-supplied command path.
     #[must_use]
     pub fn operation(&self, path: &[&str]) -> Option<&OperationContract> {
         self.operations.iter().find(|operation| path_matches(&operation.path, path))
@@ -47,9 +50,10 @@ impl CliContract {
 
     /// Returns the application-defined metadata schema declared for this CLI, when present.
     ///
-    /// `clap_schema` does not construct or serialize metadata values and does not inject this
-    /// schema into command discovery automatically. Applications decide how both the schema and
-    /// their concrete metadata values appear in their own machine-facing documents.
+    /// The schema uses the same draft 2020-12 serialization-view settings as successful-output
+    /// schemas. `clap_schema` does not construct or serialize metadata values and does not inject
+    /// this schema into command discovery automatically. Applications decide how both the schema
+    /// and their concrete metadata values appear in their own machine-facing documents.
     #[must_use]
     pub const fn metadata_schema(&self) -> Option<&Value> {
         self.metadata_schema.as_ref()
@@ -75,10 +79,53 @@ impl CliContract {
 
     /// Returns the effective metadata schema for one visible command or operation.
     ///
-    /// The application-wide metadata schema applies everywhere. When the selected executable
-    /// operation declares an additional metadata schema, both layers are composed with JSON Schema
-    /// `allOf`; `clap_schema` never shallow-merges schema objects. Concrete metadata values remain
-    /// entirely application-owned.
+    /// The application-wide metadata schema applies throughout the schema-visible discovery tree.
+    /// When the selected executable operation declares an additional metadata schema, both
+    /// layers are composed with JSON Schema `allOf`; `clap_schema` never shallow-merges schema
+    /// objects. A command group therefore sees only the application-wide schema, while an
+    /// executable operation may additionally narrow or supplement it. Concrete metadata values
+    /// remain entirely application-owned and must satisfy the effective schema the application
+    /// chooses to expose. Because `allOf` validates the same value against every layer,
+    /// applications must choose schemas that are mutually composable; `clap_schema` does not
+    /// rewrite closed-object or other application-defined constraints.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use clap::Command;
+    /// use clap_schema::ContractBuilder;
+    /// use schemars::JsonSchema;
+    /// use serde::Serialize;
+    ///
+    /// #[derive(JsonSchema)]
+    /// struct CommonMetadata {
+    ///     idempotent: bool,
+    /// }
+    ///
+    /// #[derive(JsonSchema)]
+    /// struct PaginationMetadata {
+    ///     cursor_argument: String,
+    /// }
+    ///
+    /// #[derive(Serialize, JsonSchema)]
+    /// struct Page {
+    ///     next_cursor: Option<String>,
+    /// }
+    ///
+    /// #[clap_schema::handler]
+    /// fn list() -> Result<Page, std::convert::Infallible> {
+    ///     Ok(Page { next_cursor: None })
+    /// }
+    ///
+    /// let contract = ContractBuilder::new(Command::new("example").subcommand(Command::new("list")))
+    ///     .metadata::<CommonMetadata>()
+    ///     .operation(["list"], clap_schema::operation!(list).metadata::<PaginationMetadata>())
+    ///     .build()?;
+    ///
+    /// let schema = contract.metadata_schema_for(&["list"])?.expect("metadata schema");
+    /// assert_eq!(schema["allOf"].as_array().map(Vec::len), Some(2));
+    /// # Ok::<(), clap_schema::Error>(())
+    /// ```
     ///
     /// # Errors
     ///
@@ -125,6 +172,9 @@ impl CliContract {
     }
 
     /// Returns the complete visible recursive subtree rooted at `path`.
+    ///
+    /// Unlike [`Self::catalog`], the returned [`CommandNode`] includes the selected node itself as
+    /// well as all schema-visible descendants.
     ///
     /// # Errors
     ///
@@ -211,7 +261,10 @@ pub struct CommandInfo {
     /// Command description reflected from Clap help metadata.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Canonical invocation synopsis rendered by Clap.
+    /// Invocation synopsis rendered by Clap.
+    ///
+    /// This is presentation output, not a structured grammar; Clap may collapse groups of options
+    /// behind placeholders such as `[OPTIONS]`.
     pub usage: String,
     /// Visible positional arguments reflected directly from Clap.
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -251,7 +304,10 @@ pub struct CommandNode {
     /// Command description reflected from Clap help metadata.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Canonical invocation synopsis rendered by Clap.
+    /// Invocation synopsis rendered by Clap.
+    ///
+    /// This is presentation output, not a structured grammar; Clap may collapse groups of options
+    /// behind placeholders such as `[OPTIONS]`.
     pub usage: String,
     /// Visible positional arguments reflected directly from Clap.
     #[serde(skip_serializing_if = "Vec::is_empty")]

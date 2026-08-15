@@ -57,6 +57,10 @@
 //!     .and_then(|operation| operation.output.as_ref())
 //!     .expect("create output");
 //! assert_eq!(output.get("type").and_then(serde_json::Value::as_str), Some("object"));
+//! let create = contract.command(&["create"])?;
+//! assert_eq!(create.path, vec!["create".to_owned()]);
+//! assert!(create.options.iter().any(|argument| argument.long.as_deref() == Some("name")));
+//! assert_eq!(contract.catalog(&[])?.len(), 1);
 //! # Ok::<(), clap_schema::Error>(())
 //! ```
 //!
@@ -120,36 +124,81 @@
 //!
 //! # Application metadata schemas
 //!
-//! A root CLI may declare an application-defined metadata type:
+//! Applications may declare a schema for metadata that they add to their own machine-facing
+//! documents. `clap_schema` handles only the schema side: it never stores or serializes the
+//! application's concrete metadata values.
 //!
-//! ```ignore
-//! #[derive(Parser, CliSchema)]
-//! #[schema(metadata = KivalCommandMetadata)]
-//! struct Cli {
-//!     // ...
-//! }
 //! ```
+//! use clap::{Args, Parser, Subcommand};
+//! use clap_schema::{CliSchema, CommandSchema};
+//! use schemars::JsonSchema;
+//! use serde::Serialize;
 //!
-//! Individual executable operations may supplement that application-wide schema:
+//! #[derive(Debug, JsonSchema)]
+//! struct CommandMetadata {
+//!     destructive: bool,
+//! }
 //!
-//! ```ignore
-//! #[derive(Subcommand, CommandSchema)]
+//! #[derive(Debug, JsonSchema)]
+//! struct PaginationMetadata {
+//!     cursor_argument: String,
+//! }
+//!
+//! #[derive(Debug, Parser, CliSchema)]
+//! #[schema(metadata = CommandMetadata)]
+//! struct Cli {
+//!     #[command(subcommand)]
+//!     command: Commands,
+//! }
+//!
+//! #[derive(Debug, Subcommand, CommandSchema)]
 //! enum Commands {
 //!     #[schema(handler = list, metadata = PaginationMetadata)]
 //!     List(ListArgs),
 //! }
+//!
+//! #[derive(Debug, Args)]
+//! struct ListArgs {
+//!     #[arg(long)]
+//!     cursor: Option<String>,
+//! }
+//!
+//! #[derive(Debug, Serialize, JsonSchema)]
+//! struct Page {
+//!     next_cursor: Option<String>,
+//! }
+//!
+//! #[clap_schema::handler]
+//! fn list(_command: ListArgs) -> Result<Page, std::convert::Infallible> {
+//!     Ok(Page { next_cursor: None })
+//! }
+//!
+//! let contract = Cli::schema()?;
+//! assert_eq!(contract.metadata_schema().unwrap()["type"], "object");
+//! assert_eq!(
+//!     contract.metadata_schema_for(&["list"])?.unwrap()["allOf"].as_array().map(Vec::len),
+//!     Some(2),
+//! );
+//! # Ok::<(), clap_schema::Error>(())
 //! ```
 //!
-//! Metadata types need only `schemars::JsonSchema`. [`CliContract::metadata_schema`] exposes the
-//! application-wide schema, [`CliContract::operation_metadata_schema`] exposes a command-specific
-//! supplement, and [`CliContract::metadata_schema_for`] returns their effective JSON Schema
-//! composition using `allOf`. Builder-style applications use [`ContractBuilder::metadata`] plus
-//! [`Operation::metadata`].
+//! Root `metadata = Type` declares the application-wide vocabulary. An executable
+//! `CommandSchema` variant may add `metadata = Type` as an operation-specific supplement. The
+//! effective schema is the intersection of both layers, represented with JSON Schema `allOf`;
+//! it is not a shallow schema merge. Commands without a supplement inherit the application-wide
+//! schema unchanged. Because every `allOf` branch validates the same value, applications must
+//! choose metadata schema types that compose correctly; `clap_schema` does not relax closed object
+//! schemas or otherwise rewrite application-defined constraints.
 //!
-//! `clap_schema` never constructs, stores, merges, or serializes metadata values and does not
-//! inject metadata into discovery views or the serialized base contract. Applications own all
-//! metadata semantics, concrete values, value defaults/overrides, command association, and wire
-//! presentation.
+//! Metadata types need only [`schemars::JsonSchema`]. Applications commonly also implement
+//! [`serde::Serialize`] on those types because the application constructs the actual metadata
+//! values, but that value never crosses `clap_schema`. The application is responsible for making
+//! sure its emitted value satisfies the metadata schema it exposes. Builder-style applications
+//! use [`ContractBuilder::metadata`] and [`Operation::metadata`].
+//!
+//! The runnable `application_metadata` example demonstrates application-owned value construction,
+//! flattening application and operation layers into one metadata value, and choosing the final
+//! machine-facing document shape.
 //!
 //! # Scope
 //!

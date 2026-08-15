@@ -1,7 +1,8 @@
 # Examples
 
-The examples focus on handler-derived successful JSON output and read-only command context reflected from Clap, while Clap remains authoritative for parsing and input validation.
+The examples cover handler-derived successful JSON output, read-only command context reflected from Clap, and application-defined metadata schemas while Clap remains authoritative for parsing and input validation and applications remain responsible for metadata values.
 
+- `application_metadata`: application-wide and operation-specific metadata schemas paired with app-owned concrete metadata values.
 - `basic`: minimal derive + handler contract and `write_json` dispatch.
 - `builder_api`: programmatic Clap tree using handler-derived `operation!` metadata plus application-wide and operation-specific metadata schemas.
 - `flattened_commands`: flattened subcommand enums.

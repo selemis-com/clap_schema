@@ -37,7 +37,12 @@ impl Operation {
     /// `clap_schema` records only the JSON Schema for `T`; applications remain responsible for
     /// constructing and serializing concrete metadata values. When an application-wide metadata
     /// schema is also declared, [`crate::CliContract::metadata_schema_for`] composes both schemas
-    /// with JSON Schema `allOf`.
+    /// with JSON Schema `allOf`. The concrete value exposed by the application must therefore
+    /// satisfy both schema layers.
+    ///
+    /// This method changes schema metadata only. It does not attach a value to the operation or add
+    /// a `metadata` field to discovery output. Repeated calls replace the previous operation
+    /// metadata supplement.
     #[must_use]
     pub fn metadata<T>(mut self) -> Self
     where
@@ -65,6 +70,27 @@ pub enum WriteJsonError<E> {
 /// the handler's successful `T`, which must implement `Serialize + JsonSchema`.
 /// `Result<(), E>` deliberately writes no bytes because unit handlers have no
 /// successful output payload in the contract.
+///
+/// # Examples
+///
+/// ```
+/// use clap_schema::write_json;
+/// use schemars::JsonSchema;
+/// use serde::Serialize;
+///
+/// #[derive(Serialize, JsonSchema)]
+/// struct Created {
+///     id: u64,
+/// }
+///
+/// let mut bytes = Vec::new();
+/// write_json(&mut bytes, Ok::<_, ()>(Created { id: 7 })).unwrap();
+/// assert_eq!(std::str::from_utf8(&bytes).unwrap(), r#"{"id":7}"#);
+///
+/// let mut unit = Vec::new();
+/// write_json(&mut unit, Ok::<_, ()>(())).unwrap();
+/// assert!(unit.is_empty());
+/// ```
 ///
 /// # Errors
 ///

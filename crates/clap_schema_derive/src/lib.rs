@@ -18,7 +18,12 @@ use syn::{
 /// # `#[schema(...)]` options
 ///
 /// - `handler = path` binds an executable root operation to its canonical handler.
-/// - `metadata = Type` declares the application-wide metadata schema type.
+/// - `metadata = Type` declares the application-wide metadata schema type. It is schema-only:
+///   `clap_schema` never constructs or serializes values of `Type`.
+///
+/// Root `metadata` describes the application-wide metadata vocabulary, not a supplement specific
+/// to an executable root handler. Builder-style applications can supplement a registered root
+/// operation directly through `Operation::metadata`.
 #[proc_macro_derive(CliSchema, attributes(schema, command))]
 pub fn derive_cli_schema(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -42,7 +47,9 @@ pub fn derive_cli_schema(input: TokenStream) -> TokenStream {
 /// use `subcommands = Type` on the parent variant. `handler` and `subcommands`
 /// may be combined for an executable parent with optional children. Executable
 /// operations may also declare `metadata = Type` to supplement the root
-/// application metadata schema.
+/// application metadata schema. Metadata can only be attached to ordinary executable variants;
+/// command groups, flattened variants, skipped variants, and external subcommands do not carry an
+/// operation-specific metadata schema. The application owns all concrete metadata values.
 #[proc_macro_derive(CommandSchema, attributes(schema, command))]
 pub fn derive_command_schema(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -86,7 +93,8 @@ pub fn handler(attribute: TokenStream, input: TokenStream) -> TokenStream {
 /// Returns handler-derived operation metadata for builder-style Clap.
 ///
 /// The macro accepts the same handler path used by `#[schema(handler = ...)]`.
-/// It has no syntax for declaring an output type manually.
+/// It has no syntax for declaring an output type manually. The returned `clap_schema::Operation`
+/// can be supplemented with an application-defined metadata schema using `Operation::metadata`.
 #[proc_macro]
 pub fn operation(input: TokenStream) -> TokenStream {
     let path = parse_macro_input!(input as Path);

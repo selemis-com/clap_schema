@@ -78,7 +78,9 @@ impl ContractBuilder {
     /// Registers one executable operation by canonical command path.
     ///
     /// `operation` must come from [`crate::operation!`], so its output type is
-    /// inferred from the canonical handler rather than declared separately.
+    /// inferred from the canonical handler rather than declared separately. Builder paths are
+    /// canonical Clap command names; alias resolution is a discovery-time feature after the
+    /// contract has been built.
     #[must_use]
     pub fn operation<I, S>(mut self, path: I, operation: Operation) -> Self
     where
@@ -93,7 +95,13 @@ impl ContractBuilder {
     ///
     /// `clap_schema` generates and exposes only the JSON Schema for `T`. Applications remain
     /// responsible for constructing, serializing, and attaching concrete metadata values to their
-    /// own schema responses. Repeated calls replace the previous metadata type.
+    /// own schema responses, and for ensuring those values satisfy the declared schema. Repeated
+    /// calls replace the previous application-wide metadata type.
+    ///
+    /// Operation-specific supplements are attached with
+    /// [`Operation::metadata`](crate::Operation::metadata) and can be queried together with
+    /// this schema through
+    /// [`CliContract::metadata_schema_for`](crate::CliContract::metadata_schema_for).
     #[must_use]
     pub fn metadata<T>(mut self) -> Self
     where

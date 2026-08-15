@@ -96,13 +96,13 @@ use clap::{Args, Parser, Subcommand};
 use clap_schema::{CliSchema, CommandSchema};
 use schemars::JsonSchema;
 
-#[derive(Debug, JsonSchema)]
+#[derive(Debug, serde::Serialize, JsonSchema)]
 struct CommandMetadata {
     destructive: bool,
     idempotent: bool,
 }
 
-#[derive(Debug, JsonSchema)]
+#[derive(Debug, serde::Serialize, JsonSchema)]
 struct PaginationMetadata {
     cursor_argument: String,
     cursor_output_field: String,
@@ -140,11 +140,38 @@ assert_eq!(effective["allOf"].as_array().map(Vec::len), Some(2));
 # Ok::<(), clap_schema::Error>(())
 ```
 
-Root `metadata = Type` declares the application-wide schema. An executable command may also declare `metadata = Type`; builder-style code uses `operation!(handler).metadata::<Type>()`. The operation schema supplements the application schema rather than replacing it. `metadata_schema_for(path)` returns the effective schema, composing both layers with JSON Schema `allOf`. Commands without an operation supplement simply inherit the application schema.
+The metadata *schema* is only half of the application contract. The application constructs the concrete value separately. A paginated command can, for example, flatten values from the two schema-bearing layers into one emitted metadata object:
 
-Metadata types need only `JsonSchema`. `clap_schema` never constructs, stores, shallow-merges, or serializes metadata values and does not inject metadata into `CommandInfo`, `CommandNode`, or the serialized `CliContract`. The application owns concrete values, any default/override or shallow-merge behavior between those values, and where metadata schemas and values appear in its machine-facing documents. Applications will typically derive `Serialize` on their concrete metadata types as well, but `clap_schema` deliberately does not require it because no metadata value crosses this crate.
+```rust
+#[derive(serde::Serialize)]
+struct ListMetadataValue {
+    #[serde(flatten)]
+    command: CommandMetadata,
+    #[serde(flatten)]
+    pagination: PaginationMetadata,
+}
 
-Builder-style applications declare the application schema with `ContractBuilder::metadata::<Type>()` and an operation supplement with `operation!(handler).metadata::<Type>()`.
+let metadata = ListMetadataValue {
+    command: CommandMetadata { destructive: false, idempotent: true },
+    pagination: PaginationMetadata {
+        cursor_argument: "cursor".to_owned(),
+        cursor_output_field: "next_cursor".to_owned(),
+    },
+};
+# let _ = serde_json::to_value(metadata).unwrap();
+```
+
+`Serialize` on `CommandMetadata` and `PaginationMetadata` above is for the application's value construction; `clap_schema` itself only requires `JsonSchema`. The application is responsible for ensuring the emitted value actually satisfies the schema it chose to expose.
+
+Root `metadata = Type` declares the application-wide schema. An executable command may also declare `metadata = Type`; builder-style code uses `operation!(handler).metadata::<Type>()`. The operation schema supplements the application schema rather than replacing it. `metadata_schema_for(path)` returns the effective schema, composing both layers with JSON Schema `allOf`. The resulting metadata value therefore needs to satisfy both schemas. Commands without an operation supplement simply inherit the application schema.
+
+Because `allOf` validates the same value against every layer, metadata schema types must be designed to compose. For example, an object schema that forbids unknown properties can reject fields introduced by another layer. `clap_schema` preserves each application-defined schema as-is; it does not relax or rewrite schemas to make composition succeed.
+
+`clap_schema` never constructs, stores, shallow-merges, or serializes metadata values and does not inject metadata into `CommandInfo`, `CommandNode`, or the serialized `CliContract`. The application owns concrete values, any default/override or shallow-merge behavior between those values, and where metadata schemas and values appear in its machine-facing documents.
+
+In the derive API, root `metadata = Type` is application-wide metadata; operation-specific supplements belong on executable `CommandSchema` variants. Builder-style applications declare the application schema with `ContractBuilder::metadata::<Type>()` and can attach a supplement to any registered operation, including the root operation, with `operation!(handler).metadata::<Type>()`.
+
+See the runnable [`application_metadata`](crates/clap_schema/examples/application_metadata.rs) example for the complete schema/value separation and application-owned document construction.
 
 ## Command discovery
 
