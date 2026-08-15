@@ -187,6 +187,29 @@ mod tests {
         Ok(())
     }
 
+    #[derive(Parser, CliSchema)]
+    struct HelpCli {
+        #[command(subcommand)]
+        command: HelpCommands,
+    }
+
+    #[derive(Subcommand, CommandSchema)]
+    enum HelpCommands {
+        /// Show application-defined assistance.
+        Help(HelpArgs),
+    }
+
+    #[derive(Args)]
+    struct HelpArgs {}
+
+    impl clap_schema::Operation for HelpArgs {}
+
+    #[expect(dead_code, reason = "handler supplies the operation contract")]
+    #[clap_schema::handler]
+    fn help(_command: HelpArgs) -> Result<(), Infallible> {
+        Ok(())
+    }
+
     #[test]
     fn builder_contract_exposes_output_and_extensions() -> clap_schema::Result<()> {
         let contract =
@@ -353,6 +376,15 @@ mod tests {
         };
         assert_eq!(visible.path, ["visible"]);
         assert!(visible.executable);
+        Ok(())
+    }
+
+    #[test]
+    fn application_defined_help_is_discoverable() -> clap_schema::Result<()> {
+        let contract = HelpCli::schema()?;
+        let help = contract.command_for::<HelpArgs>().expect("application help operation");
+
+        assert_eq!(help.path, ["help"]);
         Ok(())
     }
 }
