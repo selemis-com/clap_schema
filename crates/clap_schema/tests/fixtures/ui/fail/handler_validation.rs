@@ -57,4 +57,25 @@ impl MultiHandler {
     }
 }
 
+trait HandlerTrait {}
+
+struct TraitHandler;
+
+#[clap_schema::handler]
+impl HandlerTrait for TraitHandler {}
+
+struct GenericHandler<T>(T);
+
+#[clap_schema::handler]
+impl<T> GenericHandler<T> {
+    fn run(self) -> Result<(), ()> {
+        Ok(())
+    }
+}
+
+struct EmptyHandler;
+
+#[clap_schema::handler]
+impl EmptyHandler {}
+
 fn main() {}

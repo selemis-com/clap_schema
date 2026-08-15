@@ -19,6 +19,8 @@ mod tests {
             "clap_schema handlers must return Result<T, E>",
             "free clap_schema handlers require exactly one typed operation input",
             "receiver handlers must put #[clap_schema::handler] on a dedicated inherent impl block",
+            "#[clap_schema::handler] requires an inherent impl block",
+            "clap_schema handler impls require a concrete non-generic operation type",
             "#[clap_schema::handler] impl blocks require a receiver method so Self is the operation identity",
             "#[clap_schema::handler] impl blocks must contain exactly one function",
         ] {

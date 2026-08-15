@@ -163,6 +163,7 @@ The repository keeps the example set intentionally small:
 | Example | Demonstrates |
 | --- | --- |
 | `basic` | Derive API, handler-derived output schema, and runtime `write_json` |
+| `operation_identity` | Rust operation identity across a nested Clap command, handler contract, and runtime dispatch |
 | `schema_subcommand` | Dedicated `schema <command>` and command-local `<command> --schema` discovery |
 | `application_extension` | Application-owned metadata values paired with clap_schema-generated extension schemas |
 | `builder_api` | The same contract model with Clap's builder API |

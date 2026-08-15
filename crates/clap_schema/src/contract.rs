@@ -263,9 +263,6 @@ fn build_discovery_node(
 
     let mut children = Vec::new();
     for child in command.get_subcommands() {
-        if child.get_name() == "help" {
-            continue;
-        }
         let mut child_path = path.clone();
         child_path.push(child.get_name().to_owned());
         if let Some(child) = build_discovery_node(child, child_path, operation_paths, false) {

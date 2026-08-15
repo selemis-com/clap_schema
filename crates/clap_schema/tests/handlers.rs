@@ -24,6 +24,8 @@ mod tests {
         Owned(OwnedArgs),
         Borrowed(BorrowedArgs),
         Mutable(MutableArgs),
+        Conditional(ConditionalArgs),
+        ConditionalAttr(ConditionalAttrArgs),
     }
 
     macro_rules! operation_args {
@@ -46,6 +48,8 @@ mod tests {
         OwnedArgs,
         BorrowedArgs,
         MutableArgs,
+        ConditionalArgs,
+        ConditionalAttrArgs,
     );
 
     #[derive(Serialize, JsonSchema)]
@@ -110,6 +114,30 @@ mod tests {
         }
     }
 
+    #[clap_schema::handler]
+    #[cfg(any())]
+    fn conditional_disabled(_command: ConditionalArgs) -> HandlerResult {
+        Err(HandlerError)
+    }
+
+    #[clap_schema::handler]
+    #[cfg(not(any()))]
+    fn conditional_enabled(_command: ConditionalArgs) -> HandlerResult {
+        Err(HandlerError)
+    }
+
+    #[clap_schema::handler]
+    #[cfg_attr(all(), cfg(any()))]
+    fn conditional_attr_disabled(_command: ConditionalAttrArgs) -> HandlerResult {
+        Err(HandlerError)
+    }
+
+    #[clap_schema::handler]
+    #[cfg_attr(all(), cfg(all()))]
+    fn conditional_attr_enabled(_command: ConditionalAttrArgs) -> HandlerResult {
+        Err(HandlerError)
+    }
+
     #[test]
     fn supported_handler_categories_infer_success_outputs() -> clap_schema::Result<()> {
         let contract = Cli::schema()?;
@@ -138,6 +166,8 @@ mod tests {
             OwnedArgs,
             BorrowedArgs,
             MutableArgs,
+            ConditionalArgs,
+            ConditionalAttrArgs,
         );
 
         Ok(())

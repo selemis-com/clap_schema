@@ -84,6 +84,115 @@ mod tests {
         Ok(Created { id: "1".to_owned(), name: "example".to_owned() })
     }
 
+    #[derive(Parser, CliSchema)]
+    struct UnregisteredChildrenCli {
+        #[command(subcommand)]
+        command: UnregisteredChildrenCommands,
+    }
+
+    #[derive(Subcommand, CommandSchema)]
+    enum UnregisteredChildrenCommands {
+        Parent(UnregisteredChildrenArgs),
+    }
+
+    #[derive(Args)]
+    struct UnregisteredChildrenArgs {
+        #[command(subcommand)]
+        command: Option<ActualChildren>,
+    }
+
+    impl clap_schema::Operation for UnregisteredChildrenArgs {}
+
+    #[expect(dead_code, reason = "handler supplies the operation contract")]
+    #[clap_schema::handler]
+    fn unregistered_children(_command: UnregisteredChildrenArgs) -> Result<(), Infallible> {
+        Ok(())
+    }
+
+    #[derive(Subcommand, CommandSchema)]
+    enum ActualChildren {
+        Actual(ActualChildArgs),
+    }
+
+    #[derive(Args)]
+    struct ActualChildArgs {}
+
+    impl clap_schema::Operation for ActualChildArgs {}
+
+    #[expect(dead_code, reason = "handler supplies the operation contract")]
+    #[clap_schema::handler]
+    fn actual_child(_command: ActualChildArgs) -> Result<(), Infallible> {
+        Ok(())
+    }
+
+    #[derive(Parser, CliSchema)]
+    struct MismatchedChildrenCli {
+        #[command(subcommand)]
+        command: MismatchedChildrenCommands,
+    }
+
+    #[derive(Subcommand, CommandSchema)]
+    enum MismatchedChildrenCommands {
+        #[schema(subcommands)]
+        Parent(MismatchedChildrenArgs),
+    }
+
+    #[derive(Args)]
+    struct MismatchedChildrenArgs {
+        #[command(subcommand)]
+        command: Option<ActualChildren>,
+    }
+
+    impl clap_schema::CommandGroup for MismatchedChildrenArgs {
+        type Subcommands = DeclaredChildren;
+    }
+
+    #[derive(Subcommand, CommandSchema)]
+    enum DeclaredChildren {
+        Declared(DeclaredChildArgs),
+    }
+
+    #[derive(Args)]
+    struct DeclaredChildArgs {}
+
+    impl clap_schema::Operation for DeclaredChildArgs {}
+
+    #[expect(dead_code, reason = "handler supplies the operation contract")]
+    #[clap_schema::handler]
+    fn declared_child(_command: DeclaredChildArgs) -> Result<(), Infallible> {
+        Ok(())
+    }
+
+    #[derive(Parser, CliSchema)]
+    struct DispositionCli {
+        #[command(subcommand)]
+        command: DispositionCommands,
+    }
+
+    #[derive(Subcommand, CommandSchema)]
+    #[expect(
+        dead_code,
+        reason = "variants exist to exercise Clap skip and external-subcommand dispositions"
+    )]
+    enum DispositionCommands {
+        Visible(VisibleArgs),
+        #[command(skip)]
+        Skipped,
+        #[command(external_subcommand)]
+        External(Vec<String>),
+    }
+
+    #[derive(Args)]
+    struct VisibleArgs {}
+
+    impl clap_schema::Operation for VisibleArgs {}
+
+    #[expect(dead_code, reason = "handler supplies the operation contract")]
+    #[clap_schema::handler]
+    fn visible(_command: VisibleArgs) -> Result<(), Infallible> {
+        Ok(())
+    }
+
     #[test]
     fn complete_contract_matches_the_checked_in_wire_fixture()
     -> Result<(), Box<dyn std::error::Error>> {
@@ -164,6 +273,79 @@ mod tests {
         assert!(contract.command_for::<CreateOperation>().is_none());
         assert!(contract.command(&["first"]).is_ok());
         assert!(contract.command(&["second"]).is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn operation_extension_is_effective_without_an_application_extension() -> clap_schema::Result<()>
+    {
+        let contract =
+            ContractBuilder::new(Command::new("fixture").subcommand(Command::new("create")))
+                .operation_with_extension::<CreateOperation, CreateMetadata>(["create"])
+                .build()?;
+
+        assert!(contract.extended_schema().is_none());
+        let effective = contract
+            .extended_schema_for_operation::<CreateOperation>()
+            .expect("operation extension should be effective on its own");
+        assert_eq!(effective["type"], "object");
+        assert!(effective["properties"].get("audit_event").is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn path_extension_lookup_inherits_the_application_extension() -> clap_schema::Result<()> {
+        let contract =
+            ContractBuilder::new(Command::new("fixture").subcommand(Command::new("create")))
+                .extend::<ApplicationMetadata>()
+                .operation::<CreateOperation>(["create"])
+                .build()?;
+
+        let application = contract.extended_schema().expect("application extension");
+        let inherited =
+            contract.extended_schema_for(&["create"])?.expect("inherited application extension");
+        assert_eq!(inherited, application);
+        Ok(())
+    }
+
+    #[test]
+    fn custom_help_command_remains_discoverable() -> clap_schema::Result<()> {
+        let contract = ContractBuilder::new(
+            Command::new("fixture").disable_help_subcommand(true).subcommand(Command::new("help")),
+        )
+        .operation::<CreateOperation>(["help"])
+        .build()?;
+
+        let help = contract.command(&["help"])?;
+        assert_eq!(help.path, ["help"]);
+        assert!(help.executable);
+        Ok(())
+    }
+
+    #[test]
+    fn derive_rejects_args_children_without_command_group_registration() {
+        let error = UnregisteredChildrenCli::schema().expect_err("unregistered nested subcommands");
+        assert!(matches!(
+            &error,
+            clap_schema::Error::UnregisteredSubcommands { path } if path == &["parent"]
+        ));
+    }
+
+    #[test]
+    fn derive_rejects_command_group_that_disagrees_with_clap() {
+        let error = MismatchedChildrenCli::schema().expect_err("mismatched nested subcommands");
+        assert!(matches!(error, clap_schema::Error::DerivedCommandMismatch { .. }));
+    }
+
+    #[test]
+    fn clap_skipped_and_external_variants_stay_out_of_the_contract() -> clap_schema::Result<()> {
+        let contract = DispositionCli::schema()?;
+
+        assert!(contract.command_for::<VisibleArgs>().is_some());
+        let catalog = contract.catalog(&[])?;
+        assert_eq!(catalog.len(), 1);
+        assert_eq!(catalog[0].path, ["visible"]);
+        assert!(contract.command(&["skipped"]).is_err());
         Ok(())
     }
 }
