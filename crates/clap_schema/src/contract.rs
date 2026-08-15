@@ -190,8 +190,16 @@ fn build_discovery_node(
             .get_about()
             .or_else(|| command.get_long_about())
             .map(ToString::to_string),
+        usage: usage_synopsis(command),
         children,
     })
+}
+
+/// Renders Clap's canonical usage statement without the presentation heading.
+fn usage_synopsis(command: &Command) -> String {
+    let mut command = command.clone();
+    let rendered = command.render_usage().to_string();
+    rendered.strip_prefix("Usage: ").unwrap_or(&rendered).trim().to_owned()
 }
 
 /// Formats a canonical operation path for diagnostics.

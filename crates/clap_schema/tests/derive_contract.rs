@@ -132,10 +132,13 @@ mod tests {
     fn handler_signature_is_the_success_output_source_of_truth() -> clap_schema::Result<()> {
         let contract = Cli::schema()?;
         let create = contract.operation(&["create_thing"]).expect("create contract");
-        assert_eq!(create.output.as_ref().expect("typed output")["title"], "Thing");
+        let create_output = create.output.as_ref().expect("typed output");
+        assert_eq!(create_output["type"], "object");
+        assert!(create_output.get("$schema").is_none());
+        assert!(create_output.get("title").is_none());
 
         let status = contract.operation(&["admin", "status"]).expect("status contract");
-        assert_eq!(status.output.as_ref().expect("typed output")["title"], "Status");
+        assert_eq!(status.output.as_ref().expect("typed output")["type"], "object");
 
         let remove = contract.operation(&["rm"]).expect("remove contract");
         assert!(remove.output.is_none());
@@ -148,6 +151,7 @@ mod tests {
         let remove = contract.command(&["delete"])?;
         assert_eq!(remove.path, vec!["rm".to_owned()]);
         assert_eq!(remove.aliases, vec!["delete".to_owned()]);
+        assert!(remove.usage.starts_with("demo rm"));
         assert!(remove.executable);
         assert!(!remove.has_subcommands);
         assert!(remove.output.is_none());

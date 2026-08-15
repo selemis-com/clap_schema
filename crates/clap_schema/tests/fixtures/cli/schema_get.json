@@ -4,9 +4,9 @@
     "get"
   ],
   "description": "Show one resource",
+  "usage": "agentctl get [OPTIONS] <ID>",
   "executable": true,
   "output": {
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
     "description": "Resource returned by the get command.",
     "properties": {
       "id": {
@@ -22,7 +22,6 @@
       "id",
       "name"
     ],
-    "title": "Resource",
     "type": "object"
   },
   "has_subcommands": false

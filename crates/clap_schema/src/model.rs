@@ -83,6 +83,7 @@ impl CliContract {
             path: node.path.clone(),
             aliases: node.visible_aliases.clone(),
             description: node.description.clone(),
+            usage: node.usage.clone(),
             executable: operation.is_some(),
             output: operation.and_then(|operation| operation.output.clone()),
             has_subcommands: !node.children.is_empty(),
@@ -97,6 +98,7 @@ impl CliContract {
             path: info.path,
             aliases: info.aliases,
             description: info.description,
+            usage: info.usage,
             executable: info.executable,
             output: info.output,
             subcommands: node.children.iter().map(|child| self.command_node(child)).collect(),
@@ -145,6 +147,8 @@ pub struct CommandInfo {
     /// Command description reflected from Clap help metadata.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Canonical invocation synopsis rendered by Clap.
+    pub usage: String,
     /// Whether this node has a registered executable handler.
     pub executable: bool,
     /// Successful output schema when the executable handler returns non-unit.
@@ -177,6 +181,8 @@ pub struct CommandNode {
     /// Command description reflected from Clap help metadata.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Canonical invocation synopsis rendered by Clap.
+    pub usage: String,
     /// Whether this node has a registered executable handler.
     pub executable: bool,
     /// Successful output schema when the executable handler returns non-unit.
@@ -200,6 +206,8 @@ pub(crate) struct DiscoveryNode {
     pub(crate) visible_aliases: Vec<String>,
     /// Command description reflected from Clap help metadata.
     pub(crate) description: Option<String>,
+    /// Canonical invocation synopsis rendered by Clap.
+    pub(crate) usage: String,
     /// Schema-visible child commands.
     pub(crate) children: Vec<Self>,
 }

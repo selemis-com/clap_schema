@@ -62,13 +62,11 @@ The generated contract contains only the information that is not already availab
     {
       "path": ["create"],
       "output": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "id": { "type": "integer", "format": "uint64", "minimum": 0 },
           "name": { "type": "string" }
         },
         "required": ["id", "name"],
-        "title": "Item",
         "type": "object"
       }
     }
@@ -100,9 +98,11 @@ let subtree = contract.full(&[])?;
 # Ok::<(), clap_schema::Error>(())
 ```
 
-Paths may use command aliases accepted by Clap, while returned paths are canonical. Catalogs contain visible executable descendants; `full` recursively includes visible groups and operations. Clap-hidden commands and `#[schema(skip)]` commands are absent from discovery and cannot be addressed through it.
+Paths may use command aliases accepted by Clap, while returned paths are canonical. Shallow and recursive command views include Clap's generated usage synopsis so callers can construct ordinary invocations without duplicating Clap's argument model. Catalogs remain compact and contain visible executable descendants; `full` recursively includes visible groups and operations. Clap-hidden commands and `#[schema(skip)]` commands are absent from discovery and cannot be addressed through it.
 
-This is intended to support standalone commands such as `tool schema`, `tool schema objects`, and `tool schema objects --full` while leaving invocation syntax to `--help`.
+Generated successful-output schemas use draft 2020-12 serialization semantics but omit the redundant root `$schema` marker and Rust-type `title`. Nested schema metadata is left untouched.
+
+This is intended to support standalone commands such as `tool schema`, `tool schema objects`, and `tool schema objects --full`, with `--help` remaining authoritative for detailed invocation documentation.
 
 The crate-level API documentation, examples, and this README are the authoritative documentation.
 

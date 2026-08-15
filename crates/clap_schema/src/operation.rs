@@ -70,9 +70,14 @@ fn output_schema<T>() -> Value
 where
     T: ?Sized + JsonSchema + Serialize,
 {
-    SchemaSettings::draft2020_12()
+    let mut schema = SchemaSettings::draft2020_12()
         .for_serialize()
         .into_generator()
         .into_root_schema_for::<T>()
-        .to_value()
+        .to_value();
+    if let Value::Object(root) = &mut schema {
+        root.remove("$schema");
+        root.remove("title");
+    }
+    schema
 }
