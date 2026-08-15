@@ -41,6 +41,10 @@ pub enum Error {
         path: Vec<String>,
     },
 
+    /// More than one application-wide extension was declared through the builder API.
+    #[error("application-wide extension schema may only be declared once")]
+    DuplicateApplicationExtension,
+
     /// Derived command registration and Clap's generated subcommand sequence disagree.
     #[error("derived CommandSchema registration does not match clap subcommands for `{type_name}`")]
     DerivedCommandMismatch {
@@ -75,15 +79,15 @@ pub struct ContractBuilder {
     root: Command,
     /// Type-resolved operations keyed by canonical command path.
     operations: Vec<(Vec<String>, OperationDescriptor)>,
-    /// Optional application-defined extension schema factory.
-    extended: Option<ExtendedSchemaFactory>,
+    /// Application-defined extension schema declarations.
+    extended: Vec<ExtendedSchemaFactory>,
 }
 
 impl ContractBuilder {
     /// Creates a contract builder around a Clap command tree.
     #[must_use]
     pub const fn new(root: Command) -> Self {
-        Self { root, operations: Vec::new(), extended: None }
+        Self { root, operations: Vec::new(), extended: Vec::new() }
     }
 
     /// Registers one executable operation type by canonical command path.
@@ -141,7 +145,7 @@ impl ContractBuilder {
     /// `clap_schema` generates and exposes only the JSON Schema for `T`. Applications remain
     /// responsible for constructing, serializing, and attaching concrete values to their own
     /// machine-facing responses, and for ensuring those values satisfy the declared schema.
-    /// Repeated calls replace the previous application-wide extension type.
+    /// Declaring more than one application-wide extension is rejected by [`Self::build`].
     ///
     /// Operation-specific supplements are attached while registering the operation with
     /// [`ContractBuilder::operation_with_extension`] and can be queried together with
@@ -154,13 +158,13 @@ impl ContractBuilder {
     where
         T: JsonSchema,
     {
-        self.extended = Some(extended_schema_factory::<T>());
+        self.extended.push(extended_schema_factory::<T>());
         self
     }
 
     /// Declares an already type-erased extension schema factory for derive-generated registration.
-    pub(crate) const fn extended_factory(mut self, extended: ExtendedSchemaFactory) -> Self {
-        self.extended = Some(extended);
+    pub(crate) fn extended_factory(mut self, extended: ExtendedSchemaFactory) -> Self {
+        self.extended.push(extended);
         self
     }
 
@@ -168,10 +172,12 @@ impl ContractBuilder {
     ///
     /// # Errors
     ///
-    /// Returns an error when an operation path does not exist in the actual Clap tree, or when
-    /// the same operation path is registered more than once.
+    /// Returns an error when an operation path does not exist in the actual Clap tree, when the
+    /// same operation path is registered more than once, or when more than one application-wide
+    /// extension is declared.
     pub fn build(self) -> Result<CliContract> {
         let Self { mut root, operations, extended } = self;
+        let extended = unique_application_extension(&extended)?;
         root.build();
         reject_duplicate_paths(&operations)?;
 
@@ -213,6 +219,17 @@ impl ContractBuilder {
 struct ResolvedCommand {
     /// Whether this command or an ancestor is hidden.
     hidden: bool,
+}
+
+/// Resolves the single application-wide extension allowed by the contract model.
+fn unique_application_extension(
+    extended: &[ExtendedSchemaFactory],
+) -> Result<Option<ExtendedSchemaFactory>> {
+    match extended {
+        [] => Ok(None),
+        [extended] => Ok(Some(*extended)),
+        _ => Err(Error::DuplicateApplicationExtension),
+    }
 }
 
 /// Rejects duplicate command paths before reflection.

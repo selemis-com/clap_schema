@@ -62,7 +62,7 @@ impl OperationDescriptor {
     {
         Self {
             id: TypeId::of::<I>(),
-            output: (TypeId::of::<T>() != TypeId::of::<()>()).then_some(schema_for::<T>),
+            output: has_output::<T>().then_some(schema_for::<T>),
             extended: None,
         }
     }
@@ -72,6 +72,11 @@ impl OperationDescriptor {
         self.extended = Some(extended);
         self
     }
+}
+
+/// Returns whether a successful handler type has a machine-output payload.
+fn has_output<T: 'static>() -> bool {
+    TypeId::of::<T>() != TypeId::of::<()>()
 }
 
 /// Error returned by [`write_json`].
@@ -123,7 +128,7 @@ where
     T: Serialize + JsonSchema + 'static,
 {
     let value = result.map_err(WriteJsonError::Handler)?;
-    if TypeId::of::<T>() == TypeId::of::<()>() {
+    if !has_output::<T>() {
         return Ok(());
     }
     serde_json::to_writer(writer, &value)?;

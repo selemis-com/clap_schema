@@ -238,7 +238,7 @@ mod tests {
     }
 
     #[test]
-    fn builder_rejects_invalid_and_duplicate_operation_paths() {
+    fn builder_rejects_invalid_and_duplicate_declarations() {
         let unknown = ContractBuilder::new(Command::new("fixture"))
             .operation::<CreateOperation>(["missing"])
             .build()
@@ -251,6 +251,16 @@ mod tests {
             .build()
             .expect_err("duplicate root operation");
         assert_eq!(duplicate.to_string(), "duplicate operation declaration for command: <root>");
+
+        let duplicate_extension = ContractBuilder::new(Command::new("fixture"))
+            .extend::<ApplicationMetadata>()
+            .extend::<CreateMetadata>()
+            .build()
+            .expect_err("duplicate application extension");
+        assert!(matches!(
+            duplicate_extension,
+            clap_schema::Error::DuplicateApplicationExtension
+        ));
     }
 
     #[test]

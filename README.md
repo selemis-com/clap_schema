@@ -215,7 +215,7 @@ When updating this, also update:
 
 The current MSRV (minimum supported Rust version) is 1.95.
 
-Steda will keep a rolling MSRV policy of **at least** two versions behind the
+`clap_schema` will keep a rolling MSRV policy of **at least** two versions behind the
 latest stable release (so if the latest stable release is 1.97, we would
 support 1.95).
 

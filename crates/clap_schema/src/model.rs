@@ -168,7 +168,7 @@ impl CliContract {
 
     /// Builds a shallow public view of one internal discovery node.
     fn command_info(&self, node: &DiscoveryNode) -> CommandInfo {
-        let operation = self.operation_for_owned_path(&node.path);
+        let (operation, has_subcommands) = self.command_state(node);
         CommandInfo {
             name: node.name.clone(),
             path: node.path.clone(),
@@ -179,7 +179,7 @@ impl CliContract {
             options: node.options.clone(),
             executable: operation.is_some(),
             output: operation.and_then(|operation| operation.output.clone()),
-            has_subcommands: !node.children.is_empty(),
+            has_subcommands,
         }
     }
 
@@ -200,14 +200,20 @@ impl CliContract {
         SchemaDocument { command, subcommands }
     }
 
-    /// Builds a compact public reference to one internal discovery node.
+    /// Builds a compact public reference from the same command state as full discovery.
     fn schema_command_summary(&self, node: &DiscoveryNode) -> SchemaCommandSummary {
+        let (operation, has_subcommands) = self.command_state(node);
         SchemaCommandSummary {
             path: node.path.clone(),
             description: node.description.clone(),
-            executable: self.operation_for_owned_path(&node.path).is_some(),
-            has_subcommands: !node.children.is_empty(),
+            executable: operation.is_some(),
+            has_subcommands,
         }
+    }
+
+    /// Returns the operation and child state shared by command projections.
+    fn command_state<'a>(&'a self, node: &DiscoveryNode) -> (Option<&'a OperationEntry>, bool) {
+        (self.operation_for_owned_path(&node.path), !node.children.is_empty())
     }
 
     /// Resolves an operation identity only when it names one visible command unambiguously.
