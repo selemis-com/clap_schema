@@ -7,8 +7,8 @@ mod support;
 mod tests {
     use std::convert::Infallible;
 
-    use clap::{Command, Parser};
-    use clap_schema::{CliSchema, ContractBuilder};
+    use clap::{Command, Parser, Subcommand};
+    use clap_schema::{CliSchema, CommandSchema, ContractBuilder};
     use schemars::JsonSchema;
     use serde::Serialize;
     use snapbox::assert_data_eq;
@@ -43,6 +43,25 @@ mod tests {
     #[schema(handler = create)]
     struct RootCli;
 
+    #[derive(Parser, CliSchema)]
+    struct RenamedCli {
+        #[command(subcommand)]
+        command: RenamedCommands,
+    }
+
+    #[derive(Subcommand, CommandSchema)]
+    enum RenamedCommands {
+        #[command(name = "fetch")]
+        #[schema(handler = fetch)]
+        Get,
+    }
+
+    #[expect(dead_code, reason = "handler is referenced through generated operation metadata")]
+    #[clap_schema::handler]
+    fn fetch() -> Result<Created, Infallible> {
+        Ok(Created { id: "1".to_owned(), name: "example".to_owned() })
+    }
+
     #[test]
     fn complete_contract_matches_the_checked_in_wire_fixture()
     -> Result<(), Box<dyn std::error::Error>> {
@@ -55,7 +74,9 @@ mod tests {
         let metadata = contract.metadata_schema().expect("metadata schema");
         assert_eq!(metadata["type"], "object");
         assert!(metadata["properties"].get("destructive").is_some());
-        let effective = contract.metadata_schema_for(&["create"])?.expect("effective metadata");
+        let effective = contract
+            .metadata_schema_for_operation(clap_schema::operation!(create))
+            .expect("effective metadata");
         assert_eq!(effective["allOf"].as_array().map(Vec::len), Some(2));
         let local_ref = effective["allOf"][1]["$ref"].as_str().expect("operation metadata ref");
         let local_key = local_ref.trim_start_matches("#/$defs/");
@@ -69,7 +90,24 @@ mod tests {
     #[test]
     fn derive_supports_an_executable_root() -> clap_schema::Result<()> {
         let contract = RootCli::schema()?;
-        assert!(contract.operation(&[]).and_then(|operation| operation.output.as_ref()).is_some());
+        assert!(
+            contract
+                .command_for(clap_schema::operation!(create))
+                .and_then(|command| command.output)
+                .is_some()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn handler_identity_tracks_claps_canonical_command_name() -> clap_schema::Result<()> {
+        let contract = RenamedCli::schema()?;
+        let command = contract
+            .command_for(clap_schema::operation!(fetch))
+            .expect("fetch handler should be registered");
+
+        assert_eq!(command.name, "fetch");
+        assert_eq!(command.path, ["fetch"]);
         Ok(())
     }
 
@@ -87,5 +125,22 @@ mod tests {
             .build()
             .expect_err("duplicate root operation");
         assert_eq!(duplicate.to_string(), "duplicate operation declaration for command: <root>");
+    }
+
+    #[test]
+    fn handler_lookup_falls_back_to_paths_when_a_handler_is_reused() -> clap_schema::Result<()> {
+        let contract = ContractBuilder::new(
+            Command::new("fixture")
+                .subcommand(Command::new("first"))
+                .subcommand(Command::new("second")),
+        )
+        .operation(["first"], clap_schema::operation!(create))
+        .operation(["second"], clap_schema::operation!(create))
+        .build()?;
+
+        assert!(contract.command_for(clap_schema::operation!(create)).is_none());
+        assert!(contract.command(&["first"]).is_ok());
+        assert!(contract.command(&["second"]).is_ok());
+        Ok(())
     }
 }

@@ -29,12 +29,13 @@ where
     type Output = T;
 }
 
-/// Builds operation metadata from a handler's declared return type.
-pub fn operation_from_result<R>() -> Operation
+/// Builds operation metadata from a handler's return type and generated identity token.
+pub fn operation_from_result<R, I>() -> Operation
 where
     R: HandlerResult,
+    I: 'static,
 {
-    Operation::for_output::<R::Output>()
+    Operation::for_output::<R::Output, I>()
 }
 
 /// Registry filled by the derive implementation.

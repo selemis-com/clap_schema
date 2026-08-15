@@ -24,10 +24,9 @@ struct UiProject {
 }
 
 impl UiProject {
-    fn new(kind: &str, fixture: &str) -> Self {
+    fn new(fixture: &str) -> Self {
         let id = NEXT_PROJECT.fetch_add(1, Ordering::Relaxed);
-        let root =
-            env::temp_dir().join(format!("clap_schema-ui-{}-{id}-{kind}-{fixture}", process::id()));
+        let root = env::temp_dir().join(format!("clap_schema-ui-{}-{id}-{fixture}", process::id()));
         if root.exists() {
             fs::remove_dir_all(&root).unwrap_or_else(|error| {
                 panic!("failed to clear temporary UI project `{}`: {error}", root.display())
@@ -39,19 +38,18 @@ impl UiProject {
 
         let facade = repository_root().to_string_lossy().replace('\\', "/");
         let manifest = format!(
-            "[package]\nname = \"clap_schema-ui-{kind}-{fixture}\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[dependencies]\nclap_schema = {{ path = \"{facade}\" }}\nclap = {{ version = \"4.6.4\", features = [\"derive\"] }}\nschemars = \"1.2.2\"\nserde = {{ version = \"1.0.229\", features = [\"derive\"] }}\n"
+            "[package]\nname = \"clap_schema-ui-{fixture}\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[dependencies]\nclap_schema = {{ path = \"{facade}\" }}\n"
         );
         fs::write(root.join("Cargo.toml"), manifest).unwrap_or_else(|error| {
             panic!("failed to write temporary UI manifest `{}`: {error}", root.display())
         });
 
-        let source =
-            repository_root().join("tests/fixtures/ui").join(kind).join(format!("{fixture}.rs"));
+        let source = repository_root().join("tests/fixtures/ui/fail").join(format!("{fixture}.rs"));
         fs::copy(&source, root.join("src/main.rs")).unwrap_or_else(|error| {
             panic!("failed to copy UI fixture `{}`: {error}", source.display())
         });
 
-        Self { root, diagnostic_path: format!("{kind}/{fixture}.rs") }
+        Self { root, diagnostic_path: format!("fail/{fixture}.rs") }
     }
 
     fn command(&self) -> Command {
@@ -71,9 +69,9 @@ impl Drop for UiProject {
 
 /// Compiles one downstream fixture and returns normalized compiler output.
 #[track_caller]
-pub(crate) fn ui_output(kind: &str, fixture: &str) -> Output {
+pub(crate) fn ui_output(fixture: &str) -> Output {
     let _guard = CARGO_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let project = UiProject::new(kind, fixture);
+    let project = UiProject::new(fixture);
     let output = project
         .command()
         .output()

@@ -10,6 +10,8 @@ Clap remains authoritative for command topology, argv syntax, generated help, pa
 
 Keep the public model small. In particular, do not add a parallel input grammar, mirror large parts of Clap's parser state, reconstruct conditional validation rules, add a second output declaration, or turn the crate into an execution framework.
 
+Prefer one authoritative source for facts the type system or Clap tree already knows. Static Rust code should use handler-based lookup instead of repeating canonical command paths, and Args-owned child command types should be derived from their actual `#[command(subcommand)]` field. Keep explicit paths for genuinely dynamic input and builder-style registration, where there is no derive relationship to recover.
+
 Application metadata is schema-only in this crate. Applications define the metadata vocabulary and own all concrete values, defaults, overrides, command association, and presentation. `clap_schema` may compose application-wide and operation-specific metadata schemas, but it must not define metadata semantics or invent value-merge behavior.
 
 ## Tests and examples
@@ -20,7 +22,7 @@ Tests should exercise meaningful combinations of behavior rather than enumerate 
 
 Runnable examples should be complete, useful programs built from the public API. Keep the set small and make each example visibly demonstrate something when run. Short public-API semantics belong in rustdoc/doctests instead of another standalone example.
 
-When public behavior changes, update the relevant test, rustdoc, README section, and runnable example together. Avoid parallel manuals.
+When public behavior changes, update the tests and the documentation surface that actually teaches that behavior. Do not mirror the same explanation across README, rustdoc, and runnable examples merely for completeness.
 
 ## Development
 

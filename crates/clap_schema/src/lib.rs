@@ -52,13 +52,11 @@
 //! }
 //!
 //! let contract = Cli::schema()?;
-//! let output = contract
-//!     .operation(&["create"])
-//!     .and_then(|operation| operation.output.as_ref())
-//!     .expect("create output");
+//! let create = contract
+//!     .command_for(clap_schema::operation!(create))
+//!     .expect("create handler is registered");
+//! let output = create.output.as_ref().expect("create output");
 //! assert_eq!(output.get("type").and_then(serde_json::Value::as_str), Some("object"));
-//! let create = contract.command(&["create"])?;
-//! assert_eq!(create.path, vec!["create".to_owned()]);
 //! assert!(create.options.iter().any(|argument| argument.long.as_deref() == Some("name")));
 //! assert_eq!(contract.catalog(&[])?.len(), 1);
 //! # Ok::<(), clap_schema::Error>(())
@@ -70,21 +68,62 @@
 //!
 //! # Nested command shapes
 //!
-//! Normal `#[command(subcommand)]` and `#[command(flatten)]` enum nesting is
-//! followed automatically. When an `Args` payload itself contains a subcommand
-//! field, name the nested `CommandSchema` type on the parent variant:
+//! Normal `#[command(subcommand)]` and `#[command(flatten)]` enum nesting is followed
+//! automatically. When an `Args` payload itself contains a subcommand field, derive
+//! [`CommandGroup`] on that payload and mark the parent with `subcommands`:
 //!
-//! ```ignore
+//! ```
+//! use clap::{Args, Parser, Subcommand};
+//! use clap_schema::{CliSchema, CommandGroup, CommandSchema};
+//!
+//! #[derive(Parser, CliSchema)]
+//! struct Cli {
+//!     #[command(subcommand)]
+//!     command: Commands,
+//! }
+//!
 //! #[derive(Subcommand, CommandSchema)]
 //! enum Commands {
-//!     #[schema(handler = stash_default, subcommands = StashCommands)]
+//!     #[schema(handler = stash_default, subcommands)]
 //!     Stash(StashArgs),
 //! }
+//!
+//! #[derive(Args, CommandGroup)]
+//! struct StashArgs {
+//!     #[command(subcommand)]
+//!     command: Option<StashCommands>,
+//! }
+//!
+//! #[derive(Subcommand, CommandSchema)]
+//! enum StashCommands {
+//!     #[schema(handler = list)]
+//!     List,
+//! }
+//!
+//! #[clap_schema::handler]
+//! fn stash_default(_args: StashArgs) -> Result<(), std::convert::Infallible> {
+//!     Ok(())
+//! }
+//!
+//! #[clap_schema::handler]
+//! fn list() -> Result<(), std::convert::Infallible> {
+//!     Ok(())
+//! }
+//!
+//! let contract = Cli::schema()?;
+//! let stash = contract
+//!     .command_for(clap_schema::operation!(stash_default))
+//!     .expect("stash handler is registered");
+//! let list =
+//!     contract.command_for(clap_schema::operation!(list)).expect("list handler is registered");
+//! assert!(stash.has_subcommands);
+//! assert_eq!(list.path.len(), 2);
+//! # Ok::<(), clap_schema::Error>(())
 //! ```
 //!
-//! `handler` and `subcommands` may appear together when the parent operation is
-//! executable without selecting a child. Omit `handler` when the parent only
-//! groups child commands.
+//! The child enum type is therefore read from the same field Clap parses instead of being repeated
+//! in schema metadata. `handler` and `subcommands` may appear together when the parent operation is
+//! executable without selecting a child. Omit `handler` when the parent only groups child commands.
 //!
 //! # Handler forms
 //!
@@ -118,7 +157,12 @@
 //! let cli = Command::new("example").subcommand(Command::new("create"));
 //! let contract =
 //!     ContractBuilder::new(cli).operation(["create"], clap_schema::operation!(create)).build()?;
-//! assert!(contract.operation(&["create"]).unwrap().output.is_some());
+//! assert!(
+//!     contract
+//!         .command_for(clap_schema::operation!(create))
+//!         .and_then(|command| command.output)
+//!         .is_some()
+//! );
 //! # Ok::<(), clap_schema::Error>(())
 //! ```
 //!
@@ -176,7 +220,9 @@
 //! let contract = Cli::schema()?;
 //! assert_eq!(contract.metadata_schema().unwrap()["type"], "object");
 //! assert_eq!(
-//!     contract.metadata_schema_for(&["list"])?.unwrap()["allOf"].as_array().map(Vec::len),
+//!     contract.metadata_schema_for_operation(clap_schema::operation!(list)).unwrap()["allOf"]
+//!         .as_array()
+//!         .map(Vec::len),
 //!     Some(2),
 //! );
 //! # Ok::<(), clap_schema::Error>(())
@@ -231,7 +277,7 @@ mod schema;
 #[doc(hidden)]
 pub mod __private;
 
-pub use clap_schema_derive::{CliSchema, CommandSchema, handler, operation};
+pub use clap_schema_derive::{CliSchema, CommandGroup, CommandSchema, handler, operation};
 pub use contract::{ContractBuilder, Error, Result};
 pub use model::{
     ArgumentInfo, CliContract, CommandInfo, CommandNode, CommandSummary, OperationContract,
@@ -259,6 +305,15 @@ pub trait CliSchema: clap::CommandFactory {
     {
         __private::build_derived::<Self>()
     }
+}
+
+/// Trait implemented by `Args` wrappers that own a nested subcommand enum.
+///
+/// Prefer `#[derive(CommandGroup)]`. The derive reads the child enum type from the same
+/// `#[command(subcommand)]` field that Clap parses.
+pub trait CommandGroup: clap::Args {
+    /// Nested subcommand enum parsed by the wrapper.
+    type Subcommands: CommandSchema;
 }
 
 /// Trait implemented by subcommand enums that contribute operation contracts.

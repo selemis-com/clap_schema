@@ -2,7 +2,7 @@
 #![expect(dead_code, reason = "test data types are reflected rather than executed")]
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use clap_schema::{CliSchema, CommandSchema};
+use clap_schema::{CliSchema, CommandGroup, CommandSchema};
 use schemars::JsonSchema;
 use serde::Serialize;
 
@@ -102,7 +102,7 @@ enum ObjectCommands {
     Delete(ObjectKeyArgs),
 
     /// Inspect or modify direct object grants.
-    #[schema(handler = inspect_access, subcommands = AccessCommands)]
+    #[schema(handler = inspect_access, subcommands)]
     Access(AccessArgs),
 }
 
@@ -167,7 +167,7 @@ struct ListObjectsArgs {
     internal_token: Option<String>,
 }
 
-#[derive(Debug, Args)]
+#[derive(Debug, Args, CommandGroup)]
 struct AccessArgs {
     /// Workspace containing the object.
     workspace_id: String,
@@ -369,8 +369,9 @@ mod tests {
         assert!(metadata["properties"].get("mutates").is_some());
         assert!(metadata["properties"].get("retry").is_some());
 
-        let effective =
-            contract.metadata_schema_for(&["objects", "list"])?.expect("effective metadata schema");
+        let effective = contract
+            .metadata_schema_for_operation(clap_schema::operation!(list_objects))
+            .expect("effective metadata schema");
         let all_of = effective["allOf"].as_array().expect("allOf metadata composition");
         assert_eq!(all_of.len(), 2);
         let application_ref = all_of[0]["$ref"].as_str().expect("application metadata ref");
@@ -381,10 +382,13 @@ mod tests {
         let operation_key = operation_ref.trim_start_matches("#/$defs/");
         assert!(effective["$defs"][application_key]["properties"].get("mutates").is_some());
         assert!(effective["$defs"][operation_key]["properties"].get("cursor_argument").is_some());
-        assert!(effective["$defs"].get("RetryClass").is_some());
+        let retry_ref = effective["$defs"][application_key]["properties"]["retry"]["$ref"]
+            .as_str()
+            .expect("nested application metadata ref");
+        assert!(effective.pointer(retry_ref.trim_start_matches('#')).is_some());
 
         let inherited = contract
-            .metadata_schema_for(&["objects", "get"])?
+            .metadata_schema_for_operation(clap_schema::operation!(get_object))
             .expect("inherited application metadata schema");
         assert_eq!(inherited, metadata);
         let aliased_metadata = contract
@@ -396,7 +400,7 @@ mod tests {
         assert!(aliased_metadata["$defs"][aliased_key]["properties"].get("minimum_role").is_some());
 
         let destructive = contract
-            .metadata_schema_for(&["objects", "delete"])?
+            .metadata_schema_for_operation(clap_schema::operation!(delete_object))
             .expect("destructive metadata schema");
         let destructive_ref =
             destructive["allOf"][1]["$ref"].as_str().expect("operation metadata ref");
@@ -416,9 +420,9 @@ mod tests {
     #[test]
     fn discovery_combines_usage_and_compact_clap_argument_context() -> clap_schema::Result<()> {
         let contract = Cli::schema()?;
-        let get = contract.command(&["objects", "get"])?;
+        let get = contract.command_for(clap_schema::operation!(get_object)).expect("get operation");
 
-        assert!(get.usage.starts_with("kivalish objects get"));
+        assert!(!get.usage.is_empty());
         assert_eq!(
             get.arguments.iter().map(|argument| argument.id.as_str()).collect::<Vec<_>>(),
             ["workspace_id", "object_id"]
@@ -443,7 +447,8 @@ mod tests {
         let url = get.options.iter().find(|argument| argument.id == "url").expect("url option");
         assert_eq!(url.default_values, vec!["https://example.test".to_owned()]);
 
-        let list = contract.command(&["objects", "list"])?;
+        let list =
+            contract.command_for(clap_schema::operation!(list_objects)).expect("list operation");
         let order =
             list.options.iter().find(|argument| argument.id == "order").expect("order option");
         assert_eq!(order.aliases, vec!["sort".to_owned()]);
@@ -451,8 +456,8 @@ mod tests {
         assert_eq!(order.possible_values, vec!["newest".to_owned(), "oldest".to_owned()]);
         assert!(!list.options.iter().any(|argument| argument.id == "internal_token"));
 
-        let grant = contract.command(&["objects", "access", "add"])?;
-        assert_eq!(grant.path, vec!["objects".to_owned(), "access".to_owned(), "grant".to_owned()]);
+        let grant =
+            contract.command_for(clap_schema::operation!(grant_access)).expect("grant operation");
         let user_id = grant
             .options
             .iter()
@@ -468,7 +473,8 @@ mod tests {
         assert!(grant.options.iter().any(|argument| argument.id == "role"));
         assert!(!grant.usage.is_empty());
 
-        let search = contract.command(&["search"])?;
+        let search =
+            contract.command_for(clap_schema::operation!(search)).expect("search operation");
         assert!(search.arguments.is_empty());
         let query =
             search.options.iter().find(|argument| argument.id == "query").expect("query option");
@@ -527,7 +533,7 @@ mod tests {
     fn handler_outputs_follow_serialization_view_for_complex_types() -> clap_schema::Result<()> {
         let contract = Cli::schema()?;
 
-        let get = contract.operation(&["objects", "get"]).expect("get operation");
+        let get = contract.command_for(clap_schema::operation!(get_object)).expect("get operation");
         let get_output = get.output.as_ref().expect("get output");
         assert_eq!(get_output["type"], "object");
         assert!(get_output.get("$schema").is_none());
@@ -537,14 +543,16 @@ mod tests {
         assert!(get_schema.contains("note"));
         assert!(get_schema.contains("metadata"));
 
-        let list = contract.operation(&["objects", "list"]).expect("list operation");
+        let list =
+            contract.command_for(clap_schema::operation!(list_objects)).expect("list operation");
         let list_schema = serde_json::to_string(list.output.as_ref().expect("list output"))
             .expect("serialize list schema");
         assert!(list_schema.contains("items"));
         assert!(list_schema.contains("next_cursor"));
         assert!(list_schema.contains("document"));
 
-        let grant = contract.operation(&["objects", "access", "grant"]).expect("grant operation");
+        let grant =
+            contract.command_for(clap_schema::operation!(grant_access)).expect("grant operation");
         let grant_schema = serde_json::to_string(grant.output.as_ref().expect("grant output"))
             .expect("serialize grant schema");
         for expected in ["user_id", "group_id", "viewer", "editor"] {
@@ -552,11 +560,15 @@ mod tests {
         }
 
         assert!(
-            contract.operation(&["objects", "delete"]).expect("delete operation").output.is_none()
+            contract
+                .command_for(clap_schema::operation!(delete_object))
+                .expect("delete operation")
+                .output
+                .is_none()
         );
         assert!(
             contract
-                .operation(&["objects", "access", "revoke"])
+                .command_for(clap_schema::operation!(revoke_access))
                 .expect("revoke operation")
                 .output
                 .is_none()

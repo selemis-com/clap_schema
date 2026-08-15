@@ -41,7 +41,7 @@ pub enum Error {
 
     /// A reflected command has child subcommands that were not registered.
     #[error(
-        "command {path} has nested clap subcommands; declare `subcommands = Type` on the parent schema metadata",
+        "command {path} has nested clap subcommands; derive CommandGroup for its Args payload and declare the `subcommands` flag",
         path = format_path(.path)
     )]
     UnregisteredSubcommands {
@@ -101,7 +101,9 @@ impl ContractBuilder {
     /// Operation-specific supplements are attached with
     /// [`Operation::metadata`](crate::Operation::metadata) and can be queried together with
     /// this schema through
-    /// [`CliContract::metadata_schema_for`](crate::CliContract::metadata_schema_for).
+    /// [`CliContract::metadata_schema_for`](crate::CliContract::metadata_schema_for) or, when the
+    /// handler is already known, through
+    /// [`CliContract::metadata_schema_for_operation`](crate::CliContract::metadata_schema_for_operation).
     #[must_use]
     pub fn metadata<T>(mut self) -> Self
     where
@@ -121,8 +123,8 @@ impl ContractBuilder {
     ///
     /// # Errors
     ///
-    /// Returns an error when an operation path does not exist in the actual
-    /// Clap tree, or when the same operation path is registered more than once.
+    /// Returns an error when an operation path does not exist in the actual Clap tree, or when
+    /// the same operation path is registered more than once.
     pub fn build(self) -> Result<CliContract> {
         let Self { mut root, operations, metadata } = self;
         root.build();
@@ -132,8 +134,10 @@ impl ContractBuilder {
         let mut registered_operations = Vec::with_capacity(operations.len());
         let mut visible_operations = Vec::with_capacity(operations.len());
         let mut effective_metadata_schemas = Vec::new();
+        let mut handler_paths = Vec::with_capacity(operations.len());
         for (path, operation) in operations {
             let resolved = command_at(&root, &path)?;
+            let operation_id = operation.id;
             let operation_metadata = operation.metadata;
             let operation_contract = OperationContract {
                 path: path.clone(),
@@ -145,8 +149,9 @@ impl ContractBuilder {
                         || operation.root(),
                         |application| compose_metadata_schemas(application, operation),
                     );
-                    effective_metadata_schemas.push((path, effective));
+                    effective_metadata_schemas.push((path.clone(), effective));
                 }
+                handler_paths.push((operation_id, path.clone()));
                 visible_operations.push(operation_contract.clone());
             }
             registered_operations.push(operation_contract);
@@ -154,6 +159,7 @@ impl ContractBuilder {
         registered_operations.sort_by(|left, right| left.path.cmp(&right.path));
         visible_operations.sort_by(|left, right| left.path.cmp(&right.path));
         effective_metadata_schemas.sort_by(|left, right| left.0.cmp(&right.0));
+        handler_paths.sort_by(|left, right| left.1.cmp(&right.1));
         let operation_paths =
             visible_operations.iter().map(|operation| operation.path.clone()).collect::<Vec<_>>();
         let discovery = discovery_tree(&root, &operation_paths);
@@ -164,6 +170,7 @@ impl ContractBuilder {
             discovery,
             metadata_schema: application_metadata_schema,
             effective_metadata_schemas,
+            handler_paths,
         })
     }
 }
@@ -174,7 +181,7 @@ struct ResolvedCommand {
     hidden: bool,
 }
 
-/// Rejects duplicate registered operation paths.
+/// Rejects duplicate command paths before reflection.
 fn reject_duplicate_paths(operations: &[(Vec<String>, Operation)]) -> Result<()> {
     let mut seen = HashSet::with_capacity(operations.len());
     for (path, _) in operations {

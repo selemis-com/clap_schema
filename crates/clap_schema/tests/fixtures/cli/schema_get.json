@@ -20,8 +20,7 @@
     {
       "id": "json",
       "long": "json",
-      "help": "Emits command results as JSON when enabled",
-      "required": false
+      "help": "Emits command results as JSON when enabled"
     }
   ],
   "executable": true,
@@ -42,6 +41,5 @@
       "name"
     ],
     "type": "object"
-  },
-  "has_subcommands": false
+  }
 }

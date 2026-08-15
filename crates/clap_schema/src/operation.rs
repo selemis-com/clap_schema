@@ -14,6 +14,8 @@ use crate::schema::{MetadataSchemaFactory, SchemaFactory, metadata_schema_factor
 /// applications may only supplement the operation with an application-defined metadata schema.
 #[derive(Debug, Clone, Copy)]
 pub struct Operation {
+    /// Stable in-process identity of the annotated handler.
+    pub(crate) id: TypeId,
     /// Optional successful output schema factory.
     pub(crate) output: Option<SchemaFactory>,
     /// Optional operation-specific application metadata schema factory.
@@ -22,11 +24,13 @@ pub struct Operation {
 
 impl Operation {
     /// Builds operation metadata for one successful handler output type.
-    pub(crate) fn for_output<T>() -> Self
+    pub(crate) fn for_output<T, I>() -> Self
     where
         T: JsonSchema + Serialize + 'static,
+        I: 'static,
     {
         Self {
+            id: TypeId::of::<I>(),
             output: (TypeId::of::<T>() != TypeId::of::<()>()).then_some(schema_for::<T>),
             metadata: None,
         }
@@ -36,8 +40,9 @@ impl Operation {
     ///
     /// `clap_schema` records only the JSON Schema for `T`; applications remain responsible for
     /// constructing and serializing concrete metadata values. When an application-wide metadata
-    /// schema is also declared, [`crate::CliContract::metadata_schema_for`] composes both schemas
-    /// with JSON Schema `allOf`. The concrete value exposed by the application must therefore
+    /// schema is also declared, [`crate::CliContract::metadata_schema_for`] and
+    /// [`crate::CliContract::metadata_schema_for_operation`] compose both schemas with JSON Schema
+    /// `allOf`. The concrete value exposed by the application must therefore
     /// satisfy both schema layers.
     ///
     /// This method changes schema metadata only. It does not attach a value to the operation or add

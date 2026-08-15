@@ -50,7 +50,9 @@ fn create(command: CreateArgs) -> Result<Item, Infallible> {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let contract = Cli::schema()?;
-    let command = contract.command(&["create"])?;
+    let command = contract
+        .command_for(clap_schema::operation!(create))
+        .expect("create handler is registered");
 
     println!("Command contract:");
     println!("{}", serde_json::to_string_pretty(&command)?);

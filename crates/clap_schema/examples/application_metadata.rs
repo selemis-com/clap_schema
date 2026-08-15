@@ -86,7 +86,9 @@ fn list(_command: ListArgs) -> Result<ResourcePage, Infallible> {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let contract = Cli::schema()?;
-    let metadata_schema = contract.metadata_schema_for(&["list"])?.expect("metadata schema");
+    let metadata_schema = contract
+        .metadata_schema_for_operation(clap_schema::operation!(list))
+        .expect("list metadata schema");
 
     let metadata = ListMetadataValue {
         command: CommandMetadata { effect: Effect::Read, idempotent: true },

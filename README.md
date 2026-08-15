@@ -61,7 +61,9 @@ fn get(args: GetArgs) -> Result<Item, std::convert::Infallible> {
 }
 
 let contract = Cli::schema()?;
-let command = contract.command(&["get"])?;
+let command = contract
+    .command_for(clap_schema::operation!(get))
+    .expect("get handler is registered");
 assert!(command.output.is_some());
 # Ok::<(), clap_schema::Error>(())
 ```
@@ -70,15 +72,23 @@ The output schema comes from the declared successful handler type, not from a se
 
 ## Command discovery
 
-A generated `CliContract` can be queried at three levels:
+A generated `CliContract` supports handler-based lookup alongside three path-based discovery views:
 
 | API | Purpose |
 | --- | --- |
+| `command_for(operation!(handler))` | Inspect a command already identified by its Rust handler |
+| `command(path)` | Inspect one visible command or group selected by path |
 | `catalog(path)` | List visible executable descendants beneath a command or group |
-| `command(path)` | Inspect one visible command or group |
 | `full(path)` | Inspect a command or group and its recursive visible subtree |
 
-Returned paths are canonical even when lookup used a visible Clap alias. Shallow and recursive views include Clap-rendered usage plus compact positional/option context: identifiers, visible names and aliases, positional indexes, value names, help, unconditional requiredness, visible defaults, and visible finite possible values.
+Use handler-based lookup from static Rust code so Clap renames cannot leave path literals behind. If
+one handler is intentionally reused by multiple commands, the association is ambiguous and the path
+API remains explicit. Path-based queries are also the right choice for user- or agent-selected paths
+and accept visible Clap aliases; returned paths are always canonical.
+
+Shallow and recursive views include Clap-rendered usage plus compact positional/option context:
+identifiers, visible names and aliases, positional indexes, value names, help, unconditional
+requiredness, visible defaults, and visible finite possible values.
 
 This context is deliberately not a second argv grammar. Clap-generated `--help` remains authoritative for custom parsers, conditional requirements, conflicts, groups, and other invocation relationships.
 
@@ -115,13 +125,19 @@ struct Cli {
 // #[schema(handler = list, metadata = PaginationMetadata)]
 ```
 
-`metadata_schema()` returns the application-wide schema. `metadata_schema_for(path)` returns the effective schema for an operation; application-wide and operation-specific layers are composed with JSON Schema `allOf`.
+`metadata_schema()` returns the application-wide schema. When Rust code already names a handler,
+`metadata_schema_for_operation(operation!(handler))` returns its effective schema without repeating
+the command path; `metadata_schema_for(path)` serves dynamic path-based discovery. Application-wide
+and operation-specific layers are composed with JSON Schema `allOf`.
 
 `clap_schema` never constructs or serializes metadata values. The application decides which values to emit and how they appear in its own machine-facing document. See the runnable `application_metadata` example for a complete value/schema workflow.
 
 ## Builder API
 
-Builder-style Clap applications use the same model through `ContractBuilder` and `operation!(handler)`. There is still no separate output-type declaration. See the `builder_api` example.
+Builder-style Clap applications use the same model through `ContractBuilder` and `operation!(handler)`.
+Registration still names the canonical command path explicitly because builder-style Clap has no Rust
+subcommand relationship to derive it from. There is no separate output-type declaration. See the
+`builder_api` example.
 
 ## Runnable examples
 
@@ -144,7 +160,7 @@ The examples print the contract or runtime value they demonstrate. More speciali
 
 ## MSRV
 
-The current minimum supported Rust version is 1.95.
+The minimum supported Rust version is declared by the workspace `rust-version` in `Cargo.toml`.
 
 ## Contributing
 

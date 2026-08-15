@@ -30,22 +30,29 @@ pub fn derive_cli_schema(input: TokenStream) -> TokenStream {
     expand_cli_schema(input).unwrap_or_else(syn::Error::into_compile_error).into()
 }
 
+/// Derives the child-subcommand type from an `Args` wrapper.
+///
+/// The input must be a struct with exactly one `#[command(subcommand)]` field. This keeps an
+/// executable parent command's child type anchored to the same field Clap parses instead of
+/// repeating that type in `#[schema(...)]`.
+#[proc_macro_derive(CommandGroup, attributes(command))]
+pub fn derive_command_group(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    expand_command_group(input).unwrap_or_else(syn::Error::into_compile_error).into()
+}
+
 /// Derives canonical-handler registration for a Clap subcommand enum.
 ///
-/// Every contract-visible executable operation names its handler explicitly:
-///
-/// ```ignore
-/// #[schema(handler = create)]
-/// Create(CreateArgs),
-/// ```
+/// Every contract-visible executable operation names its handler explicitly, for example
+/// `#[schema(handler = create)]` on a `Create(CreateArgs)` variant.
 ///
 /// This makes output identity independent of the input carrier and supports
 /// tuple, struct-style, and unit variants as well as reused `Args` types.
 ///
 /// Normal `#[command(subcommand)]` and `#[command(flatten)]` nesting is followed
-/// automatically. When an `Args` payload itself contains a subcommand field,
-/// use `subcommands = Type` on the parent variant. `handler` and `subcommands`
-/// may be combined for an executable parent with optional children. Executable
+/// automatically. When an `Args` payload itself contains a subcommand field, derive
+/// `CommandGroup` on that payload and add the `subcommands` flag to the parent variant. `handler`
+/// and `subcommands` may be combined for an executable parent with optional children. Executable
 /// operations may also declare `metadata = Type` to supplement the root
 /// application metadata schema. Metadata can only be attached to ordinary executable variants;
 /// command groups, flattened variants, skipped variants, and external subcommands do not carry an
@@ -90,11 +97,13 @@ pub fn handler(attribute: TokenStream, input: TokenStream) -> TokenStream {
     expand_item_handler(&function).unwrap_or_else(syn::Error::into_compile_error).into()
 }
 
-/// Returns handler-derived operation metadata for builder-style Clap.
+/// Returns handler-derived operation metadata and identity.
 ///
-/// The macro accepts the same handler path used by `#[schema(handler = ...)]`.
-/// It has no syntax for declaring an output type manually. The returned `clap_schema::Operation`
-/// can be supplemented with an application-defined metadata schema using `Operation::metadata`.
+/// The macro accepts the same handler path used by `#[schema(handler = ...)]`. Builder-style Clap
+/// uses the returned `clap_schema::Operation` when registering a command path; derive-based code
+/// can pass it to `CliContract::command_for` or `CliContract::metadata_schema_for_operation` to
+/// avoid repeating a canonical path. It has no syntax for declaring an output type manually.
+/// Application-defined schema metadata can be added with `Operation::metadata`.
 #[proc_macro]
 pub fn operation(input: TokenStream) -> TokenStream {
     let path = parse_macro_input!(input as Path);
@@ -120,7 +129,12 @@ fn expand_item_handler(function: &ItemFn) -> syn::Result<TokenStream2> {
         #[doc(hidden)]
         #[doc = "Generated clap_schema operation metadata."]
         #visibility fn #helper() -> #crate_path::Operation {
-            #crate_path::__private::operation_from_result::<#output>()
+            #[doc = "Identity marker for this annotated handler."]
+            struct __ClapSchemaHandlerIdentity;
+            #crate_path::__private::operation_from_result::<
+                #output,
+                __ClapSchemaHandlerIdentity,
+            >()
         }
     })
 }
@@ -141,7 +155,12 @@ fn expand_impl_handler(method: &ImplItemFn) -> syn::Result<TokenStream2> {
         #[doc(hidden)]
         #[doc = "Generated clap_schema operation metadata."]
         #visibility fn #helper() -> #crate_path::Operation {
-            #crate_path::__private::operation_from_result::<#output>()
+            #[doc = "Identity marker for this annotated handler."]
+            struct __ClapSchemaHandlerIdentity;
+            #crate_path::__private::operation_from_result::<
+                #output,
+                __ClapSchemaHandlerIdentity,
+            >()
         }
     })
 }
@@ -238,7 +257,7 @@ fn handler_helper_path(mut path: Path) -> syn::Result<Path> {
 fn expand_cli_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
     let crate_path = clap_schema_path();
     let RootSchema { handler, metadata } = parse_root_schema(&input.attrs)?;
-    let commands = find_subcommand_field(&input)?;
+    let commands = find_subcommand_field(&input, "CliSchema")?;
     if handler.is_none() && commands.is_none() {
         return Err(syn::Error::new_spanned(
             &input.ident,
@@ -284,6 +303,27 @@ fn expand_cli_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
                 #child_registration
                 Ok(())
             }
+        }
+    })
+}
+
+/// Expands a `CommandGroup` derive into its child-subcommand association.
+fn expand_command_group(input: DeriveInput) -> syn::Result<TokenStream2> {
+    let crate_path = clap_schema_path();
+    let commands = find_subcommand_field(&input, "CommandGroup")?.ok_or_else(|| {
+        syn::Error::new_spanned(
+            &input.ident,
+            "CommandGroup requires one #[command(subcommand)] field",
+        )
+    })?;
+
+    let name = input.ident;
+    let generics = input.generics;
+    let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
+
+    Ok(quote! {
+        impl #impl_generics #crate_path::CommandGroup for #name #type_generics #where_clause {
+            type Subcommands = #commands;
         }
     })
 }
@@ -407,10 +447,10 @@ fn expand_command_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
             continue;
         }
 
-        if schema.handler.is_none() && schema.subcommands.is_none() {
+        if schema.handler.is_none() && !schema.subcommands {
             return Err(syn::Error::new_spanned(
                 variant.ident,
-                "contract-visible executable commands require #[schema(handler = path)]; commands whose Args contain child subcommands also declare subcommands = Type",
+                "contract-visible executable commands require #[schema(handler = path)]; Args payloads with child subcommands derive CommandGroup and declare the `subcommands` flag",
             ));
         }
         let register_handler = if let Some(handler) = schema.handler.as_ref() {
@@ -424,10 +464,18 @@ fn expand_command_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
         } else {
             None
         };
-        let register_children = schema.subcommands.map(|child| {
-            quote! {
+        let register_children = if schema.subcommands {
+            let group = payload.as_ref().ok_or_else(|| {
+                syn::Error::new_spanned(
+                    &variant.ident,
+                    "the `subcommands` flag requires a single Args payload that derives CommandGroup",
+                )
+            })?;
+            Some(quote! {
+                type __ClapSchemaChildren =
+                    <#group as #crate_path::CommandGroup>::Subcommands;
                 let __clap_schema_child_probe =
-                    <#child as #crate_path::__private::clap::Subcommand>::augment_subcommands(
+                    <__ClapSchemaChildren as #crate_path::__private::clap::Subcommand>::augment_subcommands(
                         #crate_path::__private::clap::Command::new("__clap_schema_child_probe")
                     );
                 let mut __clap_schema_expected_children =
@@ -444,17 +492,19 @@ fn expand_command_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
                         (None, None) => break,
                         _ => {
                             return Err(#crate_path::Error::DerivedCommandMismatch {
-                                type_name: ::core::any::type_name::<#child>(),
+                                type_name: ::core::any::type_name::<__ClapSchemaChildren>(),
                             });
                         }
                     }
                 }
-                <#child as #crate_path::CommandSchema>::__clap_schema_register(
+                <__ClapSchemaChildren as #crate_path::CommandSchema>::__clap_schema_register(
                     prefix,
                     registry,
                 )?;
-            }
-        });
+            })
+        } else {
+            None
+        };
         let reject_unregistered_children = register_children.is_none().then(|| {
             quote! {
                 if __clap_schema_command.get_subcommands().next().is_some() {
@@ -533,12 +583,12 @@ fn parse_root_schema(attrs: &[Attribute]) -> syn::Result<RootSchema> {
     Ok(result)
 }
 
-/// Finds the root `#[command(subcommand)]` field, when present.
-fn find_subcommand_field(input: &DeriveInput) -> syn::Result<Option<Type>> {
+/// Finds one `#[command(subcommand)]` field, when present.
+fn find_subcommand_field(input: &DeriveInput, derive_name: &str) -> syn::Result<Option<Type>> {
     let Data::Struct(data) = &input.data else {
         return Err(syn::Error::new_spanned(
             &input.ident,
-            "CliSchema can only be derived for structs",
+            format!("{derive_name} can only be derived for structs"),
         ));
     };
     let mut found = None;
@@ -547,7 +597,7 @@ fn find_subcommand_field(input: &DeriveInput) -> syn::Result<Option<Type>> {
             if found.is_some() {
                 return Err(syn::Error::new_spanned(
                     field,
-                    "CliSchema supports at most one #[command(subcommand)] field",
+                    format!("{derive_name} supports at most one #[command(subcommand)] field"),
                 ));
             }
             found = Some(unwrap_option(&field.ty));
@@ -648,8 +698,8 @@ fn parse_command_behavior(attrs: &[Attribute]) -> syn::Result<CommandBehavior> {
 struct VariantSchema {
     /// Canonical handler path, when this command is executable.
     handler: Option<Path>,
-    /// Explicit child enum when an `Args` payload owns subcommands.
-    subcommands: Option<Type>,
+    /// Whether an `Args` payload owns child subcommands through `CommandGroup`.
+    subcommands: bool,
     /// Optional operation-specific application metadata schema type.
     metadata: Option<Type>,
     /// Whether this runtime command is omitted from the contract.
@@ -659,15 +709,12 @@ struct VariantSchema {
 impl VariantSchema {
     /// Returns whether no schema metadata was supplied.
     const fn is_empty(&self) -> bool {
-        self.handler.is_none()
-            && self.subcommands.is_none()
-            && self.metadata.is_none()
-            && !self.skip
+        self.handler.is_none() && !self.subcommands && self.metadata.is_none() && !self.skip
     }
 
     /// Returns whether metadata affects operation registration.
     const fn has_operation_metadata(&self) -> bool {
-        self.handler.is_some() || self.subcommands.is_some() || self.metadata.is_some()
+        self.handler.is_some() || self.subcommands || self.metadata.is_some()
     }
 }
 
@@ -682,10 +729,13 @@ fn parse_variant_schema(attrs: &[Attribute]) -> syn::Result<VariantSchema> {
                 }
                 result.handler = Some(meta.value()?.parse()?);
             } else if meta.path.is_ident("subcommands") {
-                if result.subcommands.is_some() {
-                    return Err(meta.error("duplicate subcommands type"));
+                if result.subcommands {
+                    return Err(meta.error("duplicate subcommands flag"));
                 }
-                result.subcommands = Some(meta.value()?.parse()?);
+                if meta.input.peek(Token![=]) {
+                    return Err(meta.error("`subcommands` is a flag and does not accept a value"));
+                }
+                result.subcommands = true;
             } else if meta.path.is_ident("metadata") {
                 if result.metadata.is_some() {
                     return Err(meta.error("duplicate metadata type"));

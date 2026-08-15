@@ -99,8 +99,8 @@ enum DuplicateHandler {
 }
 
 #[derive(CommandSchema)]
-enum DuplicateSubcommandsType {
-    #[schema(subcommands = First, subcommands = Second)]
+enum DuplicateSubcommandsFlag {
+    #[schema(subcommands, subcommands)]
     Run(Args),
 }
 

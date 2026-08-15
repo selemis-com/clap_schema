@@ -112,15 +112,18 @@ mod tests {
     fn supported_handler_categories_infer_success_outputs() -> clap_schema::Result<()> {
         let contract = Cli::schema()?;
 
-        for path in
-            ["free-sync", "free-const", "free-async", "associated", "owned", "borrowed", "mutable"]
-        {
+        for operation in [
+            clap_schema::operation!(free_sync),
+            clap_schema::operation!(free_const),
+            clap_schema::operation!(free_async),
+            clap_schema::operation!(AssociatedArgs::run),
+            clap_schema::operation!(OwnedArgs::run),
+            clap_schema::operation!(BorrowedArgs::run),
+            clap_schema::operation!(MutableArgs::run),
+        ] {
             assert!(
-                contract
-                    .operation(&[path])
-                    .and_then(|operation| operation.output.as_ref())
-                    .is_some(),
-                "missing output for {path}",
+                contract.command_for(operation).and_then(|command| command.output).is_some(),
+                "missing handler-derived output",
             );
         }
 

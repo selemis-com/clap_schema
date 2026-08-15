@@ -9,7 +9,7 @@ mod tests {
 
     #[test]
     fn invalid_handler_forms_report_contract_errors() {
-        let output = support::ui_output("fail", "handler_validation");
+        let output = support::ui_output("handler_validation");
         assert!(!output.status.success());
         let stderr = String::from_utf8(output.stderr).expect("UTF-8 compiler diagnostics");
         for expected in [
@@ -25,7 +25,7 @@ mod tests {
 
     #[test]
     fn invalid_schema_shapes_report_contract_errors() {
-        let output = support::ui_output("fail", "validation_errors");
+        let output = support::ui_output("validation_errors");
         assert!(!output.status.success());
         let stderr = String::from_utf8(output.stderr).expect("UTF-8 compiler diagnostics");
         for expected in [
@@ -46,7 +46,7 @@ mod tests {
             "a command cannot be both skip and external_subcommand",
             "contract-visible executable commands require #[schema(handler = path)]",
             "duplicate handler",
-            "duplicate subcommands type",
+            "duplicate subcommands flag",
             "duplicate metadata type",
             "unsupported #[schema(...)] command option",
         ] {

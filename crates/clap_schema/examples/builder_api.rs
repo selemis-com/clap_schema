@@ -36,8 +36,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .operation(["create"], clap_schema::operation!(create))
         .build()?;
 
+    let command = contract
+        .command_for(clap_schema::operation!(create))
+        .expect("create handler is registered");
+
     println!("Builder-derived command contract:");
-    println!("{}", serde_json::to_string_pretty(&contract.command(&["create"])?)?);
+    println!("{}", serde_json::to_string_pretty(&command)?);
 
     let created = create()?;
     println!("\nRuntime value from the same handler:");
