@@ -200,6 +200,10 @@ Contributions to `clap_schema` are welcome. See the [Contributing Guide](CONTRIB
 
 If you believe you have found a security vulnerability, please do not report it through GitHub Issues. See our [Security Policy](SECURITY.md) for reporting instructions.
 
+## Credit
+
+`clap_schema` was inspired in part by [Incur](https://github.com/wevm/incur#command-schema), particularly its approach to CLI schema discovery.
+
 ## License
 
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
