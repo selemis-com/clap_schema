@@ -178,16 +178,36 @@ The examples print the contract or runtime value they demonstrate. More speciali
 
 ## MSRV
 
-The minimum supported Rust version is declared by the workspace `rust-version` in `Cargo.toml`.
+<!--
+When updating this, also update:
+- Cargo.toml
+- .github/workflows/ci.yml
+-->
+
+The current MSRV (minimum supported Rust version) is 1.95.
+
+Steda will keep a rolling MSRV policy of **at least** two versions behind the
+latest stable release (so if the latest stable release is 1.97, we would
+support 1.95).
+
+Note that the MSRV is not increased automatically.
 
 ## Contributing
 
-Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the project boundaries and development workflow. Run `make pr` before submitting a change.
+Contributions to `clap_schema` are welcome. See the [Contributing Guide](CONTRIBUTING.md) for information on reporting bugs, proposing features, submitting pull requests, and the licensing terms that apply to contributions.
 
-## Security
+## Security Policy
 
-Please report security issues according to [SECURITY.md](SECURITY.md), not through a public issue.
+If you believe you have found a security vulnerability, please do not report it through GitHub Issues. See our [Security Policy](SECURITY.md) for reporting instructions.
 
 ## License
 
-Licensed under either the Apache License, Version 2.0 or the MIT license at your option.
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
+[MIT license](LICENSE-MIT) at your option.
+
+This software includes third-party components subject to separate license
+terms. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in `clap_schema` by you, as defined in the Apache-2.0 license,
+shall be dual licensed as above, without any additional terms or conditions.

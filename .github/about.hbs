@@ -1,6 +1,6 @@
 # Third Party Notices
 
-This page lists the licenses of the projects used in clap_schema.
+This page lists the licenses of the projects used in `clap_schema`.
 
 ## Overview of licenses
 

@@ -274,6 +274,14 @@
 //! The remaining trust boundary is the output type itself: custom `Serialize`
 //! and `JsonSchema` implementations can disagree. Derived Serde/Schemars
 //! representations are the intended source of truth.
+
+#![doc(
+    html_logo_url = "https://raw.githubusercontent.com/selemis-com/clap_schema/master/.github/assets/logo.jpg",
+    html_favicon_url = "https://raw.githubusercontent.com/selemis-com/clap_schema/master/.github/assets/favicon.ico"
+)]
+#![cfg_attr(not(test), warn(unused_crate_dependencies))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 #[expect(
     unused_extern_crates,
     reason = "proc-macro expansions refer to this crate through `::clap_schema`"
