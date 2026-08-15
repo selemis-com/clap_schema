@@ -382,14 +382,12 @@ mod tests {
             &["search"][..],
             &["whoami"][..],
         ] {
-            assert!(contract.operation(path).is_some(), "missing visible operation: {path:?}");
+            assert!(contract.command(path).is_ok(), "missing visible command: {path:?}");
         }
 
-        assert!(contract.operation(&["utilities", "whoami"]).is_none());
-        assert!(contract.operation(&["admin", "status"]).is_none());
-        assert!(contract.operation_for_invocation(&["admin", "status"]).is_some());
-        assert!(contract.operation(&["schema"]).is_none());
-        assert!(contract.operation_for_invocation(&["schema"]).is_none());
+        assert!(contract.command(&["utilities", "whoami"]).is_err());
+        assert!(contract.command(&["admin", "status"]).is_err());
+        assert!(contract.command(&["schema"]).is_err());
 
         let aliased = contract.command(&["objects", "show"])?;
         assert_eq!(aliased.path, vec!["objects".to_owned(), "get".to_owned()]);
@@ -401,8 +399,7 @@ mod tests {
     }
 
     #[test]
-    fn application_metadata_is_schema_only_and_kept_out_of_the_base_wire_model()
-    -> clap_schema::Result<()> {
+    fn application_metadata_remains_schema_only() -> clap_schema::Result<()> {
         let contract = Cli::schema()?;
         let metadata = contract.extended_schema().expect("application metadata schema");
 
@@ -454,9 +451,6 @@ mod tests {
                 .is_some()
         );
 
-        let wire = serde_json::to_value(&contract).expect("serialize base contract");
-        assert!(wire.get("extended_schema").is_none());
-        assert!(wire.get("metadata").is_none());
         Ok(())
     }
 

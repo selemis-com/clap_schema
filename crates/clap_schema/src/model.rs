@@ -1,4 +1,4 @@
-//! Serializable successful-output contracts and command discovery views.
+//! In-memory command contracts and serializable discovery views.
 
 use std::{any::TypeId, ffi::OsString};
 
@@ -7,42 +7,27 @@ use serde_json::Value;
 
 use crate::Operation;
 
-/// Successful-output contracts plus in-memory discovery and application-defined schema extensions.
+/// Validated command contract used for discovery and typed operation lookup.
 ///
-/// The default serialized form remains output-only; discovery and extended schemas are queried
-/// explicitly by applications constructing richer machine-facing documents.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+/// `CliContract` is an in-memory resolver rather than a wire document. Use [`Self::schema`] to
+/// produce the canonical serializable discovery representation.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliContract {
     /// Schema-visible executable operations and their successful-output contracts.
-    pub operations: Vec<OperationContract>,
-    /// Every registered operation, including Clap-hidden operations used by resolved invocations.
-    #[serde(skip)]
+    pub(crate) operations: Vec<OperationContract>,
+    /// Every registered operation, including Clap-hidden operations.
     pub(crate) registered_operations: Vec<OperationContract>,
     /// Visible command topology reflected from the same Clap tree.
-    #[serde(skip)]
     pub(crate) discovery: DiscoveryNode,
-    /// Optional application-defined schema extension, kept out of the default wire model.
-    #[serde(skip)]
+    /// Optional application-defined schema extension.
     pub(crate) extended_schema: Option<Value>,
     /// Effective application-plus-operation extended schemas keyed by canonical visible path.
-    #[serde(skip)]
     pub(crate) effective_extended_schemas: Vec<(Vec<String>, Value)>,
     /// Canonical visible command paths keyed by their operation identity.
-    #[serde(skip)]
     pub(crate) operation_paths: Vec<(TypeId, Vec<String>)>,
 }
 
 impl CliContract {
-    /// Finds an operation by its canonical path, excluding the binary name.
-    ///
-    /// Unlike discovery queries, this method does not resolve Clap aliases. Use [`Self::command`]
-    /// when starting from a user- or agent-supplied command path, or [`Self::command_for`] when
-    /// static Rust code already names the operation type.
-    #[must_use]
-    pub fn operation(&self, path: &[&str]) -> Option<&OperationContract> {
-        self.operations.iter().find(|operation| path_matches(&operation.path, path))
-    }
-
     /// Finds the visible command bound to a Rust operation type.
     ///
     /// This is the non-brittle counterpart to a static string path lookup. The derive macros
@@ -59,16 +44,6 @@ impl CliContract {
         let path = self.unique_path_for::<T>()?;
         let node = self.discovery.resolve_canonical(path)?;
         Some(self.command_info(node))
-    }
-
-    /// Finds a registered operation for an already-resolved runtime invocation.
-    ///
-    /// Unlike discovery methods, this includes Clap-hidden operations. It is intended for
-    /// execution-time validation after Clap has already accepted and resolved the invocation, not
-    /// for exposing command paths to callers. Schema-skipped operations are never registered.
-    #[must_use]
-    pub fn operation_for_invocation(&self, path: &[&str]) -> Option<&OperationContract> {
-        self.registered_operations.iter().find(|operation| path_matches(&operation.path, path))
     }
 
     /// Returns the application-defined schema that extends this CLI, when present.
@@ -359,14 +334,13 @@ pub enum SchemaSubcommand {
     Resolved(Box<SchemaDocument>),
 }
 
-/// Contract for one executable operation.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct OperationContract {
+/// Internal contract for one executable operation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct OperationContract {
     /// Canonical subcommand path excluding the executable name.
-    pub path: Vec<String>,
-    /// JSON Schema for the successful value, omitted for `Result<(), E>`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub output: Option<Value>,
+    pub(crate) path: Vec<String>,
+    /// JSON Schema for the successful value, absent for `Result<(), E>`.
+    pub(crate) output: Option<Value>,
 }
 
 /// Shallow discovery information for one visible command or command group.
@@ -510,12 +484,6 @@ impl DiscoveryNode {
         }
         Ok(node)
     }
-}
-
-/// Returns whether an owned canonical path equals a borrowed path.
-fn path_matches(actual: &[String], expected: &[&str]) -> bool {
-    actual.len() == expected.len()
-        && actual.iter().zip(expected).all(|(actual, expected)| actual == expected)
 }
 
 /// Returns whether a boolean value is false.

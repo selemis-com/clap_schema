@@ -1,7 +1,4 @@
-//! Base wire contract and builder validation.
-
-#[path = "support/contract.rs"]
-mod support;
+//! Contract construction and builder validation.
 
 #[cfg(test)]
 mod tests {
@@ -11,9 +8,6 @@ mod tests {
     use clap_schema::{CliSchema, CommandSchema, ContractBuilder, SchemaRequest};
     use schemars::JsonSchema;
     use serde::Serialize;
-    use snapbox::assert_data_eq;
-
-    use super::support;
 
     #[derive(JsonSchema)]
     #[expect(dead_code, reason = "metadata test type is reflected into JSON Schema")]
@@ -194,8 +188,7 @@ mod tests {
     }
 
     #[test]
-    fn complete_contract_matches_the_checked_in_wire_fixture()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn builder_contract_exposes_output_and_extensions() -> clap_schema::Result<()> {
         let contract =
             ContractBuilder::new(Command::new("fixture").subcommand(Command::new("create")))
                 .extend::<ApplicationMetadata>()
@@ -213,15 +206,16 @@ mod tests {
         let local_key = local_ref.trim_start_matches("#/$defs/");
         assert!(effective["$defs"][local_key]["properties"].get("audit_event").is_some());
 
-        let actual = format!("{}\n", serde_json::to_string_pretty(&contract)?);
-        assert_data_eq!(actual, support::contract_fixture("minimal.json"));
+        let command = contract.command_for::<CreateOperation>().expect("create operation");
+        assert!(command.output.is_some());
         Ok(())
     }
 
     #[test]
     fn derive_root_without_executable_has_no_operation() -> clap_schema::Result<()> {
         let contract = DiscoveryOnlyRoot::schema()?;
-        assert!(contract.operations.is_empty());
+        let root = contract.schema(&SchemaRequest::default())?;
+        assert!(!root.command.executable);
         Ok(())
     }
 

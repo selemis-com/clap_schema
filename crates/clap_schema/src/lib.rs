@@ -302,8 +302,8 @@ pub mod __private;
 pub use clap_schema_derive::{CliSchema, CommandGroup, CommandSchema, handler};
 pub use contract::{ContractBuilder, Error, Result};
 pub use model::{
-    ArgumentInfo, CliContract, CommandInfo, OperationContract, SchemaCommandSummary,
-    SchemaDocument, SchemaRequest, SchemaSubcommand,
+    ArgumentInfo, CliContract, CommandInfo, SchemaCommandSummary, SchemaDocument, SchemaRequest,
+    SchemaSubcommand,
 };
 pub use operation::{Operation, WriteJsonError, write_json};
 
