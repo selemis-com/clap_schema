@@ -2,6 +2,7 @@
 
 use std::{any::TypeId, ffi::OsString};
 
+use schemars::JsonSchema;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -148,8 +149,8 @@ impl CliContract {
     /// # Errors
     ///
     /// Returns [`crate::Error::UnknownCommand`] when the path is not present in
-    /// the schema-visible command tree. Clap-hidden and schema-skipped commands
-    /// are intentionally indistinguishable from unknown paths.
+    /// the schema-visible command tree. Clap-hidden commands are intentionally
+    /// indistinguishable from unknown paths.
     pub fn command(&self, path: &[&str]) -> crate::Result<CommandInfo> {
         let node = self.discovery.resolve(path)?;
         Ok(self.command_info(node))
@@ -276,7 +277,7 @@ impl SchemaRequest {
 /// contains [`SchemaCommandSummary`] entries for direct children. In full mode, each child is
 /// another fully resolved `SchemaDocument`. The wire shape is therefore stable while `--full`
 /// changes only the amount of child detail returned.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct SchemaDocument {
     /// Complete contract for the selected command itself.
     #[serde(flatten)]
@@ -287,7 +288,7 @@ pub struct SchemaDocument {
 }
 
 /// One child entry in a [`SchemaDocument`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(untagged)]
 pub enum SchemaSubcommand {
     /// Compact child reference used by shallow schema discovery.
@@ -308,7 +309,7 @@ pub(crate) struct ExecutableData {
 }
 
 /// Shallow discovery information for one visible command or command group.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct CommandInfo {
     /// Canonical command name.
     pub name: String,
@@ -343,7 +344,7 @@ pub struct CommandInfo {
 }
 
 /// Compact schema-discovery reference to one direct child command.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct SchemaCommandSummary {
     /// Canonical command path excluding the executable name.
     pub path: Vec<String>,
@@ -374,7 +375,7 @@ impl SchemaCommandSummary {
 ///
 /// This intentionally exposes only straightforward facts from Clap's built command model.
 /// Complete invocation semantics remain authoritative in Clap and its generated help.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct ArgumentInfo {
     /// Clap argument identifier.
     pub id: String,

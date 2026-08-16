@@ -18,6 +18,13 @@
       ],
       "description": "Show one resource",
       "executable": true
+    },
+    {
+      "path": [
+        "schema"
+      ],
+      "description": "Discover commands and successful-output contracts",
+      "executable": true
     }
   ]
 }

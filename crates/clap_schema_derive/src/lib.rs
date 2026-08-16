@@ -47,9 +47,9 @@ pub fn derive_cli_schema(input: TokenStream) -> TokenStream {
 /// payload and add the `subcommands` flag to the parent variant. A required subcommand field makes
 /// the parent a group; an `Option<Subcommands>` field makes the parent executable as well.
 /// Executable commands may declare `extend = Type` to supplement the root application extension
-/// schema. Extensions can only be attached to executable commands; group-only, flattened, skipped,
-/// and external subcommands do not carry a command-specific extension schema. The application owns
-/// all concrete extension values.
+/// schema. Extensions can only be attached to executable commands; group-only, flattened,
+/// Clap-skipped, and external subcommands do not carry a command-specific extension schema. The
+/// application owns all concrete extension values.
 #[proc_macro_derive(CommandSchema, attributes(schema, command))]
 pub fn derive_command_schema(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -332,13 +332,6 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
             continue;
         }
 
-        if schema.skip && schema.has_registration_options() {
-            return Err(syn::Error::new_spanned(
-                variant.ident,
-                "#[schema(skip)] cannot be combined with subcommands or extend",
-            ));
-        }
-
         if command.nesting == CommandNesting::Flatten {
             let child = payload.ok_or_else(|| {
                 syn::Error::new_spanned(
@@ -352,17 +345,12 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
                     "flattened subcommands cannot declare command schema extensions",
                 ));
             }
-            let register = (!schema.skip).then(|| {
-                quote! {
+            steps.push(quote! {
+                {
                     <#child as #crate_path::CommandSchema>::__clap_schema_register(
                         prefix,
                         registry,
                     )?;
-                }
-            });
-            steps.push(quote! {
-                {
-                    #register
                     let __count =
                         <#child as #crate_path::__private::clap::Subcommand>::augment_subcommands(
                             #crate_path::__private::clap::Command::new("__clap_schema_probe")
@@ -388,11 +376,6 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
                     type_name: ::core::any::type_name::<Self>(),
                 })?;
         };
-
-        if schema.skip {
-            steps.push(consume);
-            continue;
-        }
 
         if command.nesting == CommandNesting::Subcommand {
             let child = payload.ok_or_else(|| {
@@ -658,14 +641,12 @@ struct VariantSchema {
     subcommands: bool,
     /// Optional command-specific application extension schema type.
     extended: Option<Type>,
-    /// Whether this runtime command is omitted from the contract.
-    skip: bool,
 }
 
 impl VariantSchema {
     /// Returns whether no schema extension was supplied.
     const fn is_empty(&self) -> bool {
-        !self.subcommands && self.extended.is_none() && !self.skip
+        !self.subcommands && self.extended.is_none()
     }
 
     /// Returns whether extensions affect command or child registration.
@@ -692,14 +673,6 @@ fn parse_variant_schema(attrs: &[Attribute]) -> syn::Result<VariantSchema> {
                     return Err(meta.error("duplicate extension type"));
                 }
                 result.extended = Some(meta.value()?.parse()?);
-            } else if meta.path.is_ident("skip") {
-                if result.skip {
-                    return Err(meta.error("duplicate skip flag"));
-                }
-                if meta.input.peek(Token![=]) {
-                    return Err(meta.error("`skip` is a flag and does not accept a value"));
-                }
-                result.skip = true;
             } else {
                 return Err(meta.error("unsupported #[schema(...)] command option"));
             }

@@ -76,10 +76,6 @@ enum Commands {
     /// Internal maintenance commands.
     #[command(subcommand, hide = true)]
     Admin(AdminCommands),
-
-    /// Discover commands and successful-output contracts.
-    #[schema(skip)]
-    Schema,
 }
 
 /// Nested object commands.

@@ -37,12 +37,6 @@ enum InvalidSkippedMetadata {
 }
 
 #[derive(CommandSchema)]
-enum InvalidSchemaSkip {
-    #[schema(skip, subcommands)]
-    Run(Args),
-}
-
-#[derive(CommandSchema)]
 enum InvalidFlattenShape {
     #[command(flatten)]
     Flat,

@@ -2,7 +2,7 @@
 #![expect(dead_code, reason = "example data types are reflected rather than executed")]
 
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliContract, CliSchema, CommandSchema, SchemaRequest, schema_handler};
+use clap_schema::{CliSchema, CommandSchema, SchemaDocument, SchemaRequest, schema_handler};
 use schemars::JsonSchema;
 use serde::Serialize;
 
@@ -26,7 +26,6 @@ enum Commands {
     Get(GetArgs),
 
     /// Discover commands and successful-output contracts.
-    #[schema(skip)]
     Schema(SchemaArgs),
 }
 
@@ -62,19 +61,24 @@ fn get(command: GetArgs) -> Result<Resource, std::io::Error> {
     Ok(Resource { id: command.id, name: "Example resource".to_owned() })
 }
 
-/// Emits one normalized discovery request from either supported CLI routing form.
-fn print_schema(
-    contract: &CliContract,
-    request: &SchemaRequest,
-) -> Result<(), Box<dyn std::error::Error>> {
-    println!("{}", serde_json::to_string_pretty(&contract.schema(request)?)?);
+/// Resolves the dedicated schema command to the same discovery document as `--schema`.
+#[schema_handler(SchemaArgs)]
+fn schema(command: SchemaArgs) -> Result<SchemaDocument, clap_schema::Error> {
+    let request = SchemaRequest::new(command.path).with_full(command.full);
+    Cli::schema()?.schema(&request)
+}
+
+/// Emits one resolved discovery document.
+fn print_schema(document: &SchemaDocument) -> Result<(), Box<dyn std::error::Error>> {
+    println!("{}", serde_json::to_string_pretty(document)?);
     Ok(())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = std::env::args_os().collect::<Vec<_>>();
     if let Some(request) = SchemaRequest::from_command_args(&args[1..])? {
-        print_schema(&Cli::schema()?, &request)?;
+        let document = Cli::schema()?.schema(&request)?;
+        print_schema(&document)?;
         return Ok(());
     }
 
@@ -88,8 +92,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match command {
         Commands::Schema(request) => {
-            let request = SchemaRequest::new(request.path).with_full(request.full);
-            print_schema(&Cli::schema()?, &request)?;
+            let document = schema(request)?;
+            print_schema(&document)?;
         }
         Commands::Get(request) => {
             let result = get(request);
