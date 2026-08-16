@@ -42,11 +42,8 @@ struct Item {
 
 /// Canonical create handler. Its `Item` result is the output contract source of truth.
 #[schema_handler(CreateArgs)]
-impl CreateArgs {
-    /// Creates the example item.
-    fn run(self) -> Result<Item, Infallible> {
-        Ok(Item { id: 42, name: self.name })
-    }
+fn create(args: CreateArgs) -> Result<Item, Infallible> {
+    Ok(Item { id: 42, name: args.name })
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -56,7 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Command contract:");
     println!("{}", serde_json::to_string_pretty(&command)?);
 
-    let created = CreateArgs { name: "example".to_owned() }.run()?;
+    let created = create(CreateArgs { name: "example".to_owned() })?;
     println!("\nRuntime value from the same handler:");
     println!("{}", serde_json::to_string_pretty(&created)?);
 

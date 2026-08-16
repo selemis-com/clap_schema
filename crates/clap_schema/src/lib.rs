@@ -42,10 +42,8 @@
 //! }
 //!
 //! #[schema_handler(CreateArgs)]
-//! impl CreateArgs {
-//!     async fn run(self) -> Result<Item, std::io::Error> {
-//!         Ok(Item { id: 1, name: self.name })
-//!     }
+//! async fn create(args: CreateArgs) -> Result<Item, std::io::Error> {
+//!     Ok(Item { id: 1, name: args.name })
 //! }
 //!
 //! let contract = Cli::schema()?;
@@ -124,13 +122,12 @@
 //! `Option<Subcommands>` field makes the parent directly invocable and therefore requires its own
 //! `#[schema_handler(...)]` contract.
 //!
-//! # Schema handler forms
+//! # Schema handlers
 //!
-//! `#[schema_handler(Type)]` supports synchronous, `const fn`, and asynchronous free functions. The
-//! command payload type is explicit in the attribute, so function arguments are otherwise
-//! unrestricted and may appear in any order. Receiver-based handlers may put the same attribute on
-//! a dedicated inherent impl block containing exactly one receiver method. Generic handlers and
-//! opaque `impl Trait` return types are rejected because they do not identify one concrete output
+//! `#[schema_handler(Type)]` is applied to a free function and supports synchronous, `const fn`,
+//! and asynchronous handlers. The command payload type is explicit in the attribute, so function
+//! arguments are otherwise unrestricted and may appear in any order. Generic handlers and opaque
+//! `impl Trait` return types are rejected because they do not identify one concrete output
 //! contract.
 //!
 //! # Builder-style Clap
@@ -151,10 +148,8 @@
 //! struct CreateCommand;
 //!
 //! #[schema_handler(CreateCommand)]
-//! impl CreateCommand {
-//!     fn run(self) -> Result<Created, std::io::Error> {
-//!         Ok(Created { id: 1 })
-//!     }
+//! fn create(_command: CreateCommand) -> Result<Created, std::io::Error> {
+//!     Ok(Created { id: 1 })
 //! }
 //!
 //! let cli = Command::new("example").subcommand(Command::new("create"));

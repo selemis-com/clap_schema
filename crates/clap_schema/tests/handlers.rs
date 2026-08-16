@@ -21,10 +21,6 @@ mod tests {
         FreeBorrowed(FreeBorrowedArgs),
         NoInput(NoInputArgs),
         FreeForm(FreeFormArgs),
-        Associated(AssociatedArgs),
-        Owned(OwnedArgs),
-        Borrowed(BorrowedArgs),
-        Mutable(MutableArgs),
         Conditional(ConditionalArgs),
         ConditionalAttr(ConditionalAttrArgs),
     }
@@ -45,10 +41,6 @@ mod tests {
         FreeBorrowedArgs,
         NoInputArgs,
         FreeFormArgs,
-        AssociatedArgs,
-        OwnedArgs,
-        BorrowedArgs,
-        MutableArgs,
         ConditionalArgs,
         ConditionalAttrArgs,
     );
@@ -91,38 +83,6 @@ mod tests {
     #[schema_handler(FreeFormArgs)]
     fn free_form(_context: &str, _verbose: bool, _value: u64) -> HandlerResult {
         Err(HandlerError)
-    }
-
-    #[schema_handler(AssociatedArgs)]
-    impl AssociatedArgs {
-        fn run(self) -> HandlerResult {
-            Err(HandlerError)
-        }
-    }
-
-    #[schema_handler(OwnedArgs)]
-    impl OwnedArgs {
-        fn run(self, _context: &str, _verbose: bool) -> HandlerResult {
-            Err(HandlerError)
-        }
-    }
-
-    #[schema_handler(BorrowedArgs)]
-    impl BorrowedArgs {
-        fn run(&self) -> HandlerResult {
-            Err(HandlerError)
-        }
-    }
-
-    #[schema_handler(MutableArgs)]
-    impl MutableArgs {
-        #[expect(
-            clippy::needless_pass_by_ref_mut,
-            reason = "the mutable receiver form is intentionally exercised by this handler test"
-        )]
-        async fn run(&mut self) -> HandlerResult {
-            Err(HandlerError)
-        }
     }
 
     #[schema_handler(ConditionalArgs)]
@@ -175,10 +135,6 @@ mod tests {
             FreeBorrowedArgs,
             NoInputArgs,
             FreeFormArgs,
-            AssociatedArgs,
-            OwnedArgs,
-            BorrowedArgs,
-            MutableArgs,
             ConditionalArgs,
             ConditionalAttrArgs,
         );

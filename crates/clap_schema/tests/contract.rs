@@ -30,10 +30,8 @@ mod tests {
     struct CreateCommand;
 
     #[schema_handler(CreateCommand)]
-    impl CreateCommand {
-        fn run(self) -> Result<Created, Infallible> {
-            Ok(Created { id: "1".to_owned(), name: "example".to_owned() })
-        }
+    fn create(_command: CreateCommand) -> Result<Created, Infallible> {
+        Ok(Created { id: "1".to_owned(), name: "example".to_owned() })
     }
 
     #[derive(Parser, CliSchema)]
@@ -154,7 +152,7 @@ mod tests {
 
     #[test]
     fn schema_handlers_remain_normal_callable_rust() {
-        let created = CreateCommand.run().expect("create handler");
+        let created = create(CreateCommand).expect("create handler");
         assert_eq!(created.id, "1");
         assert_eq!(created.name, "example");
 

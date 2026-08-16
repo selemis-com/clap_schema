@@ -12,8 +12,8 @@ use proc_macro_crate::{FoundCrate, crate_name};
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::{
-    Attribute, Data, DeriveInput, Fields, GenericArgument, Ident, ImplItem, ImplItemFn, ItemFn,
-    ItemImpl, Meta, PathArguments, ReturnType, Token, Type, parse_macro_input,
+    Attribute, Data, DeriveInput, Fields, GenericArgument, Ident, Item, ItemFn, Meta,
+    PathArguments, ReturnType, Token, Type, parse_macro_input,
 };
 
 /// Derives the root `clap_schema::CliSchema` implementation.
@@ -58,28 +58,14 @@ pub fn derive_command_schema(input: TokenStream) -> TokenStream {
 
 /// Associates one executable command type with its handler-derived output contract.
 ///
-/// The attribute argument explicitly names the command type whose successful-output contract is
-/// supplied by the handler. Function arguments are otherwise unrestricted and may appear in any
-/// order:
+/// Apply the attribute to a free function. The attribute argument explicitly names the command type
+/// whose successful-output contract is supplied by the handler. Function arguments are otherwise
+/// unrestricted and may appear in any order:
 ///
 /// ```ignore
 /// #[schema_handler(GetArgs)]
 /// async fn get(state: State, args: GetArgs, auth: Auth) -> Result<Item, Error> {
 ///     // ...
-/// }
-/// ```
-///
-/// Receiver-based handlers may use a dedicated inherent impl block containing exactly one receiver
-/// method. The command identity type remains explicit:
-///
-/// ```ignore
-/// struct CreateCommand;
-///
-/// #[schema_handler(CreateCommand)]
-/// impl CreateCommand {
-///     async fn run(self, context: Context) -> Result<Created, Error> {
-///         // ...
-///     }
 /// }
 /// ```
 ///
@@ -102,26 +88,17 @@ pub fn schema_handler(attribute: TokenStream, input: TokenStream) -> TokenStream
         Err(error) => return error.into_compile_error().into(),
     };
 
-    let tokens = TokenStream2::from(input);
-    if let Ok(item_impl) = syn::parse2::<ItemImpl>(tokens.clone()) {
-        return expand_handler_impl(&item_impl, &command_type)
-            .unwrap_or_else(syn::Error::into_compile_error)
-            .into();
-    }
-    if let Ok(method) = syn::parse2::<ImplItemFn>(tokens.clone())
-        && matches!(method.sig.inputs.first(), Some(syn::FnArg::Receiver(_)))
-    {
+    let item = match syn::parse::<Item>(input) {
+        Ok(item) => item,
+        Err(error) => return error.into_compile_error().into(),
+    };
+    let Item::Fn(function) = item else {
         return syn::Error::new_spanned(
-            method.sig,
-            "receiver handlers must put #[schema_handler(Type)] on a dedicated inherent impl block",
+            item,
+            "#[schema_handler(Type)] can only be applied to a free function",
         )
         .into_compile_error()
         .into();
-    }
-
-    let function = match syn::parse2::<ItemFn>(tokens) {
-        Ok(function) => function,
-        Err(error) => return error.into_compile_error().into(),
     };
     expand_item_handler(&function, &command_type)
         .unwrap_or_else(syn::Error::into_compile_error)
@@ -140,63 +117,6 @@ fn expand_item_handler(function: &ItemFn, command_type: &Type) -> syn::Result<To
 
         #(#conditional)*
         impl #crate_path::__private::HandlerContract for #command_type {
-            type Output = <#output as #crate_path::__private::HandlerResult>::Output;
-        }
-    })
-}
-
-/// Expands a dedicated inherent handler impl and its command-type contract implementation.
-fn expand_handler_impl(item_impl: &ItemImpl, command_type: &Type) -> syn::Result<TokenStream2> {
-    if item_impl.trait_.is_some() {
-        return Err(syn::Error::new_spanned(
-            item_impl,
-            "#[schema_handler] requires an inherent impl block",
-        ));
-    }
-    if !item_impl.generics.params.is_empty() {
-        return Err(syn::Error::new_spanned(
-            &item_impl.generics,
-            "clap_schema handler impls must be non-generic",
-        ));
-    }
-
-    let mut methods = item_impl.items.iter().filter_map(|item| match item {
-        ImplItem::Fn(method) => Some(method),
-        _ => None,
-    });
-    let Some(method) = methods.next() else {
-        return Err(syn::Error::new_spanned(
-            item_impl,
-            "#[schema_handler] impl blocks must contain exactly one function; put helpers in a separate impl block",
-        ));
-    };
-    if methods.next().is_some() {
-        return Err(syn::Error::new_spanned(
-            item_impl,
-            "#[schema_handler] impl blocks must contain exactly one function; put helpers in a separate impl block",
-        ));
-    }
-
-    if !matches!(method.sig.inputs.first(), Some(syn::FnArg::Receiver(_))) {
-        return Err(syn::Error::new_spanned(
-            &method.sig,
-            "#[schema_handler(Type)] impl blocks require a receiver method; use a free handler for associated functions",
-        ));
-    }
-
-    validate_handler_signature(&method.sig)?;
-    let output = declared_return_type(&method.sig)?;
-    let mut conditional = conditional_attributes(&item_impl.attrs)?;
-    conditional.extend(conditional_attributes(&method.attrs)?);
-    let crate_path = clap_schema_path();
-    let generics = &item_impl.generics;
-    let (impl_generics, _, where_clause) = generics.split_for_impl();
-
-    Ok(quote! {
-        #item_impl
-
-        #(#conditional)*
-        impl #impl_generics #crate_path::__private::HandlerContract for #command_type #where_clause {
             type Output = <#output as #crate_path::__private::HandlerResult>::Output;
         }
     })
@@ -233,6 +153,12 @@ fn conditional_attributes(attrs: &[Attribute]) -> syn::Result<Vec<TokenStream2>>
 
 /// Validates handler signature properties required for one concrete output contract.
 fn validate_handler_signature(signature: &syn::Signature) -> syn::Result<()> {
+    if signature.inputs.iter().any(|input| matches!(input, syn::FnArg::Receiver(_))) {
+        return Err(syn::Error::new_spanned(
+            signature,
+            "#[schema_handler(Type)] can only be applied to a free function",
+        ));
+    }
     if signature.unsafety.is_some()
         || signature.abi.is_some()
         || signature.variadic.is_some()

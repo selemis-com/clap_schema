@@ -17,11 +17,7 @@ mod tests {
             "clap_schema handlers use a plain non-generic function signature",
             "clap_schema handlers require a concrete Result<T, E> output type",
             "clap_schema handlers must return Result<T, E>",
-            "receiver handlers must put #[schema_handler(Type)] on a dedicated inherent impl block",
-            "#[schema_handler] requires an inherent impl block",
-            "clap_schema handler impls must be non-generic",
-            "#[schema_handler(Type)] impl blocks require a receiver method",
-            "#[schema_handler] impl blocks must contain exactly one function",
+            "#[schema_handler(Type)] can only be applied to a free function",
         ] {
             assert!(stderr.contains(expected), "missing diagnostic: {expected}\n{stderr}");
         }

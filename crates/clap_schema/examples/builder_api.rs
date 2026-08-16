@@ -19,13 +19,10 @@ struct Widget {
 /// Rust identity of the builder-registered create command.
 struct CreateCommand;
 
-/// Canonical implementation of the create command.
+/// Creates the example widget.
 #[schema_handler(CreateCommand)]
-impl CreateCommand {
-    /// Creates the example widget.
-    fn run(self) -> Result<Widget, Infallible> {
-        Ok(Widget { id: 1, name: "example".to_owned() })
-    }
+fn create(_command: CreateCommand) -> Result<Widget, Infallible> {
+    Ok(Widget { id: 1, name: "example".to_owned() })
 }
 
 /// Builds the example Clap command tree.
@@ -45,7 +42,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Builder-derived command contract:");
     println!("{}", serde_json::to_string_pretty(&command)?);
 
-    let created = CreateCommand.run()?;
+    let created = create(CreateCommand)?;
     println!("\nRuntime value from the same handler:");
     println!("{}", serde_json::to_string_pretty(&created)?);
 

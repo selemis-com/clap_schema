@@ -83,10 +83,8 @@ impl CliContract {
     /// struct ListCommand;
     ///
     /// #[schema_handler(ListCommand)]
-    /// impl ListCommand {
-    ///     fn list(self) -> Result<Page, std::convert::Infallible> {
-    ///         Ok(Page { next_cursor: None })
-    ///     }
+    /// fn list(_command: ListCommand) -> Result<Page, std::convert::Infallible> {
+    ///     Ok(Page { next_cursor: None })
     /// }
     ///
     /// let contract = ContractBuilder::new(Command::new("example").subcommand(Command::new("list")))

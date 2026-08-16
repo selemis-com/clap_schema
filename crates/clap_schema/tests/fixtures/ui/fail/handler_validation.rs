@@ -28,47 +28,13 @@ impl ReceiverHandler {
     }
 }
 
-struct AssociatedOnlyHandler;
+struct ImplHandler;
 
 #[schema_handler(Command)]
-impl AssociatedOnlyHandler {
-    fn run(_value: u8) -> Result<(), ()> {
-        Ok(())
-    }
-}
-
-struct MultiHandler;
-
-#[schema_handler(Command)]
-impl MultiHandler {
-    fn first(self) -> Result<(), ()> {
-        Ok(())
-    }
-
-    fn second(self) -> Result<(), ()> {
-        Ok(())
-    }
-}
-
-trait HandlerTrait {}
-
-struct TraitHandler;
-
-#[schema_handler(Command)]
-impl HandlerTrait for TraitHandler {}
-
-struct GenericHandler<T>(T);
-
-#[schema_handler(Command)]
-impl<T> GenericHandler<T> {
+impl ImplHandler {
     fn run(self) -> Result<(), ()> {
         Ok(())
     }
 }
-
-struct EmptyHandler;
-
-#[schema_handler(Command)]
-impl EmptyHandler {}
 
 fn main() {}
