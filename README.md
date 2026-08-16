@@ -2,15 +2,9 @@
 
 JSON Schema generation for Clap.
 
-`clap_schema` lets a CLI describe itself without maintaining a second command model. Clap remains the source of truth for invocation syntax and validation; the Rust handler that actually executes a command is the source of truth for its successful machine output.
+`clap_schema` adds machine-readable command discovery to a Clap CLI without introducing a second command model. Clap remains the source of truth for command names, help, arguments, options, and nesting. Your Rust handler remains the source of truth for the successful output type.
 
-The model is deliberately small:
-
-- `CliSchema` reflects visible command topology and compact argument context from Clap's built `Command` tree.
-- `CommandSchema` follows Clap subcommand enums and nested `Args` wrappers into the command tree.
-- The handler's `Result<T, E>` determines the successful output type. Non-unit `T` must implement `Serialize + JsonSchema`; `Result<(), E>` is outputless.
-- `write_json` serializes the same successful `T` used to generate the output schema.
-- Applications can add their own extension schemas without making `clap_schema` own metadata values or semantics.
+From those two sources, `clap_schema` builds a contract that describes what a command accepts and what it returns.
 
 ## Installation
 
@@ -24,9 +18,11 @@ cargo add serde --features derive
 
 ## Quick start
 
+A basic derive-based CLI looks like this:
+
 ```rust
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliSchema, CommandSchema, schema_handler};
+use clap_schema::{schema_handler, CliSchema, CommandSchema};
 use schemars::JsonSchema;
 use serde::Serialize;
 
@@ -55,25 +51,48 @@ struct Item {
 }
 
 #[schema_handler(GetArgs)]
-impl GetArgs {
-    fn run(self) -> Result<Item, std::convert::Infallible> {
-        Ok(Item { id: self.id, name: "example".to_owned() })
-    }
+fn get(args: GetArgs) -> Result<Item, std::convert::Infallible> {
+    Ok(Item {
+        id: args.id,
+        name: "example".to_owned(),
+    })
 }
 
 let contract = Cli::schema()?;
-let command = contract
+let get = contract
     .command_for::<GetArgs>()
     .expect("get command is registered");
-assert!(command.output.is_some());
+
+assert!(get.output.is_some());
 # Ok::<(), clap_schema::Error>(())
 ```
 
-`GetArgs` is the Clap payload type that identifies this executable command to `clap_schema`. `CommandSchema` gets that type directly from the enum variant, while `#[schema_handler(GetArgs)]` explicitly associates it with the handler's successful output type. Removing the schema handler or defining a second canonical schema handler for the same payload type therefore fails at compile time.
+That is the base case. There are only three clap_schema-specific pieces: `CliSchema` on the root parser, `CommandSchema` on the subcommand enum, and `#[schema_handler(GetArgs)]` on the Rust handler. `GetArgs` itself stays an ordinary Clap `Args` type.
 
-The output schema comes from the declared successful handler type, not from a separate `#[schema(output = ...)]` declaration. At runtime, use `write_json` when you want the emitted JSON and generated schema to stay parameterized by the same `T`.
+The handler annotation connects that command payload to the handler's `Result<Item, E>`. The successful `Item` type supplies the output JSON Schema, so there is no separate input schema or `#[schema(output = Item)]` declaration to keep synchronized.
 
-Derive-based executable commands use one named tuple payload, such as `Get(GetArgs)`. Commands with no arguments use an empty `Args` type. Shared argument groups can still be reused with Clap's `flatten`, while distinct executable commands keep distinct payload types. Schema handlers explicitly name their command payload as `#[schema_handler(GetArgs)]`, so free-function arguments may be arranged freely without positional inference. Receiver-based handlers may put the same attribute on a dedicated inherent impl block with one receiver method. Builder-style Clap uses explicit Rust identity types through `ContractBuilder::command::<T>(path)`.
+For `get`, the resulting contract contains the command path, description, usage, positional and option context from Clap, plus the JSON Schema for `Item`.
+
+The handler annotation names the command explicitly, so its Rust arguments remain unrestricted:
+
+```rust
+#[schema_handler(GetArgs)]
+async fn get(
+    state: AppState,
+    args: GetArgs,
+    auth: AuthContext,
+) -> Result<Item, Error> {
+    // ...
+}
+```
+
+Argument order has no schema meaning. The command identity comes from `GetArgs`; the successful output schema comes from the return type.
+
+## What this enables
+
+The generated `CliContract` can power command discovery such as `tool --schema` or `tool schema`, including nested command navigation and optional full-tree expansion. This makes the same CLI definition usable by humans through Clap and by agents, tooling, or other machine consumers through a stable JSON contract.
+
+Successful runtime output can use `write_json`, keeping serialization parameterized by the same `T` used for the generated output schema. Applications can also layer their own extension schemas onto commands without giving `clap_schema` ownership of those metadata values or semantics.
 
 ## Nested subcommands
 
