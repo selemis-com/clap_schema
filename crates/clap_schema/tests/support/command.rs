@@ -21,4 +21,5 @@ pub(crate) fn cli_fixture(name: &str) -> Data {
         &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/cli").join(name),
         None,
     )
+    .raw()
 }

@@ -90,7 +90,7 @@
       "output": {
         "$defs": {
           "ArgumentInfo": {
-            "description": "Compact context for one visible Clap argument or option./n/nThis intentionally exposes only straightforward facts from Clap's built command model./nComplete invocation semantics remain authoritative in Clap and its generated help.",
+            "description": "Compact context for one visible Clap argument or option.\n\nThis intentionally exposes only straightforward facts from Clap's built command model.\nComplete invocation semantics remain authoritative in Clap and its generated help.",
             "properties": {
               "aliases": {
                 "description": "Long aliases that Clap exposes in generated help.",
@@ -220,7 +220,7 @@
             "description": "One child entry in a [`SchemaDocument`]."
           }
         },
-        "description": "Resolved schema-discovery document for one selected command./n/nThe selected command is flattened into the document itself. In shallow mode, `subcommands`/ncontains [`SchemaCommandSummary`] entries for direct children. In full mode, each child is/nanother fully resolved `SchemaDocument`. The wire shape is therefore stable while `--full`/nchanges only the amount of child detail returned.",
+        "description": "Resolved schema-discovery document for one selected command.\n\nThe selected command is flattened into the document itself. In shallow mode, `subcommands`\ncontains [`SchemaCommandSummary`] entries for direct children. In full mode, each child is\nanother fully resolved `SchemaDocument`. The wire shape is therefore stable while `--full`\nchanges only the amount of child detail returned.",
         "properties": {
           "aliases": {
             "description": "Aliases that Clap exposes in generated help.",
@@ -280,7 +280,7 @@
             "type": "array"
           },
           "usage": {
-            "description": "Invocation synopsis rendered by Clap./n/nThis is presentation output, not a structured grammar; Clap may collapse groups of options/nbehind placeholders such as `[OPTIONS]`.",
+            "description": "Invocation synopsis rendered by Clap.\n\nThis is presentation output, not a structured grammar; Clap may collapse groups of options\nbehind placeholders such as `[OPTIONS]`.",
             "type": "string"
           }
         },
