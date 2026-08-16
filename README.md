@@ -2,13 +2,84 @@
 
 JSON Schema generation for Clap.
 
-`clap_schema` adds machine-readable command discovery to a Clap CLI without introducing a second command model. Clap remains the source of truth for command names, help, arguments, options, and nesting. Your Rust handler remains the source of truth for the successful output type.
+`clap_schema` turns a Clap command and its typed Rust result into a machine-readable contract.
 
-From those two sources, `clap_schema` builds a contract that describes what a command accepts and what it returns.
+## What it produces
+
+For a command such as:
+
+```text
+deployctl deploy --environment production api
+```
+
+`clap_schema` can expose the command as:
+
+```json
+{
+  "name": "deploy",
+  "path": [
+    "deploy"
+  ],
+  "description": "Deploy a service",
+  "usage": "deployctl deploy --environment <ENVIRONMENT> <SERVICE>",
+  "arguments": [
+    {
+      "id": "service",
+      "index": 1,
+      "value_names": [
+        "SERVICE"
+      ],
+      "help": "Service to deploy",
+      "required": true
+    }
+  ],
+  "options": [
+    {
+      "id": "environment",
+      "long": "environment",
+      "value_names": [
+        "ENVIRONMENT"
+      ],
+      "help": "Target environment",
+      "required": true,
+      "possible_values": [
+        "staging",
+        "production"
+      ]
+    }
+  ],
+  "executable": true,
+  "output": {
+    "description": "Result of deploying a service.",
+    "properties": {
+      "deployed": {
+        "description": "Whether the service was deployed.",
+        "type": "boolean"
+      },
+      "id": {
+        "description": "Deployment identifier.",
+        "type": "string"
+      },
+      "service": {
+        "description": "Service that was deployed.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "service",
+      "deployed"
+    ],
+    "type": "object"
+  }
+}
+```
+
+The command path, usage, arguments, options, help, and possible values come from Clap. The `output` field is the JSON Schema of the successful Rust result.
+
+This gives agents and other tooling a structured description of what a command accepts and what it returns, while Clap remains the source of truth for the CLI itself.
 
 ## Installation
-
-Add `clap_schema` alongside the Serde and Schemars derives used by machine-readable output types:
 
 ```sh
 cargo add clap --features derive
@@ -18,79 +89,91 @@ cargo add serde --features derive
 
 ## Quick start
 
-A basic derive-based CLI looks like this:
+The contract above is generated from ordinary Clap types plus `CliSchema`, `CommandSchema`, and a schema handler:
 
 ```rust
-use clap::{Args, Parser, Subcommand};
+use std::convert::Infallible;
+
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use clap_schema::{schema_handler, CliSchema, CommandSchema};
 use schemars::JsonSchema;
 use serde::Serialize;
 
-#[derive(Parser, CliSchema)]
+/// Deployment CLI.
+#[derive(Debug, Parser, CliSchema)]
+#[command(name = "deployctl")]
 struct Cli {
+    /// Selects the command to run.
     #[command(subcommand)]
     command: Commands,
 }
 
-#[derive(Subcommand, CommandSchema)]
+/// Available commands.
+#[derive(Debug, Subcommand, CommandSchema)]
 enum Commands {
-    /// Return one item.
-    Get(GetArgs),
+    /// Deploy a service.
+    Deploy(DeployArgs),
 }
 
-#[derive(Args)]
-struct GetArgs {
-    /// Item identifier.
+/// Arguments accepted by `deploy`.
+#[derive(Debug, Args)]
+struct DeployArgs {
+    /// Service to deploy.
+    service: String,
+
+    /// Target environment.
+    #[arg(long, value_enum)]
+    environment: Environment,
+}
+
+/// Deployment environment.
+#[derive(Clone, Debug, ValueEnum)]
+enum Environment {
+    /// Staging environment.
+    Staging,
+
+    /// Production environment.
+    Production,
+}
+
+/// Result of deploying a service.
+#[derive(Debug, Serialize, JsonSchema)]
+struct Deployment {
+    /// Deployment identifier.
     id: String,
+
+    /// Service that was deployed.
+    service: String,
+
+    /// Whether the service was deployed.
+    deployed: bool,
 }
 
-#[derive(Serialize, JsonSchema)]
-struct Item {
-    id: String,
-    name: String,
-}
-
-#[schema_handler(GetArgs)]
-fn get(args: GetArgs) -> Result<Item, std::convert::Infallible> {
-    Ok(Item {
-        id: args.id,
-        name: "example".to_owned(),
+#[schema_handler(DeployArgs)]
+fn deploy(args: DeployArgs) -> Result<Deployment, Infallible> {
+    Ok(Deployment {
+        id: "dep_01".to_owned(),
+        service: args.service,
+        deployed: true,
     })
 }
 
-let contract = Cli::schema()?;
-let get = contract
-    .command_for::<GetArgs>()
-    .expect("get command is registered");
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let contract = Cli::schema()?;
+    let command = contract
+        .command_for::<DeployArgs>()
+        .expect("deploy command is registered");
 
-assert!(get.output.is_some());
-# Ok::<(), clap_schema::Error>(())
-```
-
-That is the base case. There are only three clap_schema-specific pieces: `CliSchema` on the root parser, `CommandSchema` on the subcommand enum, and `#[schema_handler(GetArgs)]` on the Rust handler. `GetArgs` itself stays an ordinary Clap `Args` type.
-
-For `get`, the resulting contract contains the command path, description, usage, positional and option context from Clap, plus the JSON Schema for `Item`.
-
-The handler annotation names the command explicitly, so its Rust arguments remain unrestricted:
-
-```rust
-#[schema_handler(GetArgs)]
-async fn get(
-    state: AppState,
-    args: GetArgs,
-    auth: AuthContext,
-) -> Result<Item, Error> {
-    // ...
+    println!("{}", serde_json::to_string_pretty(&command)?);
+    Ok(())
 }
 ```
 
-Argument order has no schema meaning. The command identity comes from `GetArgs`; the successful output schema comes from the return type.
+`#[schema_handler(DeployArgs)]` names the command explicitly, so the handler is free to use whatever Rust arguments and application context it needs.
 
 ## What this enables
 
-The generated `CliContract` can power command discovery such as `tool --schema` or `tool schema`, including nested command navigation and optional full-tree expansion. This makes the same CLI definition usable by humans through Clap and by agents, tooling, or other machine consumers through a stable JSON contract.
-
-Applications can layer their own extension schemas onto commands without giving `clap_schema` ownership of those metadata values or semantics.
+The generated `CliContract` can power command discovery such as `tool --schema` or `tool schema`, including nested command navigation and optional full-tree expansion. Applications can also layer their own extension schemas onto commands without giving `clap_schema` ownership of those metadata values or semantics.
 
 ## Nested subcommands
 
