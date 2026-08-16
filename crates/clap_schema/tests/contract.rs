@@ -42,7 +42,7 @@ mod tests {
     struct DiscoveryOnlyRoot;
 
     #[derive(Parser, CliSchema)]
-    #[schema(executable)]
+    #[schema(handler)]
     struct RootCli;
 
     #[expect(dead_code, reason = "handler supplies the command contract")]

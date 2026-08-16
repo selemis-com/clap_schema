@@ -6,8 +6,8 @@ struct First;
 struct Second;
 
 #[derive(CliSchema)]
-#[schema(executable, executable)]
-struct DuplicateRootExecutable;
+#[schema(handler, handler)]
+struct DuplicateRootHandler;
 
 #[derive(CliSchema)]
 #[schema(extend = First, extend = Second)]
@@ -36,13 +36,13 @@ struct CommandsMustBeEnum;
 #[derive(CommandSchema)]
 enum InvalidSkippedMetadata {
     #[command(skip)]
-    #[schema(executable)]
+    #[schema(handler)]
     Run,
 }
 
 #[derive(CommandSchema)]
 enum InvalidSchemaSkip {
-    #[schema(skip, executable)]
+    #[schema(skip, handler)]
     Run(Args),
 }
 
@@ -55,7 +55,7 @@ enum InvalidFlattenShape {
 #[derive(CommandSchema)]
 enum InvalidFlattenMetadata {
     #[command(flatten)]
-    #[schema(executable)]
+    #[schema(handler)]
     Flat(Child),
 }
 
@@ -68,7 +68,7 @@ enum InvalidNestedShape {
 #[derive(CommandSchema)]
 enum InvalidNestedMetadata {
     #[command(subcommand)]
-    #[schema(executable)]
+    #[schema(handler)]
     Nested(Child),
 }
 
@@ -90,8 +90,8 @@ enum MissingPayload {
 }
 
 #[derive(CommandSchema)]
-enum DuplicateExecutableFlag {
-    #[schema(executable, executable, subcommands)]
+enum DuplicateHandlerFlag {
+    #[schema(handler, handler, subcommands)]
     Run(Args),
 }
 
@@ -108,13 +108,13 @@ enum DuplicateMetadataType {
 }
 
 #[derive(CommandSchema)]
-enum ExecutableWithoutSubcommands {
-    #[schema(executable)]
+enum HandlerWithoutSubcommands {
+    #[schema(handler)]
     Run(Args),
 }
 
 #[derive(CommandSchema)]
-enum GroupExtensionWithoutExecutable {
+enum GroupExtensionWithoutHandler {
     #[schema(subcommands, extend = First)]
     Run(Args),
 }

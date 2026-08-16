@@ -33,25 +33,25 @@ mod tests {
         assert!(!output.status.success());
         let stderr = String::from_utf8(output.stderr).expect("UTF-8 compiler diagnostics");
         for expected in [
-            "duplicate executable flag",
+            "duplicate handler flag",
             "duplicate root extension type",
             "unsupported #[schema(...)] root option",
             "CliSchema can only be derived for structs",
             "CliSchema supports at most one #[command(subcommand)] field",
             "CommandSchema on an Args struct requires one #[command(subcommand)] field",
             "schema extensions cannot be attached to a clap-skipped or external subcommand variant",
-            "#[schema(skip)] cannot be combined with executable, subcommands, or extend",
+            "#[schema(skip)] cannot be combined with handler, subcommands, or extend",
             "flattened subcommands require a single tuple payload",
             "flattened subcommands cannot declare command schema extensions",
             "nested subcommands require a single tuple payload",
-            "#[command(subcommand)] groups cannot declare executable, subcommands, or extend",
+            "#[command(subcommand)] groups cannot declare handler, subcommands, or extend",
             "a command cannot be both subcommand and flatten",
             "a command cannot be both skip and external_subcommand",
             "contract-visible executable commands require a single tuple Args payload",
             "duplicate subcommands flag",
             "duplicate extension type",
-            "the `executable` flag is only needed when `subcommands` is also declared",
-            "an extension on a command group requires the `executable` flag",
+            "the `handler` flag is only needed when `subcommands` is also declared",
+            "an extension on a command group requires the `handler` flag",
             "unsupported #[schema(...)] command option",
         ] {
             assert!(stderr.contains(expected), "missing diagnostic: {expected}\n{stderr}");

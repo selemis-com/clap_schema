@@ -24,8 +24,8 @@ use syn::{
 ///
 /// # `#[schema(...)]` options
 ///
-/// - `executable` makes the root parser type executable; a `#[schema_handler(RootType)]`
-///   declaration must supply its successful-output contract.
+/// - `handler` marks the root parser as having its own schema handler; a
+///   `#[schema_handler(RootType)]` declaration must supply its successful-output contract.
 /// - `extend = Type` declares the application-wide extension schema type. It is schema-only:
 ///   `clap_schema` never constructs or serializes values of `Type`.
 ///
@@ -46,12 +46,12 @@ pub fn derive_cli_schema(input: TokenStream) -> TokenStream {
 ///
 /// Normal `#[command(subcommand)]` and `#[command(flatten)]` nesting is followed automatically.
 /// When an `Args` payload itself contains a subcommand field, derive `CommandSchema` on that
-/// payload and add the `subcommands` flag to the parent variant. Add `executable` when such a
-/// parent is also executable without selecting a child. Executable commands may declare `extend =
-/// Type` to supplement the root application extension schema. Extensions can only be attached to
-/// ordinary executable variants; command groups, flattened variants, skipped variants, and external
-/// subcommands do not carry an command-specific extension schema. The application owns all
-/// concrete extension values.
+/// payload and add the `subcommands` flag to the parent variant. Add `handler` when such a
+/// parent also has its own `#[schema_handler(...)]` contract. Executable commands may declare
+/// `extend = Type` to supplement the root application extension schema. Extensions can only be
+/// attached to ordinary executable variants; command groups, flattened variants, skipped variants,
+/// and external subcommands do not carry an command-specific extension schema. The application owns
+/// all concrete extension values.
 #[proc_macro_derive(CommandSchema, attributes(schema, command))]
 pub fn derive_command_schema(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -294,7 +294,7 @@ fn contains_impl_trait(ty: &Type) -> bool {
 /// Expands a `CliSchema` derive into root executable-command registration.
 fn expand_cli_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
     let crate_path = clap_schema_path();
-    let RootSchema { executable, extended } = parse_root_schema(&input.attrs)?;
+    let RootSchema { handler, extended } = parse_root_schema(&input.attrs)?;
     let commands = find_subcommand_field(&input, "CliSchema")?;
 
     let name = input.ident;
@@ -306,7 +306,7 @@ fn expand_cli_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
             registry.extend::<#extended>();
         }
     });
-    let root_command = executable.then(|| {
+    let root_command = handler.then(|| {
         quote! {
             registry.command::<Self>(&[]);
         }
@@ -402,7 +402,7 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
         if schema.skip && schema.has_registration_options() {
             return Err(syn::Error::new_spanned(
                 variant.ident,
-                "#[schema(skip)] cannot be combined with executable, subcommands, or extend",
+                "#[schema(skip)] cannot be combined with handler, subcommands, or extend",
             ));
         }
 
@@ -471,7 +471,7 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
             if schema.has_registration_options() {
                 return Err(syn::Error::new_spanned(
                     variant.ident,
-                    "#[command(subcommand)] groups cannot declare executable, subcommands, or extend",
+                    "#[command(subcommand)] groups cannot declare handler, subcommands, or extend",
                 ));
             }
             steps.push(quote! {
@@ -494,20 +494,20 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
                 "contract-visible executable commands require a single tuple Args payload with a #[schema_handler(PayloadType)] contract",
             )
         })?;
-        if schema.executable && !schema.subcommands {
+        if schema.handler && !schema.subcommands {
             return Err(syn::Error::new_spanned(
                 &variant.ident,
-                "the `executable` flag is only needed when `subcommands` is also declared",
+                "the `handler` flag is only needed when `subcommands` is also declared",
             ));
         }
-        if schema.extended.is_some() && schema.subcommands && !schema.executable {
+        if schema.extended.is_some() && schema.subcommands && !schema.handler {
             return Err(syn::Error::new_spanned(
                 &variant.ident,
-                "an extension on a command group requires the `executable` flag",
+                "an extension on a command group requires the `handler` flag",
             ));
         }
 
-        let register_command = (!schema.subcommands || schema.executable).then(|| {
+        let register_command = (!schema.subcommands || schema.handler).then(|| {
             schema.extended.as_ref().map_or_else(
                 || {
                     quote! {
@@ -577,8 +577,8 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
 /// Parsed root schema extensions.
 #[derive(Default)]
 struct RootSchema {
-    /// Whether the root parser is executable.
-    executable: bool,
+    /// Whether the root parser has its own schema handler.
+    handler: bool,
     /// Optional application-defined extension schema type.
     extended: Option<Type>,
 }
@@ -588,14 +588,14 @@ fn parse_root_schema(attrs: &[Attribute]) -> syn::Result<RootSchema> {
     let mut result = RootSchema::default();
     for attr in attrs.iter().filter(|attr| attr.path().is_ident("schema")) {
         attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident("executable") {
-                if result.executable {
-                    return Err(meta.error("duplicate executable flag"));
+            if meta.path.is_ident("handler") {
+                if result.handler {
+                    return Err(meta.error("duplicate handler flag"));
                 }
                 if meta.input.peek(Token![=]) {
-                    return Err(meta.error("`executable` is a flag and does not accept a value"));
+                    return Err(meta.error("`handler` is a flag and does not accept a value"));
                 }
-                result.executable = true;
+                result.handler = true;
             } else if meta.path.is_ident("extend") {
                 if result.extended.is_some() {
                     return Err(meta.error("duplicate root extension type"));
@@ -723,8 +723,8 @@ fn parse_command_behavior(attrs: &[Attribute]) -> syn::Result<CommandBehavior> {
 /// Parsed contract extensions for one subcommand variant.
 #[derive(Default)]
 struct VariantSchema {
-    /// Whether a command group is executable without selecting a child.
-    executable: bool,
+    /// Whether a command group has its own schema handler.
+    handler: bool,
     /// Whether an `Args` payload owns child subcommands through `CommandSchema`.
     subcommands: bool,
     /// Optional command-specific application extension schema type.
@@ -736,12 +736,12 @@ struct VariantSchema {
 impl VariantSchema {
     /// Returns whether no schema extension was supplied.
     const fn is_empty(&self) -> bool {
-        !self.executable && !self.subcommands && self.extended.is_none() && !self.skip
+        !self.handler && !self.subcommands && self.extended.is_none() && !self.skip
     }
 
     /// Returns whether extensions affect command or child registration.
     const fn has_registration_options(&self) -> bool {
-        self.executable || self.subcommands || self.extended.is_some()
+        self.handler || self.subcommands || self.extended.is_some()
     }
 }
 
@@ -750,14 +750,14 @@ fn parse_variant_schema(attrs: &[Attribute]) -> syn::Result<VariantSchema> {
     let mut result = VariantSchema::default();
     for attr in attrs.iter().filter(|attr| attr.path().is_ident("schema")) {
         attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident("executable") {
-                if result.executable {
-                    return Err(meta.error("duplicate executable flag"));
+            if meta.path.is_ident("handler") {
+                if result.handler {
+                    return Err(meta.error("duplicate handler flag"));
                 }
                 if meta.input.peek(Token![=]) {
-                    return Err(meta.error("`executable` is a flag and does not accept a value"));
+                    return Err(meta.error("`handler` is a flag and does not accept a value"));
                 }
-                result.executable = true;
+                result.handler = true;
             } else if meta.path.is_ident("subcommands") {
                 if result.subcommands {
                     return Err(meta.error("duplicate subcommands flag"));

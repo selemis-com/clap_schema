@@ -177,7 +177,7 @@ The generated `CliContract` can power command discovery such as `tool --schema` 
 
 ## Nested subcommands
 
-Clap still owns nested command structure. When a tuple payload is an `Args` wrapper around another subcommand enum, derive `CommandSchema` on that wrapper and mark the parent variant with `#[schema(subcommands)]`:
+For commands that contain another level of subcommands, derive `CommandSchema` on the `Args` wrapper and mark the parent with `#[schema(subcommands)]`:
 
 ```rust
 #[derive(Subcommand, CommandSchema)]
@@ -198,7 +198,15 @@ enum ObjectCommands {
 }
 ```
 
-The wrapper derive reads `ObjectCommands` from the same `#[command(subcommand)]` field Clap parses; the type is not repeated in clap_schema metadata. Add `executable` alongside `subcommands` only when the parent command itself also has a `#[schema_handler(...)]` contract.
+This describes a CLI such as:
+
+```text
+app objects get
+```
+
+Clap continues to define the command structure; `CommandSchema` makes that nested structure available to `clap_schema`.
+
+If `objects` also has its own `#[schema_handler(...)]`, use `#[schema(handler, subcommands)]` on the parent variant.
 
 ## Command discovery
 

@@ -92,7 +92,7 @@ enum ObjectCommands {
     Delete(DeleteObjectArgs),
 
     /// Inspect or modify direct object grants.
-    #[schema(executable, subcommands)]
+    #[schema(handler, subcommands)]
     Access(AccessArgs),
 }
 
