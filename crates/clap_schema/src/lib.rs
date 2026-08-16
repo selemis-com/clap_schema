@@ -273,7 +273,6 @@ extern crate self as clap_schema;
 
 mod contract;
 mod model;
-mod output;
 mod schema;
 
 #[doc(hidden)]

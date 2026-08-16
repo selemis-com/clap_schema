@@ -7,9 +7,9 @@ use schemars::JsonSchema;
 
 use crate::{
     model::{ArgumentInfo, CliContract, DiscoveryNode, ExecutableData},
-    output::output_schema_factory,
     schema::{
         ExtendedSchemaFactory, SchemaFactory, compose_extended_schemas, extended_schema_factory,
+        output_schema_factory,
     },
 };
 

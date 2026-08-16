@@ -1,5 +1,7 @@
 //! Shared JSON Schema generation for machine-facing contract types.
 
+use std::any::TypeId;
+
 use schemars::{JsonSchema, Schema, SchemaGenerator, generate::SchemaSettings};
 use serde_json::Value;
 
@@ -36,6 +38,14 @@ where
         root.remove("title");
     }
     schema
+}
+
+/// Returns the successful-output schema factory for one executable command type.
+pub(crate) fn output_schema_factory<T>() -> Option<SchemaFactory>
+where
+    T: crate::__private::HandlerContract,
+{
+    (TypeId::of::<T::Output>() != TypeId::of::<()>()).then_some(schema_for::<T::Output>)
 }
 
 /// Returns both standalone and shared-generator factories for one extension type.
