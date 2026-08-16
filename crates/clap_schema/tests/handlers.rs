@@ -6,7 +6,6 @@ mod tests {
     use clap::{Args, Parser, Subcommand};
     use clap_schema::{CliSchema, CommandSchema, schema_handler};
     use schemars::JsonSchema;
-    use serde::Serialize;
 
     #[derive(Parser, CliSchema)]
     struct Cli {
@@ -54,7 +53,7 @@ mod tests {
         ConditionalAttrArgs,
     );
 
-    #[derive(Serialize, JsonSchema)]
+    #[derive(JsonSchema)]
     struct Output {
         value: String,
     }

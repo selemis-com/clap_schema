@@ -6,7 +6,6 @@
 /// Clap re-export used by proc-macro expansions.
 pub use clap;
 use schemars::JsonSchema;
-use serde::Serialize;
 
 use crate::{
     CliContract, CliSchema, ContractBuilder, Result, contract::RegistrationState,
@@ -20,7 +19,7 @@ use crate::{
 #[doc(hidden)]
 pub trait HandlerContract: 'static {
     /// Successful machine-output type declared by the canonical handler.
-    type Output: JsonSchema + Serialize + 'static;
+    type Output: JsonSchema + 'static;
 }
 
 /// Successful `Result<T, E>` contract used by handler contracts.
@@ -29,12 +28,12 @@ pub trait HandlerContract: 'static {
 /// remain supported without syntactic parsing of `T` and `E` in the proc macro.
 pub trait HandlerResult {
     /// Successful machine-output type.
-    type Output: JsonSchema + Serialize + 'static;
+    type Output: JsonSchema + 'static;
 }
 
 impl<T, E> HandlerResult for std::result::Result<T, E>
 where
-    T: JsonSchema + Serialize + 'static,
+    T: JsonSchema + 'static,
 {
     type Output = T;
 }

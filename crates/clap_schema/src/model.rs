@@ -64,7 +64,6 @@ impl CliContract {
     /// use clap::Command;
     /// use clap_schema::{ContractBuilder, schema_handler};
     /// use schemars::JsonSchema;
-    /// use serde::Serialize;
     ///
     /// #[derive(JsonSchema)]
     /// struct CommonMetadata {
@@ -76,7 +75,7 @@ impl CliContract {
     ///     cursor_argument: String,
     /// }
     ///
-    /// #[derive(Serialize, JsonSchema)]
+    /// #[derive(JsonSchema)]
     /// struct Page {
     ///     next_cursor: Option<String>,
     /// }

@@ -7,7 +7,6 @@ mod tests {
     use clap::{Args, Command, Parser, Subcommand};
     use clap_schema::{CliSchema, CommandSchema, ContractBuilder, SchemaRequest, schema_handler};
     use schemars::JsonSchema;
-    use serde::Serialize;
 
     #[derive(JsonSchema)]
     #[expect(dead_code, reason = "metadata test type is reflected into JSON Schema")]
@@ -21,7 +20,7 @@ mod tests {
         audit_event: bool,
     }
 
-    #[derive(Serialize, JsonSchema)]
+    #[derive(JsonSchema)]
     struct Created {
         id: String,
         name: String,
@@ -32,7 +31,6 @@ mod tests {
 
     #[schema_handler(CreateCommand)]
     impl CreateCommand {
-        #[expect(dead_code, reason = "handler is reflected through the command identity type")]
         fn run(self) -> Result<Created, Infallible> {
             Ok(Created { id: "1".to_owned(), name: "example".to_owned() })
         }
@@ -47,7 +45,6 @@ mod tests {
     #[derive(Parser, CliSchema)]
     struct RootCli;
 
-    #[expect(dead_code, reason = "handler supplies the command contract")]
     #[schema_handler(RootCli)]
     fn root(_command: RootCli) -> Result<Created, Infallible> {
         Ok(Created { id: "1".to_owned(), name: "root".to_owned() })
@@ -68,7 +65,6 @@ mod tests {
     #[derive(Args)]
     struct FetchArgs {}
 
-    #[expect(dead_code, reason = "handler supplies the command contract")]
     #[schema_handler(FetchArgs)]
     fn fetch(_command: FetchArgs) -> Result<Created, Infallible> {
         Ok(Created { id: "1".to_owned(), name: "example".to_owned() })
@@ -91,7 +87,6 @@ mod tests {
         command: Option<ActualChildren>,
     }
 
-    #[expect(dead_code, reason = "handler supplies the command contract")]
     #[schema_handler(UnregisteredChildrenArgs)]
     fn unregistered_children(_command: UnregisteredChildrenArgs) -> Result<(), Infallible> {
         Ok(())
@@ -105,7 +100,6 @@ mod tests {
     #[derive(Args)]
     struct ActualChildArgs {}
 
-    #[expect(dead_code, reason = "handler supplies the command contract")]
     #[schema_handler(ActualChildArgs)]
     fn actual_child(_command: ActualChildArgs) -> Result<(), Infallible> {
         Ok(())
@@ -133,7 +127,6 @@ mod tests {
     #[derive(Args)]
     struct VisibleArgs {}
 
-    #[expect(dead_code, reason = "handler supplies the command contract")]
     #[schema_handler(VisibleArgs)]
     fn visible(_command: VisibleArgs) -> Result<(), Infallible> {
         Ok(())
@@ -154,10 +147,27 @@ mod tests {
     #[derive(Args)]
     struct HelpArgs {}
 
-    #[expect(dead_code, reason = "handler supplies the command contract")]
     #[schema_handler(HelpArgs)]
     fn help(_command: HelpArgs) -> Result<(), Infallible> {
         Ok(())
+    }
+
+    #[test]
+    fn schema_handlers_remain_normal_callable_rust() {
+        let created = CreateCommand.run().expect("create handler");
+        assert_eq!(created.id, "1");
+        assert_eq!(created.name, "example");
+
+        let root_created = root(RootCli).expect("root handler");
+        assert_eq!(root_created.name, "root");
+
+        let fetched = fetch(FetchArgs {}).expect("fetch handler");
+        assert_eq!(fetched.name, "example");
+
+        assert!(unregistered_children(UnregisteredChildrenArgs { command: None }).is_ok());
+        assert!(actual_child(ActualChildArgs {}).is_ok());
+        assert!(visible(VisibleArgs {}).is_ok());
+        assert!(help(HelpArgs {}).is_ok());
     }
 
     #[test]

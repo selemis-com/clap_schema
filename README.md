@@ -84,7 +84,7 @@ This gives agents and other tooling a structured description of what a command a
 ```sh
 cargo add clap --features derive
 cargo add clap_schema schemars
-cargo add serde --features derive
+cargo add serde_json
 ```
 
 ## Quick start
@@ -97,7 +97,6 @@ use std::convert::Infallible;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use clap_schema::{schema_handler, CliSchema, CommandSchema};
 use schemars::JsonSchema;
-use serde::Serialize;
 
 /// Deployment CLI.
 #[derive(Debug, Parser, CliSchema)]
@@ -137,7 +136,7 @@ enum Environment {
 }
 
 /// Result of deploying a service.
-#[derive(Debug, Serialize, JsonSchema)]
+#[derive(Debug, JsonSchema)]
 struct Deployment {
     /// Deployment identifier.
     id: String,

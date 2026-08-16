@@ -8,9 +8,8 @@
 //! Every contract-visible executable command is identified by the Rust payload type already present
 //! on its Clap variant. A canonical `#[schema_handler(PayloadType)]` explicitly associates
 //! that type with the handler's declared `Result<T, E>`, which remains the sole source of its
-//! successful output contract. For non-unit `T`, the crate
-//! requires `T: serde::Serialize + schemars::JsonSchema` and emits Schemars'
-//! serialization-view JSON Schema. `Result<(), E>` has no output contract.
+//! successful output contract. For non-unit `T`, the crate requires `T: schemars::JsonSchema`
+//! and emits Schemars' serialization-view JSON Schema. `Result<(), E>` has no output contract.
 //!
 //! # Derive API
 //!
@@ -18,7 +17,6 @@
 //! use clap::{Args, Parser, Subcommand};
 //! use clap_schema::{CliSchema, CommandSchema, schema_handler};
 //! use schemars::JsonSchema;
-//! use serde::Serialize;
 //!
 //! #[derive(Debug, Parser, CliSchema)]
 //! struct Cli {
@@ -37,7 +35,7 @@
 //!     name: String,
 //! }
 //!
-//! #[derive(Debug, Serialize, JsonSchema)]
+//! #[derive(Debug, JsonSchema)]
 //! struct Item {
 //!     id: u64,
 //!     name: String,
@@ -144,9 +142,8 @@
 //! use clap::Command;
 //! use clap_schema::{ContractBuilder, schema_handler};
 //! use schemars::JsonSchema;
-//! use serde::Serialize;
 //!
-//! #[derive(Serialize, JsonSchema)]
+//! #[derive(JsonSchema)]
 //! struct Created {
 //!     id: u64,
 //! }
@@ -176,7 +173,6 @@
 //! use clap::{Args, Parser, Subcommand};
 //! use clap_schema::{CliSchema, CommandSchema, schema_handler};
 //! use schemars::JsonSchema;
-//! use serde::Serialize;
 //!
 //! #[derive(Debug, JsonSchema)]
 //! struct CommandMetadata {
@@ -207,7 +203,7 @@
 //!     cursor: Option<String>,
 //! }
 //!
-//! #[derive(Debug, Serialize, JsonSchema)]
+//! #[derive(Debug, JsonSchema)]
 //! struct Page {
 //!     next_cursor: Option<String>,
 //! }
@@ -259,12 +255,8 @@
 //! summary is intentionally limited to identifiers, visible names and aliases, positional indexes,
 //! value names, help, unconditional requiredness, visible defaults, and visible finite possible
 //! values. Clap-generated help remains authoritative for custom parsers and argument
-//! relationships. A present output schema means the command's successful value is
-//! JSON-renderable.
-//!
-//! The remaining trust boundary is the output type itself: custom `Serialize`
-//! and `JsonSchema` implementations can disagree. Derived Serde/Schemars
-//! representations are the intended source of truth.
+//! relationships. A present output schema means the command's successful value has a
+//! machine-readable JSON Schema. Runtime serialization remains the application's responsibility.
 
 #![doc(
     html_logo_url = "https://raw.githubusercontent.com/selemis-com/clap_schema/master/.github/assets/logo.jpg",
