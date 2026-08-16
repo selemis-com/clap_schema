@@ -13,10 +13,17 @@ use crate::{
     schema::extended_schema_factory,
 };
 
-/// Handler-derived contract required by the public `Operation` marker trait.
+/// Marker implemented by `#[derive(clap_schema::Operation)]`.
+///
+/// This trait is public solely so derive expansions can establish operation identity in
+/// downstream crates. The public [`crate::Operation`] capability is provided by `clap_schema`.
+#[doc(hidden)]
+pub trait OperationMarker: 'static {}
+
+/// Handler-derived contract required by the public `Operation` capability.
 ///
 /// This trait is intended for `#[clap_schema::handler]` expansions. It is public solely so
-/// those expansions can satisfy the `Operation` supertrait in downstream crates.
+/// those expansions can satisfy the `Operation` blanket implementation in downstream crates.
 #[doc(hidden)]
 pub trait HandlerContract: 'static {
     /// Successful machine-output type declared by the canonical handler.

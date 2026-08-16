@@ -119,7 +119,7 @@ enum AdminCommands {
     Status(StatusArgs),
 }
 
-#[derive(Debug, Args)]
+#[derive(Debug, Args, clap_schema::Operation)]
 struct SearchArgs {
     /// Query text.
     #[arg(long)]
@@ -129,25 +129,16 @@ struct SearchArgs {
     #[arg(long, default_value = "25")]
     limit: u16,
 }
-
-impl clap_schema::Operation for SearchArgs {}
-
-#[derive(Debug, Args)]
+#[derive(Debug, Args, clap_schema::Operation)]
 struct GetObjectArgs {
     #[command(flatten)]
     key: ObjectKeyArgs,
 }
-
-impl clap_schema::Operation for GetObjectArgs {}
-
-#[derive(Debug, Args)]
+#[derive(Debug, Args, clap_schema::Operation)]
 struct DeleteObjectArgs {
     #[command(flatten)]
     key: ObjectKeyArgs,
 }
-
-impl clap_schema::Operation for DeleteObjectArgs {}
-
 #[derive(Debug, Args)]
 struct ObjectKeyArgs {
     /// Workspace containing the object.
@@ -161,7 +152,7 @@ struct ObjectKeyArgs {
     version_id: Option<String>,
 }
 
-#[derive(Debug, Args)]
+#[derive(Debug, Args, clap_schema::Operation)]
 struct ListObjectsArgs {
     /// Workspace whose objects should be listed.
     workspace_id: String,
@@ -182,10 +173,7 @@ struct ListObjectsArgs {
     #[arg(long, hide = true)]
     internal_token: Option<String>,
 }
-
-impl clap_schema::Operation for ListObjectsArgs {}
-
-#[derive(Debug, Args, CommandGroup)]
+#[derive(Debug, Args, CommandGroup, clap_schema::Operation)]
 struct AccessArgs {
     /// Workspace containing the object.
     workspace_id: String,
@@ -196,9 +184,6 @@ struct AccessArgs {
     #[command(subcommand)]
     command: Option<AccessCommands>,
 }
-
-impl clap_schema::Operation for AccessArgs {}
-
 #[derive(Debug, Args)]
 struct GrantArgs {
     /// Workspace containing the object.
@@ -220,32 +205,20 @@ struct GrantArgs {
     role: AccessRole,
 }
 
-#[derive(Debug, Args)]
+#[derive(Debug, Args, clap_schema::Operation)]
 struct GrantAccessArgs {
     #[command(flatten)]
     grant: GrantArgs,
 }
-
-impl clap_schema::Operation for GrantAccessArgs {}
-
-#[derive(Debug, Args)]
+#[derive(Debug, Args, clap_schema::Operation)]
 struct RevokeAccessArgs {
     #[command(flatten)]
     grant: GrantArgs,
 }
-
-impl clap_schema::Operation for RevokeAccessArgs {}
-
-#[derive(Debug, Args)]
+#[derive(Debug, Args, clap_schema::Operation)]
 struct WhoamiArgs {}
-
-impl clap_schema::Operation for WhoamiArgs {}
-
-#[derive(Debug, Args)]
+#[derive(Debug, Args, clap_schema::Operation)]
 struct StatusArgs {}
-
-impl clap_schema::Operation for StatusArgs {}
-
 #[derive(Debug, Clone, ValueEnum)]
 #[value(rename_all = "kebab-case")]
 enum SortOrder {

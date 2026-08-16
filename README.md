@@ -7,7 +7,7 @@ JSON Schema generation for Clap.
 The model is deliberately small:
 
 - `CliSchema` reflects visible command topology and compact argument context from Clap's built `Command` tree.
-- `Operation` gives each executable operation an ordinary Rust type identity; an empty trait implementation declares that identity and requires a canonical handler contract for the same type.
+- `Operation` gives each executable operation an ordinary Rust type identity; deriving it declares that identity and requires a canonical handler contract for the same type.
 - The handler's `Result<T, E>` determines the successful output type. Non-unit `T` must implement `Serialize + JsonSchema`; `Result<(), E>` is outputless.
 - `write_json` serializes the same successful `T` used to generate the output schema.
 - Applications can add their own extension schemas without making `clap_schema` own metadata values or semantics.
@@ -42,13 +42,11 @@ enum Commands {
     Get(GetArgs),
 }
 
-#[derive(Args)]
+#[derive(Args, clap_schema::Operation)]
 struct GetArgs {
     /// Item identifier.
     id: String,
 }
-
-impl clap_schema::Operation for GetArgs {}
 
 #[derive(Serialize, JsonSchema)]
 struct Item {
@@ -71,7 +69,7 @@ assert!(command.output.is_some());
 # Ok::<(), clap_schema::Error>(())
 ```
 
-`GetArgs` is the Rust operation identity. `impl clap_schema::Operation for GetArgs {}` declares that identity with ordinary Rust, while `#[clap_schema::handler]` supplies the handler-derived contract required by the trait. `CommandSchema` resolves the operation through the variant payload type. Removing the handler or defining a second canonical handler for the same operation type therefore fails at compile time.
+`GetArgs` is the Rust operation identity. `#[derive(clap_schema::Operation)]` marks that identity, while `#[clap_schema::handler]` supplies its handler-derived contract; `clap_schema` provides the `Operation` capability when both are present. `CommandSchema` resolves the operation through the variant payload type. Removing the handler or defining a second canonical handler for the same operation type therefore fails at compile time.
 
 The output schema comes from the declared successful handler type, not from a separate `#[schema(output = ...)]` declaration. At runtime, use `write_json` when you want the emitted JSON and generated schema to stay parameterized by the same `T`.
 

@@ -17,9 +17,8 @@ struct Widget {
 }
 
 /// Rust identity of the builder-registered create operation.
+#[derive(clap_schema::Operation)]
 struct CreateOperation;
-
-impl clap_schema::Operation for CreateOperation {}
 
 /// Canonical implementation of the create operation.
 #[clap_schema::handler]

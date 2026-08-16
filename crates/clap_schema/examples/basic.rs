@@ -25,15 +25,12 @@ enum Commands {
 }
 
 /// Arguments accepted by item creation.
-#[derive(Debug, Args)]
+#[derive(Debug, Args, clap_schema::Operation)]
 struct CreateArgs {
     /// Name assigned to the new item.
     #[arg(long)]
     name: String,
 }
-
-impl clap_schema::Operation for CreateArgs {}
-
 /// Item returned by a successful create operation.
 #[derive(Debug, Serialize, JsonSchema)]
 struct Item {

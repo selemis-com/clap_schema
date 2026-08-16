@@ -1,10 +1,7 @@
 use clap::Args;
 
-#[derive(Args)]
+#[derive(Args, clap_schema::Operation)]
 struct RunArgs {}
-
-impl clap_schema::Operation for RunArgs {}
-
 #[clap_schema::handler]
 fn first(_command: RunArgs) -> Result<(), ()> {
     Ok(())

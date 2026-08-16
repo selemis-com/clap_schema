@@ -31,10 +31,8 @@ mod tests {
     macro_rules! operation_args {
         ($($name:ident),+ $(,)?) => {
             $(
-                #[derive(Args)]
+                #[derive(Args, clap_schema::Operation)]
                 struct $name {}
-
-                impl clap_schema::Operation for $name {}
             )+
         };
     }

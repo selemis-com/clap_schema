@@ -16,6 +16,24 @@ use syn::{
     ItemImpl, Meta, PathArguments, ReturnType, Token, Type, parse_macro_input,
 };
 
+/// Marks a type as a `clap_schema::Operation`.
+///
+/// The derive establishes the operation identity locally. Exactly one canonical
+/// `#[clap_schema::handler]` must supply the corresponding hidden handler contract;
+/// `clap_schema` provides the public `Operation` capability when both are present.
+#[proc_macro_derive(Operation)]
+pub fn derive_operation(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let crate_path = clap_schema_path();
+    let ident = input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+
+    quote! {
+        impl #impl_generics #crate_path::__private::OperationMarker for #ident #ty_generics #where_clause {}
+    }
+    .into()
+}
+
 /// Derives the root `clap_schema::CliSchema` implementation.
 ///
 /// The derive reflects the root Clap parser and registers output contracts for
@@ -79,7 +97,8 @@ pub fn derive_command_schema(input: TokenStream) -> TokenStream {
 /// Receiver-based handlers use a dedicated inherent impl block:
 ///
 /// ```ignore
-/// impl clap_schema::Operation for CreateCommand {}
+/// #[derive(clap_schema::Operation)]
+/// struct CreateCommand;
 ///
 /// #[clap_schema::handler]
 /// impl CreateCommand {

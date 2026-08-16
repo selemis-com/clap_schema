@@ -27,15 +27,12 @@ enum Commands {
 }
 
 /// Arguments accepted by resource listing.
-#[derive(Debug, Args)]
+#[derive(Debug, Args, clap_schema::Operation)]
 struct ListArgs {
     /// Opaque cursor returned by the previous page.
     #[arg(long)]
     cursor: Option<String>,
 }
-
-impl clap_schema::Operation for ListArgs {}
-
 /// Application-wide semantic vocabulary for command metadata.
 #[derive(Debug, Serialize, JsonSchema)]
 struct CommandMetadata {

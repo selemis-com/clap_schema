@@ -31,14 +31,11 @@ enum Commands {
 }
 
 /// Arguments used to fetch a resource.
-#[derive(Debug, Args)]
+#[derive(Debug, Args, clap_schema::Operation)]
 struct GetArgs {
     /// Identifier of the resource to fetch.
     id: String,
 }
-
-impl clap_schema::Operation for GetArgs {}
-
 /// Arguments accepted by the contract-discovery command.
 #[derive(Debug, Args)]
 struct SchemaArgs {

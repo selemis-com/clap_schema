@@ -83,9 +83,8 @@ impl CliContract {
     ///     next_cursor: Option<String>,
     /// }
     ///
+    /// #[derive(clap_schema::Operation)]
     /// struct ListOperation;
-    ///
-    /// impl clap_schema::Operation for ListOperation {}
     ///
     /// #[clap_schema::handler]
     /// impl ListOperation {

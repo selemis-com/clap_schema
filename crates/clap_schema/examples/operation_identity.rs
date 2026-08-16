@@ -33,14 +33,11 @@ enum WorkspacesCommands {
 }
 
 /// Arguments and Rust identity of the `workspaces get` operation.
-#[derive(Debug, Args)]
+#[derive(Debug, Args, clap_schema::Operation)]
 struct WorkspacesGetCommand {
     /// Workspace identifier.
     workspace_id: u64,
 }
-
-// This ordinary Rust impl is the only declaration of operation identity.
-impl clap_schema::Operation for WorkspacesGetCommand {}
 
 /// Runtime context supplied by the application rather than Clap.
 struct CliContext;

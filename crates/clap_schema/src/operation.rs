@@ -9,23 +9,21 @@ use crate::schema::{SchemaFactory, schema_for};
 
 /// Compile-time identity of one executable operation.
 ///
-/// Operation identities are ordinary Rust types. In derive-based Clap applications, implement this
-/// trait on the tuple payload type of the executable command. Builder-style applications may use a
-/// dedicated marker type instead. A canonical [`crate::handler`] must provide the hidden handler
-/// contract for the same type; the trait bound makes a missing or mismatched handler a compile-time
-/// error.
+/// Operation identities are ordinary Rust types. In derive-based Clap applications, derive
+/// `Operation` on the tuple payload type of the executable command. Builder-style applications may
+/// use a dedicated marker type instead. The derive establishes a hidden marker, while a canonical
+/// [`crate::handler`] supplies the hidden handler contract. `clap_schema` provides this capability
+/// when both are present, so applications do not implement this trait directly.
 ///
-/// The implementation is intentionally empty:
+/// Derive the marker alongside the Clap argument type:
 ///
 /// ```
 /// # use clap::Args;
-/// #[derive(Args)]
+/// #[derive(Args, clap_schema::Operation)]
 /// struct CreateArgs {
 ///     #[arg(long)]
 ///     name: String,
 /// }
-///
-/// impl clap_schema::Operation for CreateArgs {}
 ///
 /// #[clap_schema::handler]
 /// fn create(args: CreateArgs) -> Result<(), std::convert::Infallible> {
@@ -33,7 +31,27 @@ use crate::schema::{SchemaFactory, schema_for};
 ///     Ok(())
 /// }
 /// ```
-pub trait Operation: crate::__private::HandlerContract + 'static {}
+mod sealed {
+    #[expect(
+        unnameable_types,
+        reason = "the public-but-unnameable trait intentionally seals Operation"
+    )]
+    /// Private sealing capability for operation types.
+    pub trait Sealed {}
+
+    impl<T> Sealed for T where T: crate::__private::OperationMarker {}
+}
+
+/// Marker implemented by operation types declared with [`derive@crate::Operation`].
+///
+/// Applications should derive this trait rather than implement it directly. A canonical
+/// [`crate::handler`] is also required before the type satisfies this bound.
+pub trait Operation: sealed::Sealed + crate::__private::HandlerContract + 'static {}
+
+impl<T> Operation for T where
+    T: crate::__private::OperationMarker + crate::__private::HandlerContract + 'static
+{
+}
 
 /// Returns the successful-output schema factory for one operation type.
 pub(crate) fn output_schema_factory<T>() -> Option<SchemaFactory>
