@@ -46,6 +46,16 @@ pub enum Error {
     #[error("application-wide extension schema may only be declared once")]
     DuplicateApplicationExtension,
 
+    /// A command-specific extension was declared for a group that is not directly executable.
+    #[error(
+        "command-specific extension requires an executable command: {path}",
+        path = format_path(.path)
+    )]
+    CommandExtensionRequiresExecutable {
+        /// Canonical command path that has no executable registration.
+        path: Vec<String>,
+    },
+
     /// Derived command registration and Clap's generated subcommand sequence disagree.
     #[error("derived CommandSchema registration does not match clap subcommands for `{type_name}`")]
     DerivedCommandMismatch {
@@ -98,6 +108,28 @@ impl RegistrationState {
             output: output_schema_factory::<T>(),
             extended,
         });
+    }
+
+    /// Adds a command-specific extension to an already registered executable command.
+    pub(crate) fn command_extension<T>(
+        &mut self,
+        path: &[String],
+        extended: ExtendedSchemaFactory,
+    ) -> Result<()>
+    where
+        T: 'static,
+    {
+        let id = TypeId::of::<T>();
+        let Some(registration) = self
+            .registrations
+            .iter_mut()
+            .rev()
+            .find(|registration| registration.id == id && registration.path == path)
+        else {
+            return Err(Error::CommandExtensionRequiresExecutable { path: path.to_vec() });
+        };
+        registration.extended = Some(extended);
+        Ok(())
     }
 
     /// Adds one application-wide extension schema declaration.

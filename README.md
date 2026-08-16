@@ -206,7 +206,17 @@ app objects get
 
 Clap continues to define the command structure; `CommandSchema` makes that nested structure available to `clap_schema`.
 
-If `objects` also has its own `#[schema_handler(...)]`, use `#[schema(handler, subcommands)]` on the parent variant.
+If the parent can also be run directly, make the nested subcommand optional:
+
+```rust
+#[derive(Args, CommandSchema)]
+struct ObjectsArgs {
+    #[command(subcommand)]
+    command: Option<ObjectCommands>,
+}
+```
+
+In that form, `objects` is both a command and a parent for child commands, so give `ObjectsArgs` its own `#[schema_handler(ObjectsArgs)]` as well.
 
 ## Command discovery
 

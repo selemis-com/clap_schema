@@ -40,6 +40,12 @@ struct AuthorizationMetadata {
     minimum_role: String,
 }
 
+#[derive(Debug, JsonSchema)]
+struct AccessMetadata {
+    /// Whether the parent command can inspect access directly.
+    inspectable: bool,
+}
+
 #[derive(Debug, Parser, CliSchema)]
 #[schema(extend = ApplicationMetadata)]
 #[command(name = "kivalish", about = "Example collaborative-object CLI")]
@@ -59,8 +65,8 @@ struct Cli {
 #[derive(Debug, Subcommand, CommandSchema)]
 enum Commands {
     /// Manage objects and their access grants.
-    #[command(subcommand)]
-    Objects(ObjectCommands),
+    #[schema(subcommands)]
+    Objects(ObjectsArgs),
 
     /// Search visible objects.
     Search(SearchArgs),
@@ -75,6 +81,14 @@ enum Commands {
     /// Discover commands and successful-output contracts.
     #[schema(skip)]
     Schema,
+}
+
+/// Nested object commands.
+#[derive(Debug, Args, CommandSchema)]
+struct ObjectsArgs {
+    /// Selects the object operation.
+    #[command(subcommand)]
+    command: ObjectCommands,
 }
 
 #[derive(Debug, Subcommand, CommandSchema)]
@@ -92,7 +106,7 @@ enum ObjectCommands {
     Delete(DeleteObjectArgs),
 
     /// Inspect or modify direct object grants.
-    #[schema(handler, subcommands)]
+    #[schema(subcommands, extend = AccessMetadata)]
     Access(AccessArgs),
 }
 
@@ -414,6 +428,11 @@ mod tests {
             .extended_schema_for_command::<GetObjectArgs>()
             .expect("inherited application metadata schema");
         assert_eq!(inherited, metadata);
+        let access =
+            contract.extended_schema_for_command::<AccessArgs>().expect("access metadata schema");
+        let access_ref = access["allOf"][1]["$ref"].as_str().expect("command extension ref");
+        let access_key = access_ref.trim_start_matches("#/$defs/");
+        assert!(access["$defs"][access_key]["properties"].get("inspectable").is_some());
         let aliased_metadata = contract
             .extended_schema_for(&["objects", "access", "add"])?
             .expect("aliased effective metadata schema");

@@ -63,6 +63,15 @@ impl Registry {
         self.registration.command::<T>(path.to_vec(), Some(extended_schema_factory::<E>()));
     }
 
+    /// Adds a command-specific extension to an executable command registered by a wrapper.
+    pub fn command_extension<T, E>(&mut self, path: &[String]) -> Result<()>
+    where
+        T: 'static,
+        E: JsonSchema,
+    {
+        self.registration.command_extension::<T>(path, extended_schema_factory::<E>())
+    }
+
     /// Declares the application-defined extension schema type for the root CLI.
     pub fn extend<T>(&mut self)
     where

@@ -39,10 +39,12 @@ mod tests {
     }
 
     #[derive(Parser, CliSchema)]
-    struct DiscoveryOnlyRoot;
+    struct DiscoveryOnlyRoot {
+        #[command(subcommand)]
+        command: RenamedCommands,
+    }
 
     #[derive(Parser, CliSchema)]
-    #[schema(handler)]
     struct RootCli;
 
     #[expect(dead_code, reason = "handler supplies the command contract")]
@@ -182,7 +184,7 @@ mod tests {
     }
 
     #[test]
-    fn derive_root_without_executable_has_no_output_contract() -> clap_schema::Result<()> {
+    fn derive_root_with_required_subcommand_has_no_output_contract() -> clap_schema::Result<()> {
         let contract = DiscoveryOnlyRoot::schema()?;
         let root = contract.schema(&SchemaRequest::default())?;
         assert!(!root.command.executable);

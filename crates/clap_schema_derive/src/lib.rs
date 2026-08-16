@@ -24,8 +24,6 @@ use syn::{
 ///
 /// # `#[schema(...)]` options
 ///
-/// - `handler` marks the root parser as having its own schema handler; a
-///   `#[schema_handler(RootType)]` declaration must supply its successful-output contract.
 /// - `extend = Type` declares the application-wide extension schema type. It is schema-only:
 ///   `clap_schema` never constructs or serializes values of `Type`.
 ///
@@ -46,11 +44,11 @@ pub fn derive_cli_schema(input: TokenStream) -> TokenStream {
 ///
 /// Normal `#[command(subcommand)]` and `#[command(flatten)]` nesting is followed automatically.
 /// When an `Args` payload itself contains a subcommand field, derive `CommandSchema` on that
-/// payload and add the `subcommands` flag to the parent variant. Add `handler` when such a
-/// parent also has its own `#[schema_handler(...)]` contract. Executable commands may declare
-/// `extend = Type` to supplement the root application extension schema. Extensions can only be
-/// attached to ordinary executable variants; command groups, flattened variants, skipped variants,
-/// and external subcommands do not carry an command-specific extension schema. The application owns
+/// payload and add the `subcommands` flag to the parent variant. A required subcommand field makes
+/// the parent a group; an `Option<Subcommands>` field makes the parent executable as well.
+/// Executable commands may declare `extend = Type` to supplement the root application extension
+/// schema. Extensions can only be attached to executable commands; group-only, flattened, skipped,
+/// and external subcommands do not carry a command-specific extension schema. The application owns
 /// all concrete extension values.
 #[proc_macro_derive(CommandSchema, attributes(schema, command))]
 pub fn derive_command_schema(input: TokenStream) -> TokenStream {
@@ -294,7 +292,7 @@ fn contains_impl_trait(ty: &Type) -> bool {
 /// Expands a `CliSchema` derive into root executable-command registration.
 fn expand_cli_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
     let crate_path = clap_schema_path();
-    let RootSchema { handler, extended } = parse_root_schema(&input.attrs)?;
+    let RootSchema { extended } = parse_root_schema(&input.attrs)?;
     let commands = find_subcommand_field(&input, "CliSchema")?;
 
     let name = input.ident;
@@ -306,12 +304,14 @@ fn expand_cli_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
             registry.extend::<#extended>();
         }
     });
-    let root_command = handler.then(|| {
+    let root_executable = commands.as_ref().is_none_or(|field| field.optional);
+    let root_command = root_executable.then(|| {
         quote! {
             registry.command::<Self>(&[]);
         }
     });
-    let child_registration = commands.map(|commands| {
+    let child_registration = commands.map(|field| {
+        let commands = field.commands;
         quote! {
             let mut prefix = Vec::new();
             <#commands as #crate_path::CommandSchema>::__clap_schema_register(
@@ -353,12 +353,18 @@ fn expand_command_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
 /// Expands `CommandSchema` for an `Args` wrapper around one nested subcommand enum.
 fn expand_command_schema_wrapper(input: DeriveInput) -> syn::Result<TokenStream2> {
     let crate_path = clap_schema_path();
-    let commands = find_subcommand_field(&input, "CommandSchema")?.ok_or_else(|| {
+    let field = find_subcommand_field(&input, "CommandSchema")?.ok_or_else(|| {
         syn::Error::new_spanned(
             &input.ident,
             "CommandSchema on an Args struct requires one #[command(subcommand)] field",
         )
     })?;
+    let commands = field.commands;
+    let register_parent = field.optional.then(|| {
+        quote! {
+            registry.command::<Self>(prefix);
+        }
+    });
     let name = input.ident;
     let generics = input.generics;
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
@@ -369,6 +375,7 @@ fn expand_command_schema_wrapper(input: DeriveInput) -> syn::Result<TokenStream2
                 prefix: &mut Vec<String>,
                 registry: &mut #crate_path::__private::Registry,
             ) -> #crate_path::Result<()> {
+                #register_parent
                 <#commands as #crate_path::CommandSchema>::__clap_schema_register(prefix, registry)
             }
         }
@@ -402,7 +409,7 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
         if schema.skip && schema.has_registration_options() {
             return Err(syn::Error::new_spanned(
                 variant.ident,
-                "#[schema(skip)] cannot be combined with handler, subcommands, or extend",
+                "#[schema(skip)] cannot be combined with subcommands or extend",
             ));
         }
 
@@ -471,7 +478,7 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
             if schema.has_registration_options() {
                 return Err(syn::Error::new_spanned(
                     variant.ident,
-                    "#[command(subcommand)] groups cannot declare handler, subcommands, or extend",
+                    "#[command(subcommand)] groups cannot declare subcommands or extend",
                 ));
             }
             steps.push(quote! {
@@ -494,20 +501,7 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
                 "contract-visible executable commands require a single tuple Args payload with a #[schema_handler(PayloadType)] contract",
             )
         })?;
-        if schema.handler && !schema.subcommands {
-            return Err(syn::Error::new_spanned(
-                &variant.ident,
-                "the `handler` flag is only needed when `subcommands` is also declared",
-            ));
-        }
-        if schema.extended.is_some() && schema.subcommands && !schema.handler {
-            return Err(syn::Error::new_spanned(
-                &variant.ident,
-                "an extension on a command group requires the `handler` flag",
-            ));
-        }
-
-        let register_command = (!schema.subcommands || schema.handler).then(|| {
+        let register_command = (!schema.subcommands).then(|| {
             schema.extended.as_ref().map_or_else(
                 || {
                     quote! {
@@ -522,11 +516,17 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
             )
         });
         let register_children = schema.subcommands.then(|| {
+            let extend_parent = schema.extended.as_ref().map(|extended| {
+                quote! {
+                    registry.command_extension::<#payload, #extended>(prefix)?;
+                }
+            });
             quote! {
                 <#payload as #crate_path::CommandSchema>::__clap_schema_register(
                     prefix,
                     registry,
                 )?;
+                #extend_parent
             }
         });
         let reject_unregistered_children = register_children.is_none().then(|| {
@@ -577,8 +577,6 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
 /// Parsed root schema extensions.
 #[derive(Default)]
 struct RootSchema {
-    /// Whether the root parser has its own schema handler.
-    handler: bool,
     /// Optional application-defined extension schema type.
     extended: Option<Type>,
 }
@@ -588,15 +586,7 @@ fn parse_root_schema(attrs: &[Attribute]) -> syn::Result<RootSchema> {
     let mut result = RootSchema::default();
     for attr in attrs.iter().filter(|attr| attr.path().is_ident("schema")) {
         attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident("handler") {
-                if result.handler {
-                    return Err(meta.error("duplicate handler flag"));
-                }
-                if meta.input.peek(Token![=]) {
-                    return Err(meta.error("`handler` is a flag and does not accept a value"));
-                }
-                result.handler = true;
-            } else if meta.path.is_ident("extend") {
+            if meta.path.is_ident("extend") {
                 if result.extended.is_some() {
                     return Err(meta.error("duplicate root extension type"));
                 }
@@ -610,8 +600,19 @@ fn parse_root_schema(attrs: &[Attribute]) -> syn::Result<RootSchema> {
     Ok(result)
 }
 
+/// One `#[command(subcommand)]` field reflected from a Clap struct.
+struct SubcommandField {
+    /// Nested subcommand enum type.
+    commands: Type,
+    /// Whether Clap allows invoking the parent without selecting a child command.
+    optional: bool,
+}
+
 /// Finds one `#[command(subcommand)]` field, when present.
-fn find_subcommand_field(input: &DeriveInput, derive_name: &str) -> syn::Result<Option<Type>> {
+fn find_subcommand_field(
+    input: &DeriveInput,
+    derive_name: &str,
+) -> syn::Result<Option<SubcommandField>> {
     let Data::Struct(data) = &input.data else {
         return Err(syn::Error::new_spanned(
             &input.ident,
@@ -627,7 +628,11 @@ fn find_subcommand_field(input: &DeriveInput, derive_name: &str) -> syn::Result<
                     format!("{derive_name} supports at most one #[command(subcommand)] field"),
                 ));
             }
-            found = Some(unwrap_option(&field.ty));
+            let optional = option_inner(&field.ty);
+            found = Some(SubcommandField {
+                commands: optional.clone().unwrap_or_else(|| field.ty.clone()),
+                optional: optional.is_some(),
+            });
         }
     }
     Ok(found)
@@ -723,8 +728,6 @@ fn parse_command_behavior(attrs: &[Attribute]) -> syn::Result<CommandBehavior> {
 /// Parsed contract extensions for one subcommand variant.
 #[derive(Default)]
 struct VariantSchema {
-    /// Whether a command group has its own schema handler.
-    handler: bool,
     /// Whether an `Args` payload owns child subcommands through `CommandSchema`.
     subcommands: bool,
     /// Optional command-specific application extension schema type.
@@ -736,12 +739,12 @@ struct VariantSchema {
 impl VariantSchema {
     /// Returns whether no schema extension was supplied.
     const fn is_empty(&self) -> bool {
-        !self.handler && !self.subcommands && self.extended.is_none() && !self.skip
+        !self.subcommands && self.extended.is_none() && !self.skip
     }
 
     /// Returns whether extensions affect command or child registration.
     const fn has_registration_options(&self) -> bool {
-        self.handler || self.subcommands || self.extended.is_some()
+        self.subcommands || self.extended.is_some()
     }
 }
 
@@ -750,15 +753,7 @@ fn parse_variant_schema(attrs: &[Attribute]) -> syn::Result<VariantSchema> {
     let mut result = VariantSchema::default();
     for attr in attrs.iter().filter(|attr| attr.path().is_ident("schema")) {
         attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident("handler") {
-                if result.handler {
-                    return Err(meta.error("duplicate handler flag"));
-                }
-                if meta.input.peek(Token![=]) {
-                    return Err(meta.error("`handler` is a flag and does not accept a value"));
-                }
-                result.handler = true;
-            } else if meta.path.is_ident("subcommands") {
+            if meta.path.is_ident("subcommands") {
                 if result.subcommands {
                     return Err(meta.error("duplicate subcommands flag"));
                 }
@@ -815,28 +810,22 @@ fn single_payload_type(fields: &Fields) -> Option<Type> {
     }
 }
 
-/// Unwraps an `Option<T>` root subcommand field.
-fn unwrap_option(ty: &Type) -> Type {
+/// Returns the inner type of a Clap-recognized `Option<T>` field.
+fn option_inner(ty: &Type) -> Option<Type> {
     let Type::Path(path) = ty else {
-        return ty.clone();
+        return None;
     };
-    let Some(segment) = path.path.segments.last() else {
-        return ty.clone();
-    };
+    let segment = path.path.segments.last()?;
     if segment.ident != "Option" {
-        return ty.clone();
+        return None;
     }
     let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
-        return ty.clone();
+        return None;
     };
-    arguments
-        .args
-        .iter()
-        .find_map(|argument| match argument {
-            GenericArgument::Type(inner) => Some(inner.clone()),
-            _ => None,
-        })
-        .unwrap_or_else(|| ty.clone())
+    arguments.args.iter().find_map(|argument| match argument {
+        GenericArgument::Type(inner) => Some(inner.clone()),
+        _ => None,
+    })
 }
 
 /// Resolves the public `clap_schema` path for generated code.
