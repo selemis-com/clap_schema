@@ -90,7 +90,7 @@ Argument order has no schema meaning. The command identity comes from `GetArgs`;
 
 The generated `CliContract` can power command discovery such as `tool --schema` or `tool schema`, including nested command navigation and optional full-tree expansion. This makes the same CLI definition usable by humans through Clap and by agents, tooling, or other machine consumers through a stable JSON contract.
 
-Successful runtime output can use `write_json`, keeping serialization parameterized by the same `T` used for the generated output schema. Applications can also layer their own extension schemas onto commands without giving `clap_schema` ownership of those metadata values or semantics.
+Applications can layer their own extension schemas onto commands without giving `clap_schema` ownership of those metadata values or semantics.
 
 ## Nested subcommands
 
@@ -230,7 +230,7 @@ The repository keeps the example set intentionally small:
 
 | Example | Demonstrates |
 | --- | --- |
-| `basic` | Derive API, handler-derived output schema, and runtime `write_json` |
+| `basic` | Derive API and a handler-derived output schema |
 | `command_identity` | Rust command identity across a nested Clap command, schema-handler contract, and runtime dispatch |
 | `schema_subcommand` | Unified shallow/full discovery through `schema <command>` and `<command> --schema` |
 | `application_extension` | Application-owned metadata values paired with clap_schema-generated extension schemas |

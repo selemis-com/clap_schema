@@ -12,9 +12,6 @@
 //! requires `T: serde::Serialize + schemars::JsonSchema` and emits Schemars'
 //! serialization-view JSON Schema. `Result<(), E>` has no output contract.
 //!
-//! At runtime, [`write_json`] serializes that same successful `T`, avoiding a
-//! separately maintained machine-output representation.
-//!
 //! # Derive API
 //!
 //! ```
@@ -295,7 +292,6 @@ pub use model::{
     ArgumentInfo, CliContract, CommandInfo, SchemaCommandSummary, SchemaDocument, SchemaRequest,
     SchemaSubcommand,
 };
-pub use output::{WriteJsonError, write_json};
 
 /// Trait implemented by a machine-contract-aware root Clap parser.
 ///

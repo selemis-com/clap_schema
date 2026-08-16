@@ -2,9 +2,7 @@
 #![expect(dead_code, reason = "example data types are reflected rather than executed")]
 
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{
-    CliContract, CliSchema, CommandSchema, SchemaRequest, schema_handler, write_json,
-};
+use clap_schema::{CliContract, CliSchema, CommandSchema, SchemaRequest, schema_handler};
 use schemars::JsonSchema;
 use serde::Serialize;
 
@@ -95,10 +93,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Get(request) => {
             let result = get(request);
+            let resource = result?;
             if json {
-                write_json(std::io::stdout().lock(), result)?;
+                serde_json::to_writer(std::io::stdout().lock(), &resource)?;
             } else {
-                let resource = result?;
                 println!("{}: {}", resource.id, resource.name);
             }
         }
