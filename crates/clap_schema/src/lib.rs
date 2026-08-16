@@ -6,7 +6,7 @@
 //! defining a second input grammar.
 //!
 //! Every contract-visible executable command is identified by the Rust payload type already present
-//! on its Clap variant. A canonical `#[clap_schema::handler(PayloadType)]` explicitly associates
+//! on its Clap variant. A canonical `#[schema_handler(PayloadType)]` explicitly associates
 //! that type with the handler's declared `Result<T, E>`, which remains the sole source of its
 //! successful output contract. For non-unit `T`, the crate
 //! requires `T: serde::Serialize + schemars::JsonSchema` and emits Schemars'
@@ -19,7 +19,7 @@
 //!
 //! ```
 //! use clap::{Args, Parser, Subcommand};
-//! use clap_schema::{CliSchema, CommandSchema};
+//! use clap_schema::{CliSchema, CommandSchema, schema_handler};
 //! use schemars::JsonSchema;
 //! use serde::Serialize;
 //!
@@ -46,7 +46,7 @@
 //!     name: String,
 //! }
 //!
-//! #[clap_schema::handler(CreateArgs)]
+//! #[schema_handler(CreateArgs)]
 //! impl CreateArgs {
 //!     async fn run(self) -> Result<Item, std::io::Error> {
 //!         Ok(Item { id: 1, name: self.name })
@@ -64,7 +64,7 @@
 //! ```
 //!
 //! `CreateArgs` is the Clap payload type that identifies the executable command. `CommandSchema`
-//! gets that identity from the variant, while `#[handler(CreateArgs)]` supplies its
+//! gets that identity from the variant, while `#[schema_handler(CreateArgs)]` supplies its
 //! successful-output contract; removing the handler or attaching a second canonical handler
 //! therefore fails to compile. Derive-based executable
 //! commands use one named tuple payload; an empty
@@ -74,11 +74,11 @@
 //!
 //! Normal `#[command(subcommand)]` and `#[command(flatten)]` enum nesting is followed
 //! automatically. When an `Args` payload itself contains a subcommand field, derive
-//! [`CommandGroup`] on that payload and mark the parent with `subcommands`:
+//! [`CommandSchema`] on that payload and mark the parent with `subcommands`:
 //!
 //! ```
 //! use clap::{Args, Parser, Subcommand};
-//! use clap_schema::{CliSchema, CommandGroup, CommandSchema};
+//! use clap_schema::{CliSchema, CommandSchema, schema_handler};
 //!
 //! #[derive(Parser, CliSchema)]
 //! struct Cli {
@@ -92,7 +92,7 @@
 //!     Stash(StashArgs),
 //! }
 //!
-//! #[derive(Args, CommandGroup)]
+//! #[derive(Args, CommandSchema)]
 //! struct StashArgs {
 //!     #[command(subcommand)]
 //!     command: Option<StashCommands>,
@@ -106,12 +106,12 @@
 //! #[derive(Args)]
 //! struct ListArgs {}
 //!
-//! #[clap_schema::handler(StashArgs)]
+//! #[schema_handler(StashArgs)]
 //! fn stash_default(_args: StashArgs) -> Result<(), std::convert::Infallible> {
 //!     Ok(())
 //! }
 //!
-//! #[clap_schema::handler(ListArgs)]
+//! #[schema_handler(ListArgs)]
 //! fn list(_args: ListArgs) -> Result<(), std::convert::Infallible> {
 //!     Ok(())
 //! }
@@ -128,9 +128,9 @@
 //! in schema metadata. `subcommands` alone represents a group-only parent; add `executable` when
 //! the payload also has a handler and the parent may execute without selecting a child.
 //!
-//! # Handler forms
+//! # Schema handler forms
 //!
-//! `#[handler(Type)]` supports synchronous, `const fn`, and asynchronous free functions. The
+//! `#[schema_handler(Type)]` supports synchronous, `const fn`, and asynchronous free functions. The
 //! command payload type is explicit in the attribute, so function arguments are otherwise
 //! unrestricted and may appear in any order. Receiver-based handlers may put the same attribute on
 //! a dedicated inherent impl block containing exactly one receiver method. Generic handlers and
@@ -144,7 +144,7 @@
 //!
 //! ```
 //! use clap::Command;
-//! use clap_schema::ContractBuilder;
+//! use clap_schema::{ContractBuilder, schema_handler};
 //! use schemars::JsonSchema;
 //! use serde::Serialize;
 //!
@@ -155,7 +155,7 @@
 //!
 //! struct CreateCommand;
 //!
-//! #[clap_schema::handler(CreateCommand)]
+//! #[schema_handler(CreateCommand)]
 //! impl CreateCommand {
 //!     fn run(self) -> Result<Created, std::io::Error> {
 //!         Ok(Created { id: 1 })
@@ -176,7 +176,7 @@
 //!
 //! ```
 //! use clap::{Args, Parser, Subcommand};
-//! use clap_schema::{CliSchema, CommandSchema};
+//! use clap_schema::{CliSchema, CommandSchema, schema_handler};
 //! use schemars::JsonSchema;
 //! use serde::Serialize;
 //!
@@ -214,7 +214,7 @@
 //!     next_cursor: Option<String>,
 //! }
 //!
-//! #[clap_schema::handler(ListArgs)]
+//! #[schema_handler(ListArgs)]
 //! fn list(_command: ListArgs) -> Result<Page, std::convert::Infallible> {
 //!     Ok(Page { next_cursor: None })
 //! }
@@ -289,7 +289,7 @@ mod schema;
 #[doc(hidden)]
 pub mod __private;
 
-pub use clap_schema_derive::{CliSchema, CommandGroup, CommandSchema, handler};
+pub use clap_schema_derive::{CliSchema, CommandSchema, schema_handler};
 pub use contract::{ContractBuilder, Error, Result};
 pub use model::{
     ArgumentInfo, CliContract, CommandInfo, SchemaCommandSummary, SchemaDocument, SchemaRequest,
@@ -321,21 +321,13 @@ pub trait CliSchema: clap::CommandFactory {
     }
 }
 
-/// Trait implemented by `Args` wrappers that own a nested subcommand enum.
+/// Trait implemented by types that contribute nested command structure to a CLI contract.
 ///
-/// Prefer `#[derive(CommandGroup)]`. The derive reads the child enum type from the same
-/// `#[command(subcommand)]` field that Clap parses.
-pub trait CommandGroup: clap::Args {
-    /// Nested subcommand enum parsed by the wrapper.
-    type Subcommands: CommandSchema;
-}
-
-/// Trait implemented by subcommand enums that contribute executable command contracts.
-///
-/// Prefer `#[derive(CommandSchema)]` for derive-based Clap applications. Executable variants use
-/// one named tuple payload with a canonical `#[handler(PayloadType)]` supplying its
-/// successful-output contract.
-pub trait CommandSchema: clap::Subcommand {
+/// Prefer `#[derive(CommandSchema)]` for derive-based Clap applications. Derive it on Clap
+/// `Subcommand` enums and on `Args` wrappers that contain one `#[command(subcommand)]` field.
+/// Executable variants use one named tuple payload with a canonical
+/// `#[schema_handler(PayloadType)]` supplying its successful-output contract.
+pub trait CommandSchema {
     /// Registers executable command contracts below `prefix`.
     #[doc(hidden)]
     fn __clap_schema_register(

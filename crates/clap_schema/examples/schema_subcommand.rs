@@ -2,7 +2,9 @@
 #![expect(dead_code, reason = "example data types are reflected rather than executed")]
 
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliContract, CliSchema, CommandSchema, SchemaRequest, write_json};
+use clap_schema::{
+    CliContract, CliSchema, CommandSchema, SchemaRequest, schema_handler, write_json,
+};
 use schemars::JsonSchema;
 use serde::Serialize;
 
@@ -57,7 +59,7 @@ struct Resource {
 }
 
 /// Fetches a resource and supplies the exact value emitted in machine mode.
-#[clap_schema::handler(GetArgs)]
+#[schema_handler(GetArgs)]
 fn get(command: GetArgs) -> Result<Resource, std::io::Error> {
     Ok(Resource { id: command.id, name: "Example resource".to_owned() })
 }

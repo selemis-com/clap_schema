@@ -7,7 +7,7 @@ JSON Schema generation for Clap.
 The model is deliberately small:
 
 - `CliSchema` reflects visible command topology and compact argument context from Clap's built `Command` tree.
-- `CommandSchema` binds each executable Clap variant to its Rust payload type.
+- `CommandSchema` follows Clap subcommand enums and nested `Args` wrappers into the command tree.
 - The handler's `Result<T, E>` determines the successful output type. Non-unit `T` must implement `Serialize + JsonSchema`; `Result<(), E>` is outputless.
 - `write_json` serializes the same successful `T` used to generate the output schema.
 - Applications can add their own extension schemas without making `clap_schema` own metadata values or semantics.
@@ -26,7 +26,7 @@ cargo add serde --features derive
 
 ```rust
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliSchema, CommandSchema};
+use clap_schema::{CliSchema, CommandSchema, schema_handler};
 use schemars::JsonSchema;
 use serde::Serialize;
 
@@ -54,7 +54,7 @@ struct Item {
     name: String,
 }
 
-#[clap_schema::handler(GetArgs)]
+#[schema_handler(GetArgs)]
 impl GetArgs {
     fn run(self) -> Result<Item, std::convert::Infallible> {
         Ok(Item { id: self.id, name: "example".to_owned() })
@@ -69,11 +69,36 @@ assert!(command.output.is_some());
 # Ok::<(), clap_schema::Error>(())
 ```
 
-`GetArgs` is the Clap payload type that identifies this executable command to `clap_schema`. `CommandSchema` gets that type directly from the enum variant, while `#[clap_schema::handler(GetArgs)]` explicitly associates it with the handler's successful output type. Removing the handler or defining a second canonical handler for the same payload type therefore fails at compile time.
+`GetArgs` is the Clap payload type that identifies this executable command to `clap_schema`. `CommandSchema` gets that type directly from the enum variant, while `#[schema_handler(GetArgs)]` explicitly associates it with the handler's successful output type. Removing the schema handler or defining a second canonical schema handler for the same payload type therefore fails at compile time.
 
 The output schema comes from the declared successful handler type, not from a separate `#[schema(output = ...)]` declaration. At runtime, use `write_json` when you want the emitted JSON and generated schema to stay parameterized by the same `T`.
 
-Derive-based executable commands use one named tuple payload, such as `Get(GetArgs)`. Commands with no arguments use an empty `Args` type. Shared argument groups can still be reused with Clap's `flatten`, while distinct executable commands keep distinct payload types. Handlers explicitly name their command payload as `#[clap_schema::handler(GetArgs)]`, so free-function arguments may be arranged freely without positional inference. Receiver-based handlers may put the same attribute on a dedicated inherent impl block with one receiver method. Builder-style Clap uses explicit Rust identity types through `ContractBuilder::command::<T>(path)`.
+Derive-based executable commands use one named tuple payload, such as `Get(GetArgs)`. Commands with no arguments use an empty `Args` type. Shared argument groups can still be reused with Clap's `flatten`, while distinct executable commands keep distinct payload types. Schema handlers explicitly name their command payload as `#[schema_handler(GetArgs)]`, so free-function arguments may be arranged freely without positional inference. Receiver-based handlers may put the same attribute on a dedicated inherent impl block with one receiver method. Builder-style Clap uses explicit Rust identity types through `ContractBuilder::command::<T>(path)`.
+
+## Nested subcommands
+
+Clap still owns nested command structure. When a tuple payload is an `Args` wrapper around another subcommand enum, derive `CommandSchema` on that wrapper and mark the parent variant with `#[schema(subcommands)]`:
+
+```rust
+#[derive(Subcommand, CommandSchema)]
+enum Commands {
+    #[schema(subcommands)]
+    Objects(ObjectsArgs),
+}
+
+#[derive(Args, CommandSchema)]
+struct ObjectsArgs {
+    #[command(subcommand)]
+    command: ObjectCommands,
+}
+
+#[derive(Subcommand, CommandSchema)]
+enum ObjectCommands {
+    Get(GetArgs),
+}
+```
+
+The wrapper derive reads `ObjectCommands` from the same `#[command(subcommand)]` field Clap parses; the type is not repeated in clap_schema metadata. Add `executable` alongside `subcommands` only when the parent command itself also has a `#[schema_handler(...)]` contract.
 
 ## Command discovery
 
@@ -179,7 +204,7 @@ command-specific layers are composed with JSON Schema `allOf`.
 Builder-style Clap applications use Rust command identity types through
 `ContractBuilder::command::<T>(path)`. Registration still names the canonical command path explicitly
 because builder-style Clap has no Rust subcommand payload relationship from which to derive it. The path is
-validated against the built Clap tree, while the command's output still comes only from its `#[clap_schema::handler(Type)]` declaration. Use `command_with_extension::<T, E>(path)` when a builder-registered command adds an
+validated against the built Clap tree, while the command's output still comes only from its `#[schema_handler(Type)]` declaration. Use `command_with_extension::<T, E>(path)` when a builder-registered command adds an
 application-defined extension schema. See the `builder_api` example.
 
 ## Runnable examples
@@ -189,7 +214,7 @@ The repository keeps the example set intentionally small:
 | Example | Demonstrates |
 | --- | --- |
 | `basic` | Derive API, handler-derived output schema, and runtime `write_json` |
-| `command_identity` | Rust command identity across a nested Clap command, handler contract, and runtime dispatch |
+| `command_identity` | Rust command identity across a nested Clap command, schema-handler contract, and runtime dispatch |
 | `schema_subcommand` | Unified shallow/full discovery through `schema <command>` and `<command> --schema` |
 | `application_extension` | Application-owned metadata values paired with clap_schema-generated extension schemas |
 | `builder_api` | The same contract model with Clap's builder API |

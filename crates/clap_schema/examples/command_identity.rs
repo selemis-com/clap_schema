@@ -4,7 +4,7 @@
 use std::convert::Infallible;
 
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliSchema, CommandSchema};
+use clap_schema::{CliSchema, CommandSchema, schema_handler};
 use schemars::JsonSchema;
 use serde::Serialize;
 
@@ -59,10 +59,10 @@ struct Workspace {
 
 /// Canonical handler for `WorkspacesGetCommand`.
 ///
-/// `#[handler(WorkspacesGetCommand)]` explicitly identifies the command payload type, so runtime
-/// parameters may appear in any order. `Workspace` is inferred directly from the handler's
+/// `#[schema_handler(WorkspacesGetCommand)]` explicitly identifies the command payload type, so
+/// runtime parameters may appear in any order. `Workspace` is inferred directly from the handler's
 /// `Result` return type.
-#[clap_schema::handler(WorkspacesGetCommand)]
+#[schema_handler(WorkspacesGetCommand)]
 fn get_workspace(
     _ctx: CliContext,
     command: &WorkspacesGetCommand,

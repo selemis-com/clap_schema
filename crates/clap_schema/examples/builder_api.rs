@@ -3,7 +3,7 @@
 use std::convert::Infallible;
 
 use clap::{Arg, Command};
-use clap_schema::ContractBuilder;
+use clap_schema::{ContractBuilder, schema_handler};
 use schemars::JsonSchema;
 use serde::Serialize;
 
@@ -20,7 +20,7 @@ struct Widget {
 struct CreateCommand;
 
 /// Canonical implementation of the create command.
-#[clap_schema::handler(CreateCommand)]
+#[schema_handler(CreateCommand)]
 impl CreateCommand {
     /// Creates the example widget.
     fn run(self) -> Result<Widget, Infallible> {

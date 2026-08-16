@@ -5,7 +5,7 @@ mod tests {
     use std::{convert::Infallible, ffi::OsString};
 
     use clap::{Args, Command, Parser, Subcommand};
-    use clap_schema::{CliSchema, CommandSchema, ContractBuilder, SchemaRequest};
+    use clap_schema::{CliSchema, CommandSchema, ContractBuilder, SchemaRequest, schema_handler};
     use schemars::JsonSchema;
     use serde::Serialize;
 
@@ -30,7 +30,7 @@ mod tests {
     #[derive(Debug)]
     struct CreateCommand;
 
-    #[clap_schema::handler(CreateCommand)]
+    #[schema_handler(CreateCommand)]
     impl CreateCommand {
         #[expect(dead_code, reason = "handler is reflected through the command identity type")]
         fn run(self) -> Result<Created, Infallible> {
@@ -46,7 +46,7 @@ mod tests {
     struct RootCli;
 
     #[expect(dead_code, reason = "handler supplies the command contract")]
-    #[clap_schema::handler(RootCli)]
+    #[schema_handler(RootCli)]
     fn root(_command: RootCli) -> Result<Created, Infallible> {
         Ok(Created { id: "1".to_owned(), name: "root".to_owned() })
     }
@@ -67,7 +67,7 @@ mod tests {
     struct FetchArgs {}
 
     #[expect(dead_code, reason = "handler supplies the command contract")]
-    #[clap_schema::handler(FetchArgs)]
+    #[schema_handler(FetchArgs)]
     fn fetch(_command: FetchArgs) -> Result<Created, Infallible> {
         Ok(Created { id: "1".to_owned(), name: "example".to_owned() })
     }
@@ -90,7 +90,7 @@ mod tests {
     }
 
     #[expect(dead_code, reason = "handler supplies the command contract")]
-    #[clap_schema::handler(UnregisteredChildrenArgs)]
+    #[schema_handler(UnregisteredChildrenArgs)]
     fn unregistered_children(_command: UnregisteredChildrenArgs) -> Result<(), Infallible> {
         Ok(())
     }
@@ -104,44 +104,8 @@ mod tests {
     struct ActualChildArgs {}
 
     #[expect(dead_code, reason = "handler supplies the command contract")]
-    #[clap_schema::handler(ActualChildArgs)]
+    #[schema_handler(ActualChildArgs)]
     fn actual_child(_command: ActualChildArgs) -> Result<(), Infallible> {
-        Ok(())
-    }
-
-    #[derive(Parser, CliSchema)]
-    struct MismatchedChildrenCli {
-        #[command(subcommand)]
-        command: MismatchedChildrenCommands,
-    }
-
-    #[derive(Subcommand, CommandSchema)]
-    enum MismatchedChildrenCommands {
-        #[schema(subcommands)]
-        Parent(MismatchedChildrenArgs),
-    }
-
-    #[derive(Args)]
-    struct MismatchedChildrenArgs {
-        #[command(subcommand)]
-        command: Option<ActualChildren>,
-    }
-
-    impl clap_schema::CommandGroup for MismatchedChildrenArgs {
-        type Subcommands = DeclaredChildren;
-    }
-
-    #[derive(Subcommand, CommandSchema)]
-    enum DeclaredChildren {
-        Declared(DeclaredChildArgs),
-    }
-
-    #[derive(Args)]
-    struct DeclaredChildArgs {}
-
-    #[expect(dead_code, reason = "handler supplies the command contract")]
-    #[clap_schema::handler(DeclaredChildArgs)]
-    fn declared_child(_command: DeclaredChildArgs) -> Result<(), Infallible> {
         Ok(())
     }
 
@@ -168,7 +132,7 @@ mod tests {
     struct VisibleArgs {}
 
     #[expect(dead_code, reason = "handler supplies the command contract")]
-    #[clap_schema::handler(VisibleArgs)]
+    #[schema_handler(VisibleArgs)]
     fn visible(_command: VisibleArgs) -> Result<(), Infallible> {
         Ok(())
     }
@@ -189,7 +153,7 @@ mod tests {
     struct HelpArgs {}
 
     #[expect(dead_code, reason = "handler supplies the command contract")]
-    #[clap_schema::handler(HelpArgs)]
+    #[schema_handler(HelpArgs)]
     fn help(_command: HelpArgs) -> Result<(), Infallible> {
         Ok(())
     }
@@ -333,18 +297,12 @@ mod tests {
     }
 
     #[test]
-    fn derive_rejects_args_children_without_command_group_registration() {
+    fn derive_rejects_unregistered_args_subcommands() {
         let error = UnregisteredChildrenCli::schema().expect_err("unregistered nested subcommands");
         assert!(matches!(
             &error,
             clap_schema::Error::UnregisteredSubcommands { path } if path == &["parent"]
         ));
-    }
-
-    #[test]
-    fn derive_rejects_command_group_that_disagrees_with_clap() {
-        let error = MismatchedChildrenCli::schema().expect_err("mismatched nested subcommands");
-        assert!(matches!(error, clap_schema::Error::DerivedCommandMismatch { .. }));
     }
 
     #[test]

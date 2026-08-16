@@ -4,7 +4,7 @@
 use std::convert::Infallible;
 
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliSchema, CommandSchema, write_json};
+use clap_schema::{CliSchema, CommandSchema, schema_handler, write_json};
 use schemars::JsonSchema;
 use serde::Serialize;
 
@@ -41,7 +41,7 @@ struct Item {
 }
 
 /// Canonical create handler. Its `Item` result is the output contract source of truth.
-#[clap_schema::handler(CreateArgs)]
+#[schema_handler(CreateArgs)]
 impl CreateArgs {
     /// Creates the example item.
     fn run(self) -> Result<Item, Infallible> {

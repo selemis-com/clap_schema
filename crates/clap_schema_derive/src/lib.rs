@@ -24,7 +24,7 @@ use syn::{
 ///
 /// # `#[schema(...)]` options
 ///
-/// - `executable` makes the root parser type executable; a `#[clap_schema::handler(RootType)]`
+/// - `executable` makes the root parser type executable; a `#[schema_handler(RootType)]`
 ///   declaration must supply its successful-output contract.
 /// - `extend = Type` declares the application-wide extension schema type. It is schema-only:
 ///   `clap_schema` never constructs or serializes values of `Type`.
@@ -38,29 +38,18 @@ pub fn derive_cli_schema(input: TokenStream) -> TokenStream {
     expand_cli_schema(input).unwrap_or_else(syn::Error::into_compile_error).into()
 }
 
-/// Derives the child-subcommand type from an `Args` wrapper.
-///
-/// The input must be a struct with exactly one `#[command(subcommand)]` field. This keeps an
-/// executable parent command's child type anchored to the same field Clap parses instead of
-/// repeating that type in `#[schema(...)]`.
-#[proc_macro_derive(CommandGroup, attributes(command))]
-pub fn derive_command_group(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    expand_command_group(input).unwrap_or_else(syn::Error::into_compile_error).into()
-}
-
-/// Derives executable-contract registration for a Clap subcommand enum.
+/// Derives command-tree registration for a Clap `Subcommand` enum or `Args` wrapper.
 ///
 /// Every contract-visible executable variant has one tuple payload with a canonical
-/// `#[clap_schema::handler(PayloadType)]` declaration. The handler supplies the successful-output
+/// `#[schema_handler(PayloadType)]` declaration. The handler supplies the successful-output
 /// contract through normal Rust trait resolution.
 ///
 /// Normal `#[command(subcommand)]` and `#[command(flatten)]` nesting is followed automatically.
-/// When an `Args` payload itself contains a subcommand field, derive `CommandGroup` on that payload
-/// and add the `subcommands` flag to the parent variant. Add `executable` when such a parent is
-/// also executable without selecting a child. Executable commands may declare `extend = Type` to
-/// supplement the root application extension schema. Extensions can only be attached to ordinary
-/// executable variants; command groups, flattened variants, skipped variants, and external
+/// When an `Args` payload itself contains a subcommand field, derive `CommandSchema` on that
+/// payload and add the `subcommands` flag to the parent variant. Add `executable` when such a
+/// parent is also executable without selecting a child. Executable commands may declare `extend =
+/// Type` to supplement the root application extension schema. Extensions can only be attached to
+/// ordinary executable variants; command groups, flattened variants, skipped variants, and external
 /// subcommands do not carry an command-specific extension schema. The application owns all
 /// concrete extension values.
 #[proc_macro_derive(CommandSchema, attributes(schema, command))]
@@ -69,14 +58,14 @@ pub fn derive_command_schema(input: TokenStream) -> TokenStream {
     expand_command_schema(input).unwrap_or_else(syn::Error::into_compile_error).into()
 }
 
-/// Associates a canonical handler with one executable command type.
+/// Associates one executable command type with its handler-derived output contract.
 ///
 /// The attribute argument explicitly names the command type whose successful-output contract is
 /// supplied by the handler. Function arguments are otherwise unrestricted and may appear in any
 /// order:
 ///
 /// ```ignore
-/// #[clap_schema::handler(GetArgs)]
+/// #[schema_handler(GetArgs)]
 /// async fn get(state: State, args: GetArgs, auth: Auth) -> Result<Item, Error> {
 ///     // ...
 /// }
@@ -88,7 +77,7 @@ pub fn derive_command_schema(input: TokenStream) -> TokenStream {
 /// ```ignore
 /// struct CreateCommand;
 ///
-/// #[clap_schema::handler(CreateCommand)]
+/// #[schema_handler(CreateCommand)]
 /// impl CreateCommand {
 ///     async fn run(self, context: Context) -> Result<Created, Error> {
 ///         // ...
@@ -100,12 +89,12 @@ pub fn derive_command_schema(input: TokenStream) -> TokenStream {
 /// aliases are supported. Generic handlers and opaque `impl Trait` return types are rejected
 /// because they do not identify one concrete output contract.
 #[proc_macro_attribute]
-pub fn handler(attribute: TokenStream, input: TokenStream) -> TokenStream {
+pub fn schema_handler(attribute: TokenStream, input: TokenStream) -> TokenStream {
     let attribute = TokenStream2::from(attribute);
     if attribute.is_empty() {
         return syn::Error::new(
             proc_macro2::Span::call_site(),
-            "#[clap_schema::handler] requires an executable command type, for example #[clap_schema::handler(GetArgs)]",
+            "#[schema_handler] requires a command type, for example #[schema_handler(GetArgs)]",
         )
         .into_compile_error()
         .into();
@@ -126,7 +115,7 @@ pub fn handler(attribute: TokenStream, input: TokenStream) -> TokenStream {
     {
         return syn::Error::new_spanned(
             method.sig,
-            "receiver handlers must put #[clap_schema::handler(Type)] on a dedicated inherent impl block",
+            "receiver handlers must put #[schema_handler(Type)] on a dedicated inherent impl block",
         )
         .into_compile_error()
         .into();
@@ -163,7 +152,7 @@ fn expand_handler_impl(item_impl: &ItemImpl, command_type: &Type) -> syn::Result
     if item_impl.trait_.is_some() {
         return Err(syn::Error::new_spanned(
             item_impl,
-            "#[clap_schema::handler] requires an inherent impl block",
+            "#[schema_handler] requires an inherent impl block",
         ));
     }
     if !item_impl.generics.params.is_empty() {
@@ -180,20 +169,20 @@ fn expand_handler_impl(item_impl: &ItemImpl, command_type: &Type) -> syn::Result
     let Some(method) = methods.next() else {
         return Err(syn::Error::new_spanned(
             item_impl,
-            "#[clap_schema::handler] impl blocks must contain exactly one function; put helpers in a separate impl block",
+            "#[schema_handler] impl blocks must contain exactly one function; put helpers in a separate impl block",
         ));
     };
     if methods.next().is_some() {
         return Err(syn::Error::new_spanned(
             item_impl,
-            "#[clap_schema::handler] impl blocks must contain exactly one function; put helpers in a separate impl block",
+            "#[schema_handler] impl blocks must contain exactly one function; put helpers in a separate impl block",
         ));
     }
 
     if !matches!(method.sig.inputs.first(), Some(syn::FnArg::Receiver(_))) {
         return Err(syn::Error::new_spanned(
             &method.sig,
-            "#[clap_schema::handler(Type)] impl blocks require a receiver method; use a free handler for associated functions",
+            "#[schema_handler(Type)] impl blocks require a receiver method; use a free handler for associated functions",
         ));
     }
 
@@ -347,37 +336,49 @@ fn expand_cli_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
     })
 }
 
-/// Expands a `CommandGroup` derive into its child-subcommand association.
-fn expand_command_group(input: DeriveInput) -> syn::Result<TokenStream2> {
+/// Expands a `CommandSchema` derive into executable-command and child registration.
+fn expand_command_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
+    if matches!(&input.data, Data::Enum(_)) {
+        return expand_command_schema_enum(input);
+    }
+    if matches!(&input.data, Data::Struct(_)) {
+        return expand_command_schema_wrapper(input);
+    }
+    Err(syn::Error::new_spanned(
+        input.ident,
+        "CommandSchema can only be derived for subcommand enums or Args structs",
+    ))
+}
+
+/// Expands `CommandSchema` for an `Args` wrapper around one nested subcommand enum.
+fn expand_command_schema_wrapper(input: DeriveInput) -> syn::Result<TokenStream2> {
     let crate_path = clap_schema_path();
-    let commands = find_subcommand_field(&input, "CommandGroup")?.ok_or_else(|| {
+    let commands = find_subcommand_field(&input, "CommandSchema")?.ok_or_else(|| {
         syn::Error::new_spanned(
             &input.ident,
-            "CommandGroup requires one #[command(subcommand)] field",
+            "CommandSchema on an Args struct requires one #[command(subcommand)] field",
         )
     })?;
-
     let name = input.ident;
     let generics = input.generics;
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
 
     Ok(quote! {
-        impl #impl_generics #crate_path::CommandGroup for #name #type_generics #where_clause {
-            type Subcommands = #commands;
+        impl #impl_generics #crate_path::CommandSchema for #name #type_generics #where_clause {
+            fn __clap_schema_register(
+                prefix: &mut Vec<String>,
+                registry: &mut #crate_path::__private::Registry,
+            ) -> #crate_path::Result<()> {
+                <#commands as #crate_path::CommandSchema>::__clap_schema_register(prefix, registry)
+            }
         }
     })
 }
 
-/// Expands a `CommandSchema` derive into executable-command and child registration.
-fn expand_command_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
+/// Expands `CommandSchema` for a Clap `Subcommand` enum.
+fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
     let crate_path = clap_schema_path();
-    let Data::Enum(data) = input.data else {
-        return Err(syn::Error::new_spanned(
-            input.ident,
-            "CommandSchema can only be derived for enums",
-        ));
-    };
-
+    let Data::Enum(data) = input.data else { unreachable!() };
     let name = input.ident;
     let generics = input.generics;
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
@@ -490,7 +491,7 @@ fn expand_command_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
         let payload = payload.ok_or_else(|| {
             syn::Error::new_spanned(
                 &variant.ident,
-                "contract-visible executable commands require a single tuple Args payload with a #[clap_schema::handler(PayloadType)] contract",
+                "contract-visible executable commands require a single tuple Args payload with a #[schema_handler(PayloadType)] contract",
             )
         })?;
         if schema.executable && !schema.subcommands {
@@ -520,37 +521,14 @@ fn expand_command_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
                 },
             )
         });
-        let register_children = schema.subcommands.then(|| quote! {
-                type __ClapSchemaChildren =
-                    <#payload as #crate_path::CommandGroup>::Subcommands;
-                let __clap_schema_child_probe =
-                    <__ClapSchemaChildren as #crate_path::__private::clap::Subcommand>::augment_subcommands(
-                        #crate_path::__private::clap::Command::new("__clap_schema_child_probe")
-                    );
-                let mut __clap_schema_expected_children =
-                    __clap_schema_child_probe.get_subcommands();
-                let mut __clap_schema_actual_children =
-                    __clap_schema_command.get_subcommands();
-                loop {
-                    match (
-                        __clap_schema_expected_children.next(),
-                        __clap_schema_actual_children.next(),
-                    ) {
-                        (Some(expected), Some(actual))
-                            if expected.get_name() == actual.get_name() => {}
-                        (None, None) => break,
-                        _ => {
-                            return Err(#crate_path::Error::DerivedCommandMismatch {
-                                type_name: ::core::any::type_name::<__ClapSchemaChildren>(),
-                            });
-                        }
-                    }
-                }
-                <__ClapSchemaChildren as #crate_path::CommandSchema>::__clap_schema_register(
+        let register_children = schema.subcommands.then(|| {
+            quote! {
+                <#payload as #crate_path::CommandSchema>::__clap_schema_register(
                     prefix,
                     registry,
                 )?;
-            });
+            }
+        });
         let reject_unregistered_children = register_children.is_none().then(|| {
             quote! {
                 if __clap_schema_command.get_subcommands().next().is_some() {
@@ -747,7 +725,7 @@ fn parse_command_behavior(attrs: &[Attribute]) -> syn::Result<CommandBehavior> {
 struct VariantSchema {
     /// Whether a command group is executable without selecting a child.
     executable: bool,
-    /// Whether an `Args` payload owns child subcommands through `CommandGroup`.
+    /// Whether an `Args` payload owns child subcommands through `CommandSchema`.
     subcommands: bool,
     /// Optional command-specific application extension schema type.
     extended: Option<Type>,

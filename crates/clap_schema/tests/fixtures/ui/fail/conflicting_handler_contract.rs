@@ -1,13 +1,14 @@
+use clap_schema::schema_handler;
 use clap::Args;
 
 #[derive(Args)]
 struct RunArgs {}
-#[clap_schema::handler(RunArgs)]
+#[schema_handler(RunArgs)]
 fn first(_command: RunArgs) -> Result<(), ()> {
     Ok(())
 }
 
-#[clap_schema::handler(RunArgs)]
+#[schema_handler(RunArgs)]
 fn second(_command: RunArgs) -> Result<(), ()> {
     Ok(())
 }

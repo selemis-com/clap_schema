@@ -2,7 +2,7 @@
 #![expect(dead_code, reason = "test data types are reflected rather than executed")]
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use clap_schema::{CliSchema, CommandGroup, CommandSchema};
+use clap_schema::{CliSchema, CommandSchema, schema_handler};
 use schemars::JsonSchema;
 use serde::Serialize;
 
@@ -173,7 +173,7 @@ struct ListObjectsArgs {
     #[arg(long, hide = true)]
     internal_token: Option<String>,
 }
-#[derive(Debug, Args, CommandGroup)]
+#[derive(Debug, Args, CommandSchema)]
 struct AccessArgs {
     /// Workspace containing the object.
     workspace_id: String,
@@ -292,47 +292,47 @@ struct Status {
 #[derive(Debug)]
 struct TestError;
 
-#[clap_schema::handler(GetObjectArgs)]
+#[schema_handler(GetObjectArgs)]
 async fn get_object(_command: GetObjectArgs) -> Result<ObjectRecord, TestError> {
     Err(TestError)
 }
 
-#[clap_schema::handler(ListObjectsArgs)]
+#[schema_handler(ListObjectsArgs)]
 async fn list_objects(_command: ListObjectsArgs) -> Result<Page<ObjectRecord>, TestError> {
     Err(TestError)
 }
 
-#[clap_schema::handler(DeleteObjectArgs)]
+#[schema_handler(DeleteObjectArgs)]
 async fn delete_object(_command: DeleteObjectArgs) -> Result<(), TestError> {
     Err(TestError)
 }
 
-#[clap_schema::handler(AccessArgs)]
+#[schema_handler(AccessArgs)]
 async fn inspect_access(_command: AccessArgs) -> Result<AccessSummary, TestError> {
     Err(TestError)
 }
 
-#[clap_schema::handler(GrantAccessArgs)]
+#[schema_handler(GrantAccessArgs)]
 async fn grant_access(_command: GrantAccessArgs) -> Result<ObjectGrant, TestError> {
     Err(TestError)
 }
 
-#[clap_schema::handler(RevokeAccessArgs)]
+#[schema_handler(RevokeAccessArgs)]
 async fn revoke_access(_command: RevokeAccessArgs) -> Result<(), TestError> {
     Err(TestError)
 }
 
-#[clap_schema::handler(SearchArgs)]
+#[schema_handler(SearchArgs)]
 async fn search(_command: SearchArgs) -> Result<Page<ObjectRecord>, TestError> {
     Err(TestError)
 }
 
-#[clap_schema::handler(WhoamiArgs)]
+#[schema_handler(WhoamiArgs)]
 async fn whoami(_command: WhoamiArgs) -> Result<Identity, TestError> {
     Err(TestError)
 }
 
-#[clap_schema::handler(StatusArgs)]
+#[schema_handler(StatusArgs)]
 async fn admin_status(_command: StatusArgs) -> Result<Status, TestError> {
     Err(TestError)
 }

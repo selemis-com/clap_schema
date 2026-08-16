@@ -1,27 +1,28 @@
+use clap_schema::schema_handler;
 struct Command;
 
-#[clap_schema::handler]
+#[schema_handler]
 fn missing_command_type() -> Result<(), ()> {
     Ok(())
 }
 
-#[clap_schema::handler(Command)]
+#[schema_handler(Command)]
 fn generic<T>() -> Result<T, ()> {
     unreachable!()
 }
 
-#[clap_schema::handler(Command)]
+#[schema_handler(Command)]
 fn opaque() -> Result<impl Copy, ()> {
     Ok(1_u8)
 }
 
-#[clap_schema::handler(Command)]
+#[schema_handler(Command)]
 fn missing_return() {}
 
 struct ReceiverHandler;
 
 impl ReceiverHandler {
-    #[clap_schema::handler(Command)]
+    #[schema_handler(Command)]
     fn run(self) -> Result<(), ()> {
         Ok(())
     }
@@ -29,7 +30,7 @@ impl ReceiverHandler {
 
 struct AssociatedOnlyHandler;
 
-#[clap_schema::handler(Command)]
+#[schema_handler(Command)]
 impl AssociatedOnlyHandler {
     fn run(_value: u8) -> Result<(), ()> {
         Ok(())
@@ -38,7 +39,7 @@ impl AssociatedOnlyHandler {
 
 struct MultiHandler;
 
-#[clap_schema::handler(Command)]
+#[schema_handler(Command)]
 impl MultiHandler {
     fn first(self) -> Result<(), ()> {
         Ok(())
@@ -53,12 +54,12 @@ trait HandlerTrait {}
 
 struct TraitHandler;
 
-#[clap_schema::handler(Command)]
+#[schema_handler(Command)]
 impl HandlerTrait for TraitHandler {}
 
 struct GenericHandler<T>(T);
 
-#[clap_schema::handler(Command)]
+#[schema_handler(Command)]
 impl<T> GenericHandler<T> {
     fn run(self) -> Result<(), ()> {
         Ok(())
@@ -67,7 +68,7 @@ impl<T> GenericHandler<T> {
 
 struct EmptyHandler;
 
-#[clap_schema::handler(Command)]
+#[schema_handler(Command)]
 impl EmptyHandler {}
 
 fn main() {}

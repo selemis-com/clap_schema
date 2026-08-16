@@ -62,7 +62,7 @@ impl CliContract {
     ///
     /// ```
     /// use clap::Command;
-    /// use clap_schema::ContractBuilder;
+    /// use clap_schema::{ContractBuilder, schema_handler};
     /// use schemars::JsonSchema;
     /// use serde::Serialize;
     ///
@@ -83,7 +83,7 @@ impl CliContract {
     ///
     /// struct ListCommand;
     ///
-    /// #[clap_schema::handler(ListCommand)]
+    /// #[schema_handler(ListCommand)]
     /// impl ListCommand {
     ///     fn list(self) -> Result<Page, std::convert::Infallible> {
     ///         Ok(Page { next_cursor: None })

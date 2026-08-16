@@ -13,15 +13,15 @@ mod tests {
         assert!(!output.status.success());
         let stderr = String::from_utf8(output.stderr).expect("UTF-8 compiler diagnostics");
         for expected in [
-            "#[clap_schema::handler] requires an executable command type",
+            "#[schema_handler] requires a command type",
             "clap_schema handlers use a plain non-generic function signature",
             "clap_schema handlers require a concrete Result<T, E> output type",
             "clap_schema handlers must return Result<T, E>",
-            "receiver handlers must put #[clap_schema::handler(Type)] on a dedicated inherent impl block",
-            "#[clap_schema::handler] requires an inherent impl block",
+            "receiver handlers must put #[schema_handler(Type)] on a dedicated inherent impl block",
+            "#[schema_handler] requires an inherent impl block",
             "clap_schema handler impls must be non-generic",
-            "#[clap_schema::handler(Type)] impl blocks require a receiver method",
-            "#[clap_schema::handler] impl blocks must contain exactly one function",
+            "#[schema_handler(Type)] impl blocks require a receiver method",
+            "#[schema_handler] impl blocks must contain exactly one function",
         ] {
             assert!(stderr.contains(expected), "missing diagnostic: {expected}\n{stderr}");
         }
@@ -38,7 +38,7 @@ mod tests {
             "unsupported #[schema(...)] root option",
             "CliSchema can only be derived for structs",
             "CliSchema supports at most one #[command(subcommand)] field",
-            "CommandSchema can only be derived for enums",
+            "CommandSchema on an Args struct requires one #[command(subcommand)] field",
             "schema extensions cannot be attached to a clap-skipped or external subcommand variant",
             "#[schema(skip)] cannot be combined with executable, subcommands, or extend",
             "flattened subcommands require a single tuple payload",

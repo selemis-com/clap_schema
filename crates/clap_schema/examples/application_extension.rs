@@ -4,7 +4,7 @@
 use std::convert::Infallible;
 
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliSchema, CommandSchema};
+use clap_schema::{CliSchema, CommandSchema, schema_handler};
 use schemars::JsonSchema;
 use serde::Serialize;
 
@@ -78,7 +78,7 @@ struct ResourcePage {
 }
 
 /// Canonical list handler.
-#[clap_schema::handler(ListArgs)]
+#[schema_handler(ListArgs)]
 fn list(_command: ListArgs) -> Result<ResourcePage, Infallible> {
     Ok(ResourcePage { next_cursor: Some("next-123".to_owned()) })
 }

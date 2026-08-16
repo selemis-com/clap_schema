@@ -4,7 +4,7 @@
 #[cfg(test)]
 mod tests {
     use clap::{Args, Parser, Subcommand};
-    use clap_schema::{CliSchema, CommandSchema};
+    use clap_schema::{CliSchema, CommandSchema, schema_handler};
     use schemars::JsonSchema;
     use serde::Serialize;
 
@@ -64,58 +64,58 @@ mod tests {
 
     type HandlerResult = Result<Output, HandlerError>;
 
-    #[clap_schema::handler(FreeSyncArgs)]
+    #[schema_handler(FreeSyncArgs)]
     fn free_sync(_command: FreeSyncArgs) -> HandlerResult {
         Err(HandlerError)
     }
 
-    #[clap_schema::handler(FreeConstArgs)]
+    #[schema_handler(FreeConstArgs)]
     const fn free_const(_command: FreeConstArgs) -> HandlerResult {
         Err(HandlerError)
     }
 
-    #[clap_schema::handler(FreeAsyncArgs)]
+    #[schema_handler(FreeAsyncArgs)]
     async fn free_async(_command: FreeAsyncArgs) -> HandlerResult {
         Err(HandlerError)
     }
 
-    #[clap_schema::handler(FreeBorrowedArgs)]
+    #[schema_handler(FreeBorrowedArgs)]
     fn free_borrowed(_command: &FreeBorrowedArgs) -> HandlerResult {
         Err(HandlerError)
     }
 
-    #[clap_schema::handler(NoInputArgs)]
+    #[schema_handler(NoInputArgs)]
     fn no_input() -> HandlerResult {
         Err(HandlerError)
     }
 
-    #[clap_schema::handler(FreeFormArgs)]
+    #[schema_handler(FreeFormArgs)]
     fn free_form(_context: &str, _verbose: bool, _value: u64) -> HandlerResult {
         Err(HandlerError)
     }
 
-    #[clap_schema::handler(AssociatedArgs)]
+    #[schema_handler(AssociatedArgs)]
     impl AssociatedArgs {
         fn run(self) -> HandlerResult {
             Err(HandlerError)
         }
     }
 
-    #[clap_schema::handler(OwnedArgs)]
+    #[schema_handler(OwnedArgs)]
     impl OwnedArgs {
         fn run(self, _context: &str, _verbose: bool) -> HandlerResult {
             Err(HandlerError)
         }
     }
 
-    #[clap_schema::handler(BorrowedArgs)]
+    #[schema_handler(BorrowedArgs)]
     impl BorrowedArgs {
         fn run(&self) -> HandlerResult {
             Err(HandlerError)
         }
     }
 
-    #[clap_schema::handler(MutableArgs)]
+    #[schema_handler(MutableArgs)]
     impl MutableArgs {
         #[expect(
             clippy::needless_pass_by_ref_mut,
@@ -126,25 +126,25 @@ mod tests {
         }
     }
 
-    #[clap_schema::handler(ConditionalArgs)]
+    #[schema_handler(ConditionalArgs)]
     #[cfg(any())]
     fn conditional_disabled(_command: ConditionalArgs) -> HandlerResult {
         Err(HandlerError)
     }
 
-    #[clap_schema::handler(ConditionalArgs)]
+    #[schema_handler(ConditionalArgs)]
     #[cfg(not(any()))]
     fn conditional_enabled(_command: ConditionalArgs) -> HandlerResult {
         Err(HandlerError)
     }
 
-    #[clap_schema::handler(ConditionalAttrArgs)]
+    #[schema_handler(ConditionalAttrArgs)]
     #[cfg_attr(all(), cfg(any()))]
     fn conditional_attr_disabled(_command: ConditionalAttrArgs) -> HandlerResult {
         Err(HandlerError)
     }
 
-    #[clap_schema::handler(ConditionalAttrArgs)]
+    #[schema_handler(ConditionalAttrArgs)]
     #[cfg_attr(all(), cfg(all()))]
     fn conditional_attr_enabled(_command: ConditionalAttrArgs) -> HandlerResult {
         Err(HandlerError)
