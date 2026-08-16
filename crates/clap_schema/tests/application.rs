@@ -4,7 +4,6 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use clap_schema::{CliSchema, CommandSchema, schema_handler};
 use schemars::JsonSchema;
-use serde::Serialize;
 
 #[derive(Debug, JsonSchema)]
 struct ApplicationMetadata {
@@ -240,7 +239,7 @@ enum SortOrder {
     Oldest,
 }
 
-#[derive(Debug, Clone, Serialize, JsonSchema, ValueEnum)]
+#[derive(Debug, Clone, JsonSchema, ValueEnum)]
 #[value(rename_all = "kebab-case")]
 #[serde(rename_all = "kebab-case")]
 enum AccessRole {
@@ -248,14 +247,14 @@ enum AccessRole {
     Editor,
 }
 
-#[derive(Debug, Serialize, JsonSchema)]
+#[derive(Debug, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 enum ObjectKind {
     Document,
     Note,
 }
 
-#[derive(Debug, Serialize, JsonSchema)]
+#[derive(Debug, JsonSchema)]
 struct ObjectRecord {
     id: String,
     workspace_id: String,
@@ -265,20 +264,20 @@ struct ObjectRecord {
     metadata: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Serialize, JsonSchema)]
+#[derive(Debug, JsonSchema)]
 struct Page<T> {
     items: Vec<T>,
     next_cursor: Option<String>,
 }
 
-#[derive(Debug, Serialize, JsonSchema)]
+#[derive(Debug, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum Principal {
     User { user_id: String },
     Group { group_id: String },
 }
 
-#[derive(Debug, Serialize, JsonSchema)]
+#[derive(Debug, JsonSchema)]
 struct ObjectGrant {
     id: String,
     object_id: String,
@@ -286,19 +285,19 @@ struct ObjectGrant {
     role: AccessRole,
 }
 
-#[derive(Debug, Serialize, JsonSchema)]
+#[derive(Debug, JsonSchema)]
 struct AccessSummary {
     object_id: String,
     direct_grants: u64,
 }
 
-#[derive(Debug, Serialize, JsonSchema)]
+#[derive(Debug, JsonSchema)]
 struct Identity {
     user_id: String,
     display_name: String,
 }
 
-#[derive(Debug, Serialize, JsonSchema)]
+#[derive(Debug, JsonSchema)]
 struct Status {
     healthy: bool,
 }
