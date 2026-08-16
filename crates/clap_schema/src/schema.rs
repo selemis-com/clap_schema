@@ -46,18 +46,18 @@ where
     ExtendedSchemaFactory { root: schema_for::<T>, subschema: extended_subschema_for::<T> }
 }
 
-/// Composes application-wide and operation-specific extension schemas using one definition scope.
+/// Composes application-wide and command-specific extension schemas using one definition scope.
 pub(crate) fn compose_extended_schemas(
     application: ExtendedSchemaFactory,
-    operation: ExtendedSchemaFactory,
+    command: ExtendedSchemaFactory,
 ) -> Value {
     let mut generator = schema_generator();
     let application = (application.subschema)(&mut generator).to_value();
-    let operation = (operation.subschema)(&mut generator).to_value();
+    let command = (command.subschema)(&mut generator).to_value();
     let definitions = generator.take_definitions(true);
 
     let mut schema = serde_json::Map::new();
-    schema.insert("allOf".to_owned(), Value::Array(vec![application, operation]));
+    schema.insert("allOf".to_owned(), Value::Array(vec![application, command]));
     if !definitions.is_empty() {
         schema.insert("$defs".to_owned(), Value::Object(definitions));
     }

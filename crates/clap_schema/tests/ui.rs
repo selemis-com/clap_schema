@@ -13,15 +13,14 @@ mod tests {
         assert!(!output.status.success());
         let stderr = String::from_utf8(output.stderr).expect("UTF-8 compiler diagnostics");
         for expected in [
-            "#[clap_schema::handler] does not accept arguments",
+            "#[clap_schema::handler] requires an executable command type",
             "clap_schema handlers use a plain non-generic function signature",
             "clap_schema handlers require a concrete Result<T, E> output type",
             "clap_schema handlers must return Result<T, E>",
-            "free clap_schema handlers require exactly one typed operation input",
-            "receiver handlers must put #[clap_schema::handler] on a dedicated inherent impl block",
+            "receiver handlers must put #[clap_schema::handler(Type)] on a dedicated inherent impl block",
             "#[clap_schema::handler] requires an inherent impl block",
-            "clap_schema handler impls require a concrete non-generic operation type",
-            "#[clap_schema::handler] impl blocks require a receiver method so Self is the operation identity",
+            "clap_schema handler impls must be non-generic",
+            "#[clap_schema::handler(Type)] impl blocks require a receiver method",
             "#[clap_schema::handler] impl blocks must contain exactly one function",
         ] {
             assert!(stderr.contains(expected), "missing diagnostic: {expected}\n{stderr}");
@@ -43,7 +42,7 @@ mod tests {
             "schema extensions cannot be attached to a clap-skipped or external subcommand variant",
             "#[schema(skip)] cannot be combined with executable, subcommands, or extend",
             "flattened subcommands require a single tuple payload",
-            "flattened subcommands cannot declare operation schema extensions",
+            "flattened subcommands cannot declare command schema extensions",
             "nested subcommands require a single tuple payload",
             "#[command(subcommand)] groups cannot declare executable, subcommands, or extend",
             "a command cannot be both subcommand and flatten",
@@ -60,7 +59,7 @@ mod tests {
     }
 
     #[test]
-    fn operation_requires_exactly_one_handler_contract() {
+    fn command_type_requires_exactly_one_handler_contract() {
         let missing = support::ui_output("missing_handler_contract");
         assert!(!missing.status.success());
         let stderr = String::from_utf8(missing.stderr).expect("UTF-8 compiler diagnostics");

@@ -5,7 +5,7 @@ mod tests {
     use std::{convert::Infallible, ffi::OsString};
 
     use clap::{Args, Command, Parser, Subcommand};
-    use clap_schema::{CliSchema, CommandSchema, ContractBuilder, Operation, SchemaRequest};
+    use clap_schema::{CliSchema, CommandSchema, ContractBuilder, SchemaRequest};
     use schemars::JsonSchema;
     use serde::Serialize;
 
@@ -27,12 +27,12 @@ mod tests {
         name: String,
     }
 
-    #[derive(Debug, Operation)]
-    struct CreateOperation;
+    #[derive(Debug)]
+    struct CreateCommand;
 
-    #[clap_schema::handler]
-    impl CreateOperation {
-        #[expect(dead_code, reason = "handler is reflected through the operation type")]
+    #[clap_schema::handler(CreateCommand)]
+    impl CreateCommand {
+        #[expect(dead_code, reason = "handler is reflected through the command identity type")]
         fn run(self) -> Result<Created, Infallible> {
             Ok(Created { id: "1".to_owned(), name: "example".to_owned() })
         }
@@ -41,12 +41,12 @@ mod tests {
     #[derive(Parser, CliSchema)]
     struct DiscoveryOnlyRoot;
 
-    #[derive(Parser, CliSchema, Operation)]
+    #[derive(Parser, CliSchema)]
     #[schema(executable)]
     struct RootCli;
 
-    #[expect(dead_code, reason = "handler supplies the operation contract")]
-    #[clap_schema::handler]
+    #[expect(dead_code, reason = "handler supplies the command contract")]
+    #[clap_schema::handler(RootCli)]
     fn root(_command: RootCli) -> Result<Created, Infallible> {
         Ok(Created { id: "1".to_owned(), name: "root".to_owned() })
     }
@@ -63,11 +63,11 @@ mod tests {
         Get(FetchArgs),
     }
 
-    #[derive(Args, Operation)]
+    #[derive(Args)]
     struct FetchArgs {}
 
-    #[expect(dead_code, reason = "handler supplies the operation contract")]
-    #[clap_schema::handler]
+    #[expect(dead_code, reason = "handler supplies the command contract")]
+    #[clap_schema::handler(FetchArgs)]
     fn fetch(_command: FetchArgs) -> Result<Created, Infallible> {
         Ok(Created { id: "1".to_owned(), name: "example".to_owned() })
     }
@@ -83,14 +83,14 @@ mod tests {
         Parent(UnregisteredChildrenArgs),
     }
 
-    #[derive(Args, Operation)]
+    #[derive(Args)]
     struct UnregisteredChildrenArgs {
         #[command(subcommand)]
         command: Option<ActualChildren>,
     }
 
-    #[expect(dead_code, reason = "handler supplies the operation contract")]
-    #[clap_schema::handler]
+    #[expect(dead_code, reason = "handler supplies the command contract")]
+    #[clap_schema::handler(UnregisteredChildrenArgs)]
     fn unregistered_children(_command: UnregisteredChildrenArgs) -> Result<(), Infallible> {
         Ok(())
     }
@@ -100,11 +100,11 @@ mod tests {
         Actual(ActualChildArgs),
     }
 
-    #[derive(Args, Operation)]
+    #[derive(Args)]
     struct ActualChildArgs {}
 
-    #[expect(dead_code, reason = "handler supplies the operation contract")]
-    #[clap_schema::handler]
+    #[expect(dead_code, reason = "handler supplies the command contract")]
+    #[clap_schema::handler(ActualChildArgs)]
     fn actual_child(_command: ActualChildArgs) -> Result<(), Infallible> {
         Ok(())
     }
@@ -136,11 +136,11 @@ mod tests {
         Declared(DeclaredChildArgs),
     }
 
-    #[derive(Args, Operation)]
+    #[derive(Args)]
     struct DeclaredChildArgs {}
 
-    #[expect(dead_code, reason = "handler supplies the operation contract")]
-    #[clap_schema::handler]
+    #[expect(dead_code, reason = "handler supplies the command contract")]
+    #[clap_schema::handler(DeclaredChildArgs)]
     fn declared_child(_command: DeclaredChildArgs) -> Result<(), Infallible> {
         Ok(())
     }
@@ -164,11 +164,11 @@ mod tests {
         External(Vec<String>),
     }
 
-    #[derive(Args, Operation)]
+    #[derive(Args)]
     struct VisibleArgs {}
 
-    #[expect(dead_code, reason = "handler supplies the operation contract")]
-    #[clap_schema::handler]
+    #[expect(dead_code, reason = "handler supplies the command contract")]
+    #[clap_schema::handler(VisibleArgs)]
     fn visible(_command: VisibleArgs) -> Result<(), Infallible> {
         Ok(())
     }
@@ -185,11 +185,11 @@ mod tests {
         Help(HelpArgs),
     }
 
-    #[derive(Args, Operation)]
+    #[derive(Args)]
     struct HelpArgs {}
 
-    #[expect(dead_code, reason = "handler supplies the operation contract")]
-    #[clap_schema::handler]
+    #[expect(dead_code, reason = "handler supplies the command contract")]
+    #[clap_schema::handler(HelpArgs)]
     fn help(_command: HelpArgs) -> Result<(), Infallible> {
         Ok(())
     }
@@ -199,27 +199,26 @@ mod tests {
         let contract =
             ContractBuilder::new(Command::new("fixture").subcommand(Command::new("create")))
                 .extend::<ApplicationMetadata>()
-                .operation_with_extension::<CreateOperation, CreateMetadata>(["create"])
+                .command_with_extension::<CreateCommand, CreateMetadata>(["create"])
                 .build()?;
 
         let metadata = contract.extended_schema().expect("metadata schema");
         assert_eq!(metadata["type"], "object");
         assert!(metadata["properties"].get("destructive").is_some());
-        let effective = contract
-            .extended_schema_for_operation::<CreateOperation>()
-            .expect("effective metadata");
+        let effective =
+            contract.extended_schema_for_command::<CreateCommand>().expect("effective metadata");
         assert_eq!(effective["allOf"].as_array().map(Vec::len), Some(2));
-        let local_ref = effective["allOf"][1]["$ref"].as_str().expect("operation extension ref");
+        let local_ref = effective["allOf"][1]["$ref"].as_str().expect("command extension ref");
         let local_key = local_ref.trim_start_matches("#/$defs/");
         assert!(effective["$defs"][local_key]["properties"].get("audit_event").is_some());
 
-        let command = contract.command_for::<CreateOperation>().expect("create operation");
+        let command = contract.command_for::<CreateCommand>().expect("create command");
         assert!(command.output.is_some());
         Ok(())
     }
 
     #[test]
-    fn derive_root_without_executable_has_no_operation() -> clap_schema::Result<()> {
+    fn derive_root_without_executable_has_no_output_contract() -> clap_schema::Result<()> {
         let contract = DiscoveryOnlyRoot::schema()?;
         let root = contract.schema(&SchemaRequest::default())?;
         assert!(!root.command.executable);
@@ -234,10 +233,10 @@ mod tests {
     }
 
     #[test]
-    fn operation_type_tracks_claps_canonical_command_name() -> clap_schema::Result<()> {
+    fn command_type_tracks_claps_canonical_command_name() -> clap_schema::Result<()> {
         let contract = RenamedCli::schema()?;
         let command =
-            contract.command_for::<FetchArgs>().expect("fetch operation should be registered");
+            contract.command_for::<FetchArgs>().expect("fetch command should be registered");
 
         assert_eq!(command.name, "fetch");
         assert_eq!(command.path, ["fetch"]);
@@ -247,17 +246,17 @@ mod tests {
     #[test]
     fn builder_rejects_invalid_and_duplicate_declarations() {
         let unknown = ContractBuilder::new(Command::new("fixture"))
-            .operation::<CreateOperation>(["missing"])
+            .command::<CreateCommand>(["missing"])
             .build()
-            .expect_err("unknown operation path");
+            .expect_err("unknown command path");
         assert_eq!(unknown.to_string(), "unknown clap command path: missing");
 
         let duplicate = ContractBuilder::new(Command::new("fixture"))
-            .operation::<CreateOperation>(std::iter::empty::<&str>())
-            .operation::<CreateOperation>(std::iter::empty::<&str>())
+            .command::<CreateCommand>(std::iter::empty::<&str>())
+            .command::<CreateCommand>(std::iter::empty::<&str>())
             .build()
-            .expect_err("duplicate root operation");
-        assert_eq!(duplicate.to_string(), "duplicate operation declaration for command: <root>");
+            .expect_err("duplicate root command");
+        assert_eq!(duplicate.to_string(), "duplicate executable command registration: <root>");
 
         let duplicate_extension = ContractBuilder::new(Command::new("fixture"))
             .extend::<ApplicationMetadata>()
@@ -268,34 +267,35 @@ mod tests {
     }
 
     #[test]
-    fn type_lookup_is_ambiguous_when_one_operation_has_multiple_paths() -> clap_schema::Result<()> {
+    fn type_lookup_is_ambiguous_when_one_command_type_has_multiple_paths() -> clap_schema::Result<()>
+    {
         let contract = ContractBuilder::new(
             Command::new("fixture")
                 .subcommand(Command::new("first"))
                 .subcommand(Command::new("second")),
         )
-        .operation::<CreateOperation>(["first"])
-        .operation::<CreateOperation>(["second"])
+        .command::<CreateCommand>(["first"])
+        .command::<CreateCommand>(["second"])
         .build()?;
 
-        assert!(contract.command_for::<CreateOperation>().is_none());
+        assert!(contract.command_for::<CreateCommand>().is_none());
         assert!(contract.command(&["first"]).is_ok());
         assert!(contract.command(&["second"]).is_ok());
         Ok(())
     }
 
     #[test]
-    fn operation_extension_is_effective_without_an_application_extension() -> clap_schema::Result<()>
+    fn command_extension_is_effective_without_an_application_extension() -> clap_schema::Result<()>
     {
         let contract =
             ContractBuilder::new(Command::new("fixture").subcommand(Command::new("create")))
-                .operation_with_extension::<CreateOperation, CreateMetadata>(["create"])
+                .command_with_extension::<CreateCommand, CreateMetadata>(["create"])
                 .build()?;
 
         assert!(contract.extended_schema().is_none());
         let effective = contract
-            .extended_schema_for_operation::<CreateOperation>()
-            .expect("operation extension should be effective on its own");
+            .extended_schema_for_command::<CreateCommand>()
+            .expect("command extension should be effective on its own");
         assert_eq!(effective["type"], "object");
         assert!(effective["properties"].get("audit_event").is_some());
         Ok(())
@@ -306,7 +306,7 @@ mod tests {
         let contract =
             ContractBuilder::new(Command::new("fixture").subcommand(Command::new("create")))
                 .extend::<ApplicationMetadata>()
-                .operation::<CreateOperation>(["create"])
+                .command::<CreateCommand>(["create"])
                 .build()?;
 
         let application = contract.extended_schema().expect("application extension");
@@ -366,7 +366,7 @@ mod tests {
     #[test]
     fn application_defined_help_is_discoverable() -> clap_schema::Result<()> {
         let contract = HelpCli::schema()?;
-        let help = contract.command_for::<HelpArgs>().expect("application help operation");
+        let help = contract.command_for::<HelpArgs>().expect("application help command");
 
         assert_eq!(help.path, ["help"]);
         Ok(())

@@ -4,7 +4,7 @@
 #[cfg(test)]
 mod tests {
     use clap::{Args, Parser, Subcommand};
-    use clap_schema::{CliSchema, CommandSchema, Operation};
+    use clap_schema::{CliSchema, CommandSchema};
     use schemars::JsonSchema;
     use serde::Serialize;
 
@@ -20,6 +20,8 @@ mod tests {
         FreeConst(FreeConstArgs),
         FreeAsync(FreeAsyncArgs),
         FreeBorrowed(FreeBorrowedArgs),
+        NoInput(NoInputArgs),
+        FreeForm(FreeFormArgs),
         Associated(AssociatedArgs),
         Owned(OwnedArgs),
         Borrowed(BorrowedArgs),
@@ -28,20 +30,22 @@ mod tests {
         ConditionalAttr(ConditionalAttrArgs),
     }
 
-    macro_rules! operation_args {
+    macro_rules! command_args {
         ($($name:ident),+ $(,)?) => {
             $(
-                #[derive(Args, Operation)]
+                #[derive(Args)]
                 struct $name {}
             )+
         };
     }
 
-    operation_args!(
+    command_args!(
         FreeSyncArgs,
         FreeConstArgs,
         FreeAsyncArgs,
         FreeBorrowedArgs,
+        NoInputArgs,
+        FreeFormArgs,
         AssociatedArgs,
         OwnedArgs,
         BorrowedArgs,
@@ -60,48 +64,58 @@ mod tests {
 
     type HandlerResult = Result<Output, HandlerError>;
 
-    #[clap_schema::handler]
+    #[clap_schema::handler(FreeSyncArgs)]
     fn free_sync(_command: FreeSyncArgs) -> HandlerResult {
         Err(HandlerError)
     }
 
-    #[clap_schema::handler]
+    #[clap_schema::handler(FreeConstArgs)]
     const fn free_const(_command: FreeConstArgs) -> HandlerResult {
         Err(HandlerError)
     }
 
-    #[clap_schema::handler]
+    #[clap_schema::handler(FreeAsyncArgs)]
     async fn free_async(_command: FreeAsyncArgs) -> HandlerResult {
         Err(HandlerError)
     }
 
-    #[clap_schema::handler]
+    #[clap_schema::handler(FreeBorrowedArgs)]
     fn free_borrowed(_command: &FreeBorrowedArgs) -> HandlerResult {
         Err(HandlerError)
     }
 
-    #[clap_schema::handler]
+    #[clap_schema::handler(NoInputArgs)]
+    fn no_input() -> HandlerResult {
+        Err(HandlerError)
+    }
+
+    #[clap_schema::handler(FreeFormArgs)]
+    fn free_form(_context: &str, _verbose: bool, _value: u64) -> HandlerResult {
+        Err(HandlerError)
+    }
+
+    #[clap_schema::handler(AssociatedArgs)]
     impl AssociatedArgs {
         fn run(self) -> HandlerResult {
             Err(HandlerError)
         }
     }
 
-    #[clap_schema::handler]
+    #[clap_schema::handler(OwnedArgs)]
     impl OwnedArgs {
         fn run(self, _context: &str, _verbose: bool) -> HandlerResult {
             Err(HandlerError)
         }
     }
 
-    #[clap_schema::handler]
+    #[clap_schema::handler(BorrowedArgs)]
     impl BorrowedArgs {
         fn run(&self) -> HandlerResult {
             Err(HandlerError)
         }
     }
 
-    #[clap_schema::handler]
+    #[clap_schema::handler(MutableArgs)]
     impl MutableArgs {
         #[expect(
             clippy::needless_pass_by_ref_mut,
@@ -112,25 +126,25 @@ mod tests {
         }
     }
 
-    #[clap_schema::handler]
+    #[clap_schema::handler(ConditionalArgs)]
     #[cfg(any())]
     fn conditional_disabled(_command: ConditionalArgs) -> HandlerResult {
         Err(HandlerError)
     }
 
-    #[clap_schema::handler]
+    #[clap_schema::handler(ConditionalArgs)]
     #[cfg(not(any()))]
     fn conditional_enabled(_command: ConditionalArgs) -> HandlerResult {
         Err(HandlerError)
     }
 
-    #[clap_schema::handler]
+    #[clap_schema::handler(ConditionalAttrArgs)]
     #[cfg_attr(all(), cfg(any()))]
     fn conditional_attr_disabled(_command: ConditionalAttrArgs) -> HandlerResult {
         Err(HandlerError)
     }
 
-    #[clap_schema::handler]
+    #[clap_schema::handler(ConditionalAttrArgs)]
     #[cfg_attr(all(), cfg(all()))]
     fn conditional_attr_enabled(_command: ConditionalAttrArgs) -> HandlerResult {
         Err(HandlerError)
@@ -141,15 +155,15 @@ mod tests {
         let contract = Cli::schema()?;
 
         macro_rules! assert_output {
-            ($($operation:ty),+ $(,)?) => {
+            ($($command_type:ty),+ $(,)?) => {
                 $(
                     assert!(
                         contract
-                            .command_for::<$operation>()
+                            .command_for::<$command_type>()
                             .and_then(|command| command.output)
                             .is_some(),
                         "missing handler-derived output for {}",
-                        std::any::type_name::<$operation>(),
+                        std::any::type_name::<$command_type>(),
                     );
                 )+
             };
@@ -160,6 +174,8 @@ mod tests {
             FreeConstArgs,
             FreeAsyncArgs,
             FreeBorrowedArgs,
+            NoInputArgs,
+            FreeFormArgs,
             AssociatedArgs,
             OwnedArgs,
             BorrowedArgs,

@@ -2,7 +2,7 @@
 #![expect(dead_code, reason = "test data types are reflected rather than executed")]
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use clap_schema::{CliSchema, CommandGroup, CommandSchema, Operation};
+use clap_schema::{CliSchema, CommandGroup, CommandSchema};
 use schemars::JsonSchema;
 use serde::Serialize;
 
@@ -119,7 +119,7 @@ enum AdminCommands {
     Status(StatusArgs),
 }
 
-#[derive(Debug, Args, Operation)]
+#[derive(Debug, Args)]
 struct SearchArgs {
     /// Query text.
     #[arg(long)]
@@ -129,12 +129,12 @@ struct SearchArgs {
     #[arg(long, default_value = "25")]
     limit: u16,
 }
-#[derive(Debug, Args, Operation)]
+#[derive(Debug, Args)]
 struct GetObjectArgs {
     #[command(flatten)]
     key: ObjectKeyArgs,
 }
-#[derive(Debug, Args, Operation)]
+#[derive(Debug, Args)]
 struct DeleteObjectArgs {
     #[command(flatten)]
     key: ObjectKeyArgs,
@@ -152,7 +152,7 @@ struct ObjectKeyArgs {
     version_id: Option<String>,
 }
 
-#[derive(Debug, Args, Operation)]
+#[derive(Debug, Args)]
 struct ListObjectsArgs {
     /// Workspace whose objects should be listed.
     workspace_id: String,
@@ -173,7 +173,7 @@ struct ListObjectsArgs {
     #[arg(long, hide = true)]
     internal_token: Option<String>,
 }
-#[derive(Debug, Args, CommandGroup, Operation)]
+#[derive(Debug, Args, CommandGroup)]
 struct AccessArgs {
     /// Workspace containing the object.
     workspace_id: String,
@@ -205,19 +205,19 @@ struct GrantArgs {
     role: AccessRole,
 }
 
-#[derive(Debug, Args, Operation)]
+#[derive(Debug, Args)]
 struct GrantAccessArgs {
     #[command(flatten)]
     grant: GrantArgs,
 }
-#[derive(Debug, Args, Operation)]
+#[derive(Debug, Args)]
 struct RevokeAccessArgs {
     #[command(flatten)]
     grant: GrantArgs,
 }
-#[derive(Debug, Args, Operation)]
+#[derive(Debug, Args)]
 struct WhoamiArgs {}
-#[derive(Debug, Args, Operation)]
+#[derive(Debug, Args)]
 struct StatusArgs {}
 #[derive(Debug, Clone, ValueEnum)]
 #[value(rename_all = "kebab-case")]
@@ -292,47 +292,47 @@ struct Status {
 #[derive(Debug)]
 struct TestError;
 
-#[clap_schema::handler]
+#[clap_schema::handler(GetObjectArgs)]
 async fn get_object(_command: GetObjectArgs) -> Result<ObjectRecord, TestError> {
     Err(TestError)
 }
 
-#[clap_schema::handler]
+#[clap_schema::handler(ListObjectsArgs)]
 async fn list_objects(_command: ListObjectsArgs) -> Result<Page<ObjectRecord>, TestError> {
     Err(TestError)
 }
 
-#[clap_schema::handler]
+#[clap_schema::handler(DeleteObjectArgs)]
 async fn delete_object(_command: DeleteObjectArgs) -> Result<(), TestError> {
     Err(TestError)
 }
 
-#[clap_schema::handler]
+#[clap_schema::handler(AccessArgs)]
 async fn inspect_access(_command: AccessArgs) -> Result<AccessSummary, TestError> {
     Err(TestError)
 }
 
-#[clap_schema::handler]
+#[clap_schema::handler(GrantAccessArgs)]
 async fn grant_access(_command: GrantAccessArgs) -> Result<ObjectGrant, TestError> {
     Err(TestError)
 }
 
-#[clap_schema::handler]
+#[clap_schema::handler(RevokeAccessArgs)]
 async fn revoke_access(_command: RevokeAccessArgs) -> Result<(), TestError> {
     Err(TestError)
 }
 
-#[clap_schema::handler]
+#[clap_schema::handler(SearchArgs)]
 async fn search(_command: SearchArgs) -> Result<Page<ObjectRecord>, TestError> {
     Err(TestError)
 }
 
-#[clap_schema::handler]
+#[clap_schema::handler(WhoamiArgs)]
 async fn whoami(_command: WhoamiArgs) -> Result<Identity, TestError> {
     Err(TestError)
 }
 
-#[clap_schema::handler]
+#[clap_schema::handler(StatusArgs)]
 async fn admin_status(_command: StatusArgs) -> Result<Status, TestError> {
     Err(TestError)
 }
@@ -393,40 +393,40 @@ mod tests {
         assert!(metadata["properties"].get("retry").is_some());
 
         let effective = contract
-            .extended_schema_for_operation::<ListObjectsArgs>()
+            .extended_schema_for_command::<ListObjectsArgs>()
             .expect("effective metadata schema");
         let all_of = effective["allOf"].as_array().expect("allOf metadata composition");
         assert_eq!(all_of.len(), 2);
         let application_ref = all_of[0]["$ref"].as_str().expect("application metadata ref");
-        let operation_ref = all_of[1]["$ref"].as_str().expect("operation extension ref");
+        let command_ref = all_of[1]["$ref"].as_str().expect("command extension ref");
         assert!(application_ref.starts_with("#/$defs/"));
-        assert!(operation_ref.starts_with("#/$defs/"));
+        assert!(command_ref.starts_with("#/$defs/"));
         let application_key = application_ref.trim_start_matches("#/$defs/");
-        let operation_key = operation_ref.trim_start_matches("#/$defs/");
+        let command_key = command_ref.trim_start_matches("#/$defs/");
         assert!(effective["$defs"][application_key]["properties"].get("mutates").is_some());
-        assert!(effective["$defs"][operation_key]["properties"].get("cursor_argument").is_some());
+        assert!(effective["$defs"][command_key]["properties"].get("cursor_argument").is_some());
         let retry_ref = effective["$defs"][application_key]["properties"]["retry"]["$ref"]
             .as_str()
             .expect("nested application metadata ref");
         assert!(effective.pointer(retry_ref.trim_start_matches('#')).is_some());
 
         let inherited = contract
-            .extended_schema_for_operation::<GetObjectArgs>()
+            .extended_schema_for_command::<GetObjectArgs>()
             .expect("inherited application metadata schema");
         assert_eq!(inherited, metadata);
         let aliased_metadata = contract
             .extended_schema_for(&["objects", "access", "add"])?
             .expect("aliased effective metadata schema");
         let aliased_ref =
-            aliased_metadata["allOf"][1]["$ref"].as_str().expect("operation extension ref");
+            aliased_metadata["allOf"][1]["$ref"].as_str().expect("command extension ref");
         let aliased_key = aliased_ref.trim_start_matches("#/$defs/");
         assert!(aliased_metadata["$defs"][aliased_key]["properties"].get("minimum_role").is_some());
 
         let destructive = contract
-            .extended_schema_for_operation::<DeleteObjectArgs>()
+            .extended_schema_for_command::<DeleteObjectArgs>()
             .expect("destructive metadata schema");
         let destructive_ref =
-            destructive["allOf"][1]["$ref"].as_str().expect("operation extension ref");
+            destructive["allOf"][1]["$ref"].as_str().expect("command extension ref");
         let destructive_key = destructive_ref.trim_start_matches("#/$defs/");
         assert!(
             destructive["$defs"][destructive_key]["properties"]
@@ -440,7 +440,7 @@ mod tests {
     #[test]
     fn discovery_combines_usage_and_compact_clap_argument_context() -> clap_schema::Result<()> {
         let contract = Cli::schema()?;
-        let get = contract.command_for::<GetObjectArgs>().expect("get operation");
+        let get = contract.command_for::<GetObjectArgs>().expect("get command");
 
         assert!(!get.usage.is_empty());
         assert_eq!(
@@ -467,7 +467,7 @@ mod tests {
         let url = get.options.iter().find(|argument| argument.id == "url").expect("url option");
         assert_eq!(url.default_values, vec!["https://example.test".to_owned()]);
 
-        let list = contract.command_for::<ListObjectsArgs>().expect("list operation");
+        let list = contract.command_for::<ListObjectsArgs>().expect("list command");
         let order =
             list.options.iter().find(|argument| argument.id == "order").expect("order option");
         assert_eq!(order.aliases, vec!["sort".to_owned()]);
@@ -475,7 +475,7 @@ mod tests {
         assert_eq!(order.possible_values, vec!["newest".to_owned(), "oldest".to_owned()]);
         assert!(!list.options.iter().any(|argument| argument.id == "internal_token"));
 
-        let grant = contract.command_for::<GrantAccessArgs>().expect("grant operation");
+        let grant = contract.command_for::<GrantAccessArgs>().expect("grant command");
         let user_id = grant
             .options
             .iter()
@@ -491,7 +491,7 @@ mod tests {
         assert!(grant.options.iter().any(|argument| argument.id == "role"));
         assert!(!grant.usage.is_empty());
 
-        let search = contract.command_for::<SearchArgs>().expect("search operation");
+        let search = contract.command_for::<SearchArgs>().expect("search command");
         assert!(search.arguments.is_empty());
         let query =
             search.options.iter().find(|argument| argument.id == "query").expect("query option");
@@ -589,7 +589,7 @@ mod tests {
     fn handler_outputs_follow_serialization_view_for_complex_types() -> clap_schema::Result<()> {
         let contract = Cli::schema()?;
 
-        let get = contract.command_for::<GetObjectArgs>().expect("get operation");
+        let get = contract.command_for::<GetObjectArgs>().expect("get command");
         let get_output = get.output.as_ref().expect("get output");
         assert_eq!(get_output["type"], "object");
         let get_schema = serde_json::to_string(get_output).expect("serialize get schema");
@@ -597,14 +597,14 @@ mod tests {
         assert!(get_schema.contains("note"));
         assert!(get_schema.contains("metadata"));
 
-        let list = contract.command_for::<ListObjectsArgs>().expect("list operation");
+        let list = contract.command_for::<ListObjectsArgs>().expect("list command");
         let list_schema = serde_json::to_string(list.output.as_ref().expect("list output"))
             .expect("serialize list schema");
         assert!(list_schema.contains("items"));
         assert!(list_schema.contains("next_cursor"));
         assert!(list_schema.contains("document"));
 
-        let grant = contract.command_for::<GrantAccessArgs>().expect("grant operation");
+        let grant = contract.command_for::<GrantAccessArgs>().expect("grant command");
         let grant_schema = serde_json::to_string(grant.output.as_ref().expect("grant output"))
             .expect("serialize grant schema");
         for expected in ["user_id", "group_id", "viewer", "editor"] {
@@ -612,10 +612,10 @@ mod tests {
         }
 
         assert!(
-            contract.command_for::<DeleteObjectArgs>().expect("delete operation").output.is_none()
+            contract.command_for::<DeleteObjectArgs>().expect("delete command").output.is_none()
         );
         assert!(
-            contract.command_for::<RevokeAccessArgs>().expect("revoke operation").output.is_none()
+            contract.command_for::<RevokeAccessArgs>().expect("revoke command").output.is_none()
         );
         Ok(())
     }

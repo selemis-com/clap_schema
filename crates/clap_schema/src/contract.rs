@@ -6,9 +6,8 @@ use clap::{Arg, ArgAction, Command};
 use schemars::JsonSchema;
 
 use crate::{
-    Operation,
-    model::{ArgumentInfo, CliContract, DiscoveryNode, OperationData},
-    operation::output_schema_factory,
+    model::{ArgumentInfo, CliContract, DiscoveryNode, ExecutableData},
+    output::output_schema_factory,
     schema::{
         ExtendedSchemaFactory, SchemaFactory, compose_extended_schemas, extended_schema_factory,
     },
@@ -29,16 +28,16 @@ pub enum Error {
     #[error("schema command paths must be valid UTF-8")]
     NonUtf8SchemaPath,
 
-    /// A declared operation path does not exist in Clap.
+    /// A declared executable command path does not exist in Clap.
     #[error("unknown clap command path: {path}", path = format_path(.path))]
     UnknownCommand {
-        /// Canonical path requested by the operation declaration.
+        /// Canonical path requested by the command registration.
         path: Vec<String>,
     },
 
-    /// The same operation path was declared more than once.
-    #[error("duplicate operation declaration for command: {path}", path = format_path(.path))]
-    DuplicateOperation {
+    /// The same executable command path was registered more than once.
+    #[error("duplicate executable command registration: {path}", path = format_path(.path))]
+    DuplicateCommandRegistration {
         /// Duplicate canonical path.
         path: Vec<String>,
     },
@@ -65,38 +64,35 @@ pub enum Error {
     },
 }
 
-/// One operation registration before it is reconciled with the built Clap tree.
+/// One executable command registration before it is reconciled with the built Clap tree.
 #[derive(Debug, Clone)]
-pub(crate) struct PendingOperation {
+pub(crate) struct PendingCommandRegistration {
     /// Canonical command path excluding the executable name.
     path: Vec<String>,
     /// Stable in-process identity supplied by the explicitly registered Rust type.
     id: TypeId,
     /// Optional successful-output schema factory derived from the handler contract.
     output: Option<SchemaFactory>,
-    /// Optional operation-specific extension schema factory.
+    /// Optional command-specific extension schema factory.
     extended: Option<ExtendedSchemaFactory>,
 }
 
 /// Shared registration state used by builder and derive construction.
 #[derive(Debug, Default)]
 pub(crate) struct RegistrationState {
-    /// Pending operation registrations.
-    operations: Vec<PendingOperation>,
+    /// Pending executable command registrations.
+    registrations: Vec<PendingCommandRegistration>,
     /// Application-defined extension schema declarations.
     extended: Vec<ExtendedSchemaFactory>,
 }
 
 impl RegistrationState {
-    /// Registers one operation type with an optional extension schema factory.
-    pub(crate) fn operation<T>(
-        &mut self,
-        path: Vec<String>,
-        extended: Option<ExtendedSchemaFactory>,
-    ) where
-        T: Operation,
+    /// Registers one executable command identity with an optional extension schema factory.
+    pub(crate) fn command<T>(&mut self, path: Vec<String>, extended: Option<ExtendedSchemaFactory>)
+    where
+        T: crate::__private::HandlerContract,
     {
-        self.operations.push(PendingOperation {
+        self.registrations.push(PendingCommandRegistration {
             path,
             id: TypeId::of::<T>(),
             output: output_schema_factory::<T>(),
@@ -113,18 +109,18 @@ impl RegistrationState {
 /// Builds and validates successful-output contracts for builder-style Clap applications.
 ///
 /// Clap remains authoritative for invocation syntax and parser behavior. The builder
-/// associates canonical command paths with Rust types implementing [`Operation`]. Those operation
-/// implementations are ordinary empty Rust trait impls backed by the type's canonical
-/// `#[clap_schema::handler]`, so successful output schemas stay tied to real handler signatures.
+/// associates canonical command paths with Rust types that have a canonical
+/// `#[clap_schema::handler(Type)]`, so successful output schemas stay tied to real handler
+/// signatures.
 /// The same built Clap command tree is reflected into the crate's read-only discovery view.
 /// Applications may additionally declare an application-wide schema extension with
-/// [`ContractBuilder::extend`] and operation-specific extensions with
-/// [`ContractBuilder::operation_with_extension`].
+/// [`ContractBuilder::extend`] and command-specific extensions with
+/// [`ContractBuilder::command_with_extension`].
 #[derive(Debug)]
 pub struct ContractBuilder {
-    /// Root Clap command tree used to validate registered operation paths.
+    /// Root Clap command tree used to validate registered command paths.
     root: Command,
-    /// Shared operation and extension registrations.
+    /// Shared command and extension registrations.
     registration: RegistrationState,
 }
 
@@ -134,7 +130,7 @@ impl ContractBuilder {
     pub const fn new(root: Command) -> Self {
         Self {
             root,
-            registration: RegistrationState { operations: Vec::new(), extended: Vec::new() },
+            registration: RegistrationState { registrations: Vec::new(), extended: Vec::new() },
         }
     }
 
@@ -143,35 +139,35 @@ impl ContractBuilder {
         Self { root, registration }
     }
 
-    /// Registers one executable operation type by canonical command path.
+    /// Registers one executable command identity by canonical command path.
     ///
-    /// `T` is the Rust identity of the operation. It must implement [`Operation`], with its
-    /// canonical `#[clap_schema::handler]` supplying the successful output contract.
+    /// `T` is the Rust identity of the executable command. Its canonical
+    /// `#[clap_schema::handler(T)]` supplies the successful output contract.
     /// Builder paths are canonical Clap command names; alias resolution is a discovery-time feature
     /// after the contract has been built.
     #[must_use]
-    pub fn operation<T>(mut self, path: impl IntoIterator<Item = impl Into<String>>) -> Self
+    pub fn command<T>(mut self, path: impl IntoIterator<Item = impl Into<String>>) -> Self
     where
-        T: Operation,
+        T: crate::__private::HandlerContract,
     {
-        self.registration.operation::<T>(path.into_iter().map(Into::into).collect(), None);
+        self.registration.command::<T>(path.into_iter().map(Into::into).collect(), None);
         self
     }
 
-    /// Registers one executable operation type with an operation-specific extension schema.
+    /// Registers one executable command identity with a command-specific extension schema.
     ///
     /// This is the builder-style counterpart to `#[schema(extend = Type)]` on derive-based
     /// executable variants.
     #[must_use]
-    pub fn operation_with_extension<T, E>(
+    pub fn command_with_extension<T, E>(
         mut self,
         path: impl IntoIterator<Item = impl Into<String>>,
     ) -> Self
     where
-        T: Operation,
+        T: crate::__private::HandlerContract,
         E: JsonSchema,
     {
-        self.registration.operation::<T>(
+        self.registration.command::<T>(
             path.into_iter().map(Into::into).collect(),
             Some(extended_schema_factory::<E>()),
         );
@@ -185,12 +181,12 @@ impl ContractBuilder {
     /// machine-facing responses, and for ensuring those values satisfy the declared schema.
     /// Declaring more than one application-wide extension is rejected by [`Self::build`].
     ///
-    /// Operation-specific supplements are attached while registering the operation with
-    /// [`ContractBuilder::operation_with_extension`] and can be queried together with
+    /// Command-specific supplements are attached while registering the executable command with
+    /// [`ContractBuilder::command_with_extension`] and can be queried together with
     /// this schema through
     /// [`CliContract::extended_schema_for`](crate::CliContract::extended_schema_for) or, when the
-    /// operation type is already known, through
-    /// [`CliContract::extended_schema_for_operation`](crate::CliContract::extended_schema_for_operation).
+    /// command type is already known, through
+    /// [`CliContract::extended_schema_for_command`](crate::CliContract::extended_schema_for_command).
     #[must_use]
     pub fn extend<T>(mut self) -> Self
     where
@@ -204,21 +200,21 @@ impl ContractBuilder {
     ///
     /// # Errors
     ///
-    /// Returns an error when an operation path does not exist in the actual Clap tree, when the
-    /// same operation path is registered more than once, or when more than one application-wide
-    /// extension is declared.
+    /// Returns an error when a registered command path does not exist in the actual Clap tree, when
+    /// the same command path is registered more than once, or when more than one
+    /// application-wide extension is declared.
     pub fn build(self) -> Result<CliContract> {
         let Self { mut root, registration } = self;
-        let RegistrationState { operations, extended } = registration;
+        let RegistrationState { registrations, extended } = registration;
         let extended = unique_application_extension(&extended)?;
         root.build();
-        reject_duplicate_paths(&operations)?;
+        reject_duplicate_paths(&registrations)?;
 
         let application_extended_schema = extended.map(ExtendedSchemaFactory::root);
-        let mut operations = operations;
-        let discovery = discovery_tree(&root, &mut operations, extended);
-        if let Some(operation) = operations.first() {
-            return Err(Error::UnknownCommand { path: operation.path.clone() });
+        let mut registrations = registrations;
+        let discovery = discovery_tree(&root, &mut registrations, extended);
+        if let Some(registration) = registrations.first() {
+            return Err(Error::UnknownCommand { path: registration.path.clone() });
         }
 
         Ok(CliContract { discovery, extended_schema: application_extended_schema })
@@ -237,23 +233,24 @@ const fn unique_application_extension(
 }
 
 /// Rejects duplicate command paths before reflection.
-fn reject_duplicate_paths(operations: &[PendingOperation]) -> Result<()> {
-    let mut seen = HashSet::with_capacity(operations.len());
-    for operation in operations {
-        if !seen.insert(operation.path.clone()) {
-            return Err(Error::DuplicateOperation { path: operation.path.clone() });
+fn reject_duplicate_paths(registrations: &[PendingCommandRegistration]) -> Result<()> {
+    let mut seen = HashSet::with_capacity(registrations.len());
+    for registration in registrations {
+        if !seen.insert(registration.path.clone()) {
+            return Err(Error::DuplicateCommandRegistration { path: registration.path.clone() });
         }
     }
     Ok(())
 }
 
-/// Reconciles registered operations with Clap while building the visible discovery topology.
+/// Reconciles registered executable commands with Clap while building the visible discovery
+/// topology.
 fn discovery_tree(
     root: &Command,
-    operations: &mut Vec<PendingOperation>,
+    registrations: &mut Vec<PendingCommandRegistration>,
     application_extension: Option<ExtendedSchemaFactory>,
 ) -> DiscoveryNode {
-    build_discovery_node(root, Vec::new(), operations, application_extension, false, true)
+    build_discovery_node(root, Vec::new(), registrations, application_extension, false, true)
         .expect("the root discovery node is always retained")
 }
 
@@ -261,16 +258,16 @@ fn discovery_tree(
 fn build_discovery_node(
     command: &Command,
     path: Vec<String>,
-    operations: &mut Vec<PendingOperation>,
+    registrations: &mut Vec<PendingCommandRegistration>,
     application_extension: Option<ExtendedSchemaFactory>,
     ancestor_hidden: bool,
     root: bool,
 ) -> Option<DiscoveryNode> {
     let hidden = ancestor_hidden || command.is_hide_set();
-    let pending = operations
+    let pending = registrations
         .iter()
-        .position(|operation| operation.path == path)
-        .map(|index| operations.remove(index));
+        .position(|registration| registration.path == path)
+        .map(|index| registrations.remove(index));
 
     let mut children = Vec::new();
     for child in command.get_subcommands() {
@@ -279,7 +276,7 @@ fn build_discovery_node(
         if let Some(child) = build_discovery_node(
             child,
             child_path,
-            operations,
+            registrations,
             application_extension,
             hidden,
             false,
@@ -293,24 +290,24 @@ fn build_discovery_node(
         return None;
     }
 
-    let operation = if hidden {
+    let executable = if hidden {
         None
     } else {
-        pending.map(|operation| {
-            let extended_schema = operation.extended.map(|operation| {
+        pending.map(|registration| {
+            let extended_schema = registration.extended.map(|extension| {
                 application_extension.map_or_else(
-                    || operation.root(),
-                    |application| compose_extended_schemas(application, operation),
+                    || extension.root(),
+                    |application| compose_extended_schemas(application, extension),
                 )
             });
-            OperationData {
-                id: operation.id,
-                output: operation.output.map(|factory| factory()),
+            ExecutableData {
+                id: registration.id,
+                output: registration.output.map(|factory| factory()),
                 extended_schema,
             }
         })
     };
-    if !root && operation.is_none() && children.is_empty() {
+    if !root && executable.is_none() && children.is_empty() {
         return None;
     }
 
@@ -326,7 +323,7 @@ fn build_discovery_node(
         usage: usage_synopsis(command),
         arguments: reflected_positionals(command),
         options: reflected_options(command),
-        operation,
+        executable,
         children,
     })
 }
@@ -416,7 +413,7 @@ fn usage_synopsis(command: &Command) -> String {
     rendered.strip_prefix("Usage: ").unwrap_or(&rendered).trim().to_owned()
 }
 
-/// Formats a canonical operation path for diagnostics.
+/// Formats a canonical command path for diagnostics.
 fn format_path(path: &[String]) -> String {
     if path.is_empty() { "<root>".to_owned() } else { path.join(" ") }
 }

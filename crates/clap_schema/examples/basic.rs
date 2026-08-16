@@ -4,7 +4,7 @@
 use std::convert::Infallible;
 
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliSchema, CommandSchema, Operation, write_json};
+use clap_schema::{CliSchema, CommandSchema, write_json};
 use schemars::JsonSchema;
 use serde::Serialize;
 
@@ -12,12 +12,12 @@ use serde::Serialize;
 #[derive(Debug, Parser, CliSchema)]
 #[command(name = "items")]
 struct Cli {
-    /// Selects the operation to run.
+    /// Selects the command to run.
     #[command(subcommand)]
     command: Commands,
 }
 
-/// Item operations.
+/// Item commands.
 #[derive(Debug, Subcommand, CommandSchema)]
 enum Commands {
     /// Create one item.
@@ -25,13 +25,13 @@ enum Commands {
 }
 
 /// Arguments accepted by item creation.
-#[derive(Debug, Args, Operation)]
+#[derive(Debug, Args)]
 struct CreateArgs {
     /// Name assigned to the new item.
     #[arg(long)]
     name: String,
 }
-/// Item returned by a successful create operation.
+/// Item returned by a successful create command.
 #[derive(Debug, Serialize, JsonSchema)]
 struct Item {
     /// Stable item identifier.
@@ -41,7 +41,7 @@ struct Item {
 }
 
 /// Canonical create handler. Its `Item` result is the output contract source of truth.
-#[clap_schema::handler]
+#[clap_schema::handler(CreateArgs)]
 impl CreateArgs {
     /// Creates the example item.
     fn run(self) -> Result<Item, Infallible> {
@@ -51,7 +51,7 @@ impl CreateArgs {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let contract = Cli::schema()?;
-    let command = contract.command_for::<CreateArgs>().expect("create operation is registered");
+    let command = contract.command_for::<CreateArgs>().expect("create command is registered");
 
     println!("Command contract:");
     println!("{}", serde_json::to_string_pretty(&command)?);

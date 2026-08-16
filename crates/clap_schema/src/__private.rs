@@ -9,21 +9,14 @@ use schemars::JsonSchema;
 use serde::Serialize;
 
 use crate::{
-    CliContract, CliSchema, ContractBuilder, Operation, Result, contract::RegistrationState,
+    CliContract, CliSchema, ContractBuilder, Result, contract::RegistrationState,
     schema::extended_schema_factory,
 };
 
-/// Marker implemented by `#[derive(Operation)]`.
+/// Handler-derived successful-output contract for an executable command type.
 ///
-/// This trait is public solely so derive expansions can establish operation identity in
-/// downstream crates. The public [`crate::Operation`] capability is provided by `clap_schema`.
-#[doc(hidden)]
-pub trait OperationMarker: 'static {}
-
-/// Handler-derived contract required by the public `Operation` capability.
-///
-/// This trait is intended for `#[clap_schema::handler]` expansions. It is public solely so
-/// those expansions can satisfy the `Operation` blanket implementation in downstream crates.
+/// This trait is intended only for `#[clap_schema::handler(Type)]` expansions. It is public solely
+/// so those expansions can provide the contract from downstream crates.
 #[doc(hidden)]
 pub trait HandlerContract: 'static {
     /// Successful machine-output type declared by the canonical handler.
@@ -53,21 +46,21 @@ pub struct Registry {
 }
 
 impl Registry {
-    /// Registers one executable operation by Rust operation type.
-    pub fn operation<T>(&mut self, path: &[String])
+    /// Registers one executable command by Rust identity type.
+    pub fn command<T>(&mut self, path: &[String])
     where
-        T: Operation,
+        T: HandlerContract,
     {
-        self.registration.operation::<T>(path.to_vec(), None);
+        self.registration.command::<T>(path.to_vec(), None);
     }
 
-    /// Registers one executable operation with an operation-specific extension schema.
-    pub fn operation_extended<T, E>(&mut self, path: &[String])
+    /// Registers one executable command with a command-specific extension schema.
+    pub fn command_extended<T, E>(&mut self, path: &[String])
     where
-        T: Operation,
+        T: HandlerContract,
         E: JsonSchema,
     {
-        self.registration.operation::<T>(path.to_vec(), Some(extended_schema_factory::<E>()));
+        self.registration.command::<T>(path.to_vec(), Some(extended_schema_factory::<E>()));
     }
 
     /// Declares the application-defined extension schema type for the root CLI.

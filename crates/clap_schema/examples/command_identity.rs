@@ -1,10 +1,10 @@
-//! Show how one Rust type anchors a derived Clap operation and its handler contract.
+//! Show how one Rust payload type anchors a derived Clap command and its handler contract.
 #![expect(dead_code, reason = "example data types are reflected rather than all executed")]
 
 use std::convert::Infallible;
 
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliSchema, CommandSchema, Operation};
+use clap_schema::{CliSchema, CommandSchema};
 use schemars::JsonSchema;
 use serde::Serialize;
 
@@ -25,15 +25,15 @@ enum Commands {
     Workspaces(WorkspacesCommands),
 }
 
-/// Workspace operations.
+/// Workspace commands.
 #[derive(Debug, Subcommand, CommandSchema)]
 enum WorkspacesCommands {
     /// Get one workspace.
     Get(WorkspacesGetCommand),
 }
 
-/// Arguments and Rust identity of the `workspaces get` operation.
-#[derive(Debug, Args, Operation)]
+/// Arguments and Rust identity of the `workspaces get` command.
+#[derive(Debug, Args)]
 struct WorkspacesGetCommand {
     /// Workspace identifier.
     workspace_id: u64,
@@ -57,33 +57,35 @@ struct Workspace {
     name: String,
 }
 
-/// Canonical implementation of `WorkspacesGetCommand`.
+/// Canonical handler for `WorkspacesGetCommand`.
 ///
-/// `Self` already identifies the operation. The additional runtime parameters are not inspected by
-/// `clap_schema`, and `Workspace` is inferred directly from the handler's `Result` return type.
-#[clap_schema::handler]
-impl WorkspacesGetCommand {
-    /// Gets one workspace.
-    fn run(self, _ctx: CliContext, _output: OutputMode) -> Result<Workspace, Infallible> {
-        Ok(Workspace { id: self.workspace_id, name: "Example workspace".to_owned() })
-    }
+/// `#[handler(WorkspacesGetCommand)]` explicitly identifies the command payload type, so runtime
+/// parameters may appear in any order. `Workspace` is inferred directly from the handler's
+/// `Result` return type.
+#[clap_schema::handler(WorkspacesGetCommand)]
+fn get_workspace(
+    _ctx: CliContext,
+    command: &WorkspacesGetCommand,
+    _output: OutputMode,
+) -> Result<Workspace, Infallible> {
+    Ok(Workspace { id: command.workspace_id, name: "Example workspace".to_owned() })
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let contract = Cli::schema()?;
     let command = contract
         .command_for::<WorkspacesGetCommand>()
-        .expect("workspaces get operation is registered");
+        .expect("workspaces get command is registered");
 
-    println!("Operation contract selected by Rust type:");
+    println!("Command contract selected by Rust type:");
     println!("{}", serde_json::to_string_pretty(&command)?);
 
     let cli = Cli::parse_from(["workspacectl", "workspaces", "get", "42"]);
     let Commands::Workspaces(workspaces) = cli.command;
     let WorkspacesCommands::Get(request) = workspaces;
-    let workspace = request.run(CliContext, OutputMode::Human)?;
+    let workspace = get_workspace(CliContext, &request, OutputMode::Human)?;
 
-    println!("\nRuntime result from the same operation type:");
+    println!("\nRuntime result from the same command type:");
     println!("{}", serde_json::to_string_pretty(&workspace)?);
 
     Ok(())

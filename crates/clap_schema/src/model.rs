@@ -5,35 +5,33 @@ use std::{any::TypeId, ffi::OsString};
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::Operation;
-
-/// Validated command contract used for discovery and typed operation lookup.
+/// Validated command contract used for discovery and typed command lookup.
 ///
 /// `CliContract` is an in-memory resolver rather than a wire document. Use [`Self::schema`] to
 /// produce the canonical serializable discovery representation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliContract {
-    /// Visible command topology with operation data attached to executable nodes.
+    /// Visible command topology with executable data attached to executable nodes.
     pub(crate) discovery: DiscoveryNode,
     /// Optional application-defined schema extension.
     pub(crate) extended_schema: Option<Value>,
 }
 
 impl CliContract {
-    /// Finds the visible command bound to a Rust operation type.
+    /// Finds the visible command bound to a Rust command identity type.
     ///
     /// This is the non-brittle counterpart to a static string path lookup. The derive macros
     /// obtain the canonical command path from Clap itself, so renaming a command with
     /// `#[command(name = "...")]` does not require updating Rust-side schema queries that already
-    /// name the operation type. Returns `None` when the operation is not schema-visible or the same
-    /// operation type is intentionally registered at more than one visible path; use
+    /// name the command type. Returns `None` when the command is not schema-visible or the same
+    /// command type is intentionally registered at more than one visible path; use
     /// [`Self::command`] for those ambiguous paths or when the path comes from user or agent input.
     #[must_use]
     pub fn command_for<T>(&self) -> Option<CommandInfo>
     where
-        T: Operation,
+        T: 'static,
     {
-        let node = self.unique_operation_node::<T>()?;
+        let node = self.unique_command_node::<T>()?;
         Some(self.command_info(node))
     }
 
@@ -48,13 +46,13 @@ impl CliContract {
         self.extended_schema.as_ref()
     }
 
-    /// Returns the effective extended schema for one visible command or operation.
+    /// Returns the effective extended schema for one visible command.
     ///
     /// The application-wide extended schema applies throughout the schema-visible discovery tree.
-    /// When the selected executable operation declares an additional extension schema, both
+    /// When the selected executable command declares an additional extension schema, both
     /// layers are composed with JSON Schema `allOf`; `clap_schema` never shallow-merges schema
     /// objects. A command group therefore sees only the application-wide schema, while an
-    /// executable operation may additionally narrow or supplement it. Concrete extension values
+    /// executable command may additionally narrow or supplement it. Concrete extension values
     /// remain entirely application-owned and must satisfy the effective schema the application
     /// chooses to expose. Because `allOf` validates the same value against every layer,
     /// applications must choose schemas that are mutually composable; `clap_schema` does not
@@ -64,7 +62,7 @@ impl CliContract {
     ///
     /// ```
     /// use clap::Command;
-    /// use clap_schema::{ContractBuilder, Operation};
+    /// use clap_schema::ContractBuilder;
     /// use schemars::JsonSchema;
     /// use serde::Serialize;
     ///
@@ -83,11 +81,10 @@ impl CliContract {
     ///     next_cursor: Option<String>,
     /// }
     ///
-    /// #[derive(Operation)]
-    /// struct ListOperation;
+    /// struct ListCommand;
     ///
-    /// #[clap_schema::handler]
-    /// impl ListOperation {
+    /// #[clap_schema::handler(ListCommand)]
+    /// impl ListCommand {
     ///     fn list(self) -> Result<Page, std::convert::Infallible> {
     ///         Ok(Page { next_cursor: None })
     ///     }
@@ -95,11 +92,10 @@ impl CliContract {
     ///
     /// let contract = ContractBuilder::new(Command::new("example").subcommand(Command::new("list")))
     ///     .extend::<CommonMetadata>()
-    ///     .operation_with_extension::<ListOperation, PaginationMetadata>(["list"])
+    ///     .command_with_extension::<ListCommand, PaginationMetadata>(["list"])
     ///     .build()?;
     ///
-    /// let schema =
-    ///     contract.extended_schema_for_operation::<ListOperation>().expect("extended schema");
+    /// let schema = contract.extended_schema_for_command::<ListCommand>().expect("extended schema");
     /// assert_eq!(schema["allOf"].as_array().map(Vec::len), Some(2));
     /// # Ok::<(), clap_schema::Error>(())
     /// ```
@@ -107,25 +103,25 @@ impl CliContract {
     /// # Errors
     ///
     /// Returns [`crate::Error::UnknownCommand`] when `path` is not schema-visible. When static
-    /// Rust code already names the operation type, prefer [`Self::extended_schema_for_operation`]
+    /// Rust code already names the command type, prefer [`Self::extended_schema_for_command`]
     /// to avoid repeating its canonical command path.
     pub fn extended_schema_for(&self, path: &[&str]) -> crate::Result<Option<&Value>> {
         let node = self.discovery.resolve(path)?;
         Ok(self.extended_schema_for_node(node))
     }
 
-    /// Returns the effective extended schema for a visible Rust operation type.
+    /// Returns the effective extended schema for a visible Rust command identity type.
     ///
     /// This avoids repeating a canonical command path in application code that already names the
-    /// operation type. Returns `None` when the operation is not schema-visible, is registered at
+    /// command type. Returns `None` when the command is not schema-visible, is registered at
     /// multiple visible paths, or has no applicable extended schema. Use
     /// [`Self::extended_schema_for`] when the path comes from user or agent input.
     #[must_use]
-    pub fn extended_schema_for_operation<T>(&self) -> Option<&Value>
+    pub fn extended_schema_for_command<T>(&self) -> Option<&Value>
     where
-        T: Operation,
+        T: 'static,
     {
-        let node = self.unique_operation_node::<T>()?;
+        let node = self.unique_command_node::<T>()?;
         self.extended_schema_for_node(node)
     }
 
@@ -149,7 +145,7 @@ impl CliContract {
     /// Resolves a visible command or command group by canonical name or Clap alias.
     ///
     /// Returned paths are always canonical and exclude the executable name. When static Rust code
-    /// already names an operation type, prefer [`Self::command_for`] so a Clap rename cannot
+    /// already names a command type, prefer [`Self::command_for`] so a Clap rename cannot
     /// leave a duplicated path literal behind.
     ///
     /// # Errors
@@ -172,8 +168,8 @@ impl CliContract {
             usage: node.usage.clone(),
             arguments: node.arguments.clone(),
             options: node.options.clone(),
-            executable: node.operation.is_some(),
-            output: node.operation.as_ref().and_then(|operation| operation.output.clone()),
+            executable: node.executable.is_some(),
+            output: node.executable.as_ref().and_then(|executable| executable.output.clone()),
             has_subcommands: !node.children.is_empty(),
         }
     }
@@ -196,19 +192,19 @@ impl CliContract {
         SchemaDocument { command, subcommands }
     }
 
-    /// Resolves an operation identity only when it names one visible command unambiguously.
-    fn unique_operation_node<T>(&self) -> Option<&DiscoveryNode>
+    /// Resolves a Rust command identity only when it names one visible command unambiguously.
+    fn unique_command_node<T>(&self) -> Option<&DiscoveryNode>
     where
-        T: Operation,
+        T: 'static,
     {
-        self.discovery.unique_operation(TypeId::of::<T>())
+        self.discovery.unique_command(TypeId::of::<T>())
     }
 
-    /// Applies operation-local extension precedence over the application-wide extension.
+    /// Applies command-local extension precedence over the application-wide extension.
     fn extended_schema_for_node<'a>(&'a self, node: &'a DiscoveryNode) -> Option<&'a Value> {
-        node.operation
+        node.executable
             .as_ref()
-            .and_then(|operation| operation.extended_schema.as_ref())
+            .and_then(|executable| executable.extended_schema.as_ref())
             .or(self.extended_schema.as_ref())
     }
 }
@@ -303,14 +299,14 @@ pub enum SchemaSubcommand {
     Resolved(Box<SchemaDocument>),
 }
 
-/// Internal operation data attached directly to one schema-visible command node.
+/// Internal executable-command data attached directly to one schema-visible command node.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct OperationData {
-    /// Stable in-process Rust operation identity.
+pub(crate) struct ExecutableData {
+    /// Stable in-process Rust command identity.
     pub(crate) id: TypeId,
     /// JSON Schema for the successful value, absent for `Result<(), E>`.
     pub(crate) output: Option<Value>,
-    /// Effective operation-specific extension schema, when one is declared.
+    /// Effective command-specific extension schema, when one is declared.
     pub(crate) extended_schema: Option<Value>,
 }
 
@@ -338,10 +334,10 @@ pub struct CommandInfo {
     /// Visible non-positional options reflected directly from Clap.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub options: Vec<ArgumentInfo>,
-    /// Whether this node is an executable operation.
+    /// Whether this node is executable.
     #[serde(default, skip_serializing_if = "is_false")]
     pub executable: bool,
-    /// Successful output schema when the operation returns a non-unit value.
+    /// Successful output schema when the command returns a non-unit value.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output: Option<Value>,
     /// Whether the node has schema-visible child commands.
@@ -357,7 +353,7 @@ pub struct SchemaCommandSummary {
     /// Command description reflected from Clap help metadata.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Whether this command is an executable operation.
+    /// Whether this command is executable.
     #[serde(default, skip_serializing_if = "is_false")]
     pub executable: bool,
     /// Whether this command has schema-visible child commands.
@@ -436,22 +432,22 @@ pub(crate) struct DiscoveryNode {
     pub(crate) arguments: Vec<ArgumentInfo>,
     /// Visible non-positional options reflected directly from Clap.
     pub(crate) options: Vec<ArgumentInfo>,
-    /// Operation data when this visible command is executable.
-    pub(crate) operation: Option<OperationData>,
+    /// Executable-command data when this visible command can produce a machine output.
+    pub(crate) executable: Option<ExecutableData>,
     /// Schema-visible child commands.
     pub(crate) children: Vec<Self>,
 }
 
 impl DiscoveryNode {
-    /// Finds one operation type only when it appears at exactly one visible command node.
-    pub(crate) fn unique_operation(&self, id: TypeId) -> Option<&Self> {
+    /// Finds one Rust command identity only when it appears at exactly one visible command node.
+    pub(crate) fn unique_command(&self, id: TypeId) -> Option<&Self> {
         fn visit<'a>(
             node: &'a DiscoveryNode,
             id: TypeId,
             found: &mut Option<&'a DiscoveryNode>,
             ambiguous: &mut bool,
         ) {
-            if node.operation.as_ref().is_some_and(|operation| operation.id == id) {
+            if node.executable.as_ref().is_some_and(|executable| executable.id == id) {
                 if found.is_some() {
                     *ambiguous = true;
                     return;

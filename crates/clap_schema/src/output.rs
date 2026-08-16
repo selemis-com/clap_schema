@@ -1,4 +1,4 @@
-//! Rust-type operation identities and successful-output emission.
+//! Handler-derived successful-output schemas and JSON emission.
 
 use std::{any::TypeId, io::Write};
 
@@ -7,57 +7,12 @@ use serde::Serialize;
 
 use crate::schema::{SchemaFactory, schema_for};
 
-/// Private sealing implementation for [`Operation`].
-mod sealed {
-    #[expect(
-        unnameable_types,
-        reason = "the public-but-unnameable trait intentionally seals Operation"
-    )]
-    /// Private sealing capability for operation types.
-    pub trait Sealed {}
-
-    impl<T> Sealed for T where T: crate::__private::OperationMarker {}
-}
-
-/// Compile-time identity of one executable operation.
-///
-/// Operation identities are ordinary Rust types. In derive-based Clap applications, derive
-/// `Operation` on the tuple payload type of the executable command. Builder-style applications may
-/// use a dedicated marker type instead. The derive establishes a hidden marker, while a canonical
-/// [`crate::handler`] supplies the hidden handler contract. `clap_schema` provides this capability
-/// when both are present, so applications do not implement this trait directly.
-///
-/// Derive the marker alongside the Clap argument type:
-///
-/// ```
-/// # use clap::Args;
-/// # use clap_schema::Operation;
-/// #[derive(Args, Operation)]
-/// struct CreateArgs {
-///     #[arg(long)]
-///     name: String,
-/// }
-///
-/// #[clap_schema::handler]
-/// fn create(args: CreateArgs) -> Result<(), std::convert::Infallible> {
-///     let _ = args;
-///     Ok(())
-/// }
-/// ```
-pub trait Operation: sealed::Sealed + crate::__private::HandlerContract + 'static {}
-
-impl<T> Operation for T where
-    T: crate::__private::OperationMarker + crate::__private::HandlerContract + 'static
-{
-}
-
-/// Returns the successful-output schema factory for one operation type.
+/// Returns the successful-output schema factory for one executable command type.
 pub(crate) fn output_schema_factory<T>() -> Option<SchemaFactory>
 where
-    T: Operation,
+    T: crate::__private::HandlerContract,
 {
-    has_output::<<T as crate::__private::HandlerContract>::Output>()
-        .then_some(schema_for::<<T as crate::__private::HandlerContract>::Output>)
+    has_output::<T::Output>().then_some(schema_for::<T::Output>)
 }
 
 /// Returns whether a successful handler type has a machine-output payload.

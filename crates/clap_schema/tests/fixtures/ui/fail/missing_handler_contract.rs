@@ -1,5 +1,5 @@
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliSchema, CommandSchema, Operation};
+use clap_schema::{CliSchema, CommandSchema};
 
 #[derive(Parser, CliSchema)]
 struct Cli {
@@ -12,7 +12,7 @@ enum Commands {
     Run(RunArgs),
 }
 
-#[derive(Args, Operation)]
+#[derive(Args)]
 struct RunArgs {}
 fn main() {
     let _ = Cli::schema();

@@ -4,7 +4,7 @@
 use std::convert::Infallible;
 
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliSchema, CommandSchema, Operation};
+use clap_schema::{CliSchema, CommandSchema};
 use schemars::JsonSchema;
 use serde::Serialize;
 
@@ -13,12 +13,12 @@ use serde::Serialize;
 #[command(name = "resourcectl")]
 #[schema(extend = CommandMetadata)]
 struct Cli {
-    /// Selects the operation to inspect.
+    /// Selects the command to inspect.
     #[command(subcommand)]
     command: Commands,
 }
 
-/// Resource operations.
+/// Resource commands.
 #[derive(Debug, Subcommand, CommandSchema)]
 enum Commands {
     /// List resources with cursor pagination.
@@ -27,7 +27,7 @@ enum Commands {
 }
 
 /// Arguments accepted by resource listing.
-#[derive(Debug, Args, Operation)]
+#[derive(Debug, Args)]
 struct ListArgs {
     /// Opaque cursor returned by the previous page.
     #[arg(long)]
@@ -42,7 +42,7 @@ struct CommandMetadata {
     idempotent: bool,
 }
 
-/// Operation-specific metadata added to paginated commands.
+/// Command-specific metadata added to paginated commands.
 #[derive(Debug, Serialize, JsonSchema)]
 struct PaginationMetadata {
     /// Option that accepts the cursor returned by the previous page.
@@ -78,7 +78,7 @@ struct ResourcePage {
 }
 
 /// Canonical list handler.
-#[clap_schema::handler]
+#[clap_schema::handler(ListArgs)]
 fn list(_command: ListArgs) -> Result<ResourcePage, Infallible> {
     Ok(ResourcePage { next_cursor: Some("next-123".to_owned()) })
 }
@@ -86,7 +86,7 @@ fn list(_command: ListArgs) -> Result<ResourcePage, Infallible> {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let contract = Cli::schema()?;
     let extended_schema =
-        contract.extended_schema_for_operation::<ListArgs>().expect("list extended schema");
+        contract.extended_schema_for_command::<ListArgs>().expect("list extended schema");
 
     let metadata = ListMetadataValue {
         command: CommandMetadata { effect: Effect::Read, idempotent: true },

@@ -2,7 +2,7 @@
 #![expect(dead_code, reason = "example data types are reflected rather than executed")]
 
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliContract, CliSchema, CommandSchema, Operation, SchemaRequest, write_json};
+use clap_schema::{CliContract, CliSchema, CommandSchema, SchemaRequest, write_json};
 use schemars::JsonSchema;
 use serde::Serialize;
 
@@ -31,7 +31,7 @@ enum Commands {
 }
 
 /// Arguments used to fetch a resource.
-#[derive(Debug, Args, Operation)]
+#[derive(Debug, Args)]
 struct GetArgs {
     /// Identifier of the resource to fetch.
     id: String,
@@ -57,7 +57,7 @@ struct Resource {
 }
 
 /// Fetches a resource and supplies the exact value emitted in machine mode.
-#[clap_schema::handler]
+#[clap_schema::handler(GetArgs)]
 fn get(command: GetArgs) -> Result<Resource, std::io::Error> {
     Ok(Resource { id: command.id, name: "Example resource".to_owned() })
 }
