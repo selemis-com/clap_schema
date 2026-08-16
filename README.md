@@ -26,7 +26,7 @@ cargo add serde --features derive
 
 ```rust
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliSchema, CommandSchema};
+use clap_schema::{CliSchema, CommandSchema, Operation};
 use schemars::JsonSchema;
 use serde::Serialize;
 
@@ -42,7 +42,7 @@ enum Commands {
     Get(GetArgs),
 }
 
-#[derive(Args, clap_schema::Operation)]
+#[derive(Args, Operation)]
 struct GetArgs {
     /// Item identifier.
     id: String,
@@ -69,7 +69,7 @@ assert!(command.output.is_some());
 # Ok::<(), clap_schema::Error>(())
 ```
 
-`GetArgs` is the Rust operation identity. `#[derive(clap_schema::Operation)]` marks that identity, while `#[clap_schema::handler]` supplies its handler-derived contract; `clap_schema` provides the `Operation` capability when both are present. `CommandSchema` resolves the operation through the variant payload type. Removing the handler or defining a second canonical handler for the same operation type therefore fails at compile time.
+`GetArgs` is the Rust operation identity. `#[derive(Operation)]` marks that identity, while `#[clap_schema::handler]` supplies its handler-derived contract; `clap_schema` provides the `Operation` capability when both are present. `CommandSchema` resolves the operation through the variant payload type. Removing the handler or defining a second canonical handler for the same operation type therefore fails at compile time.
 
 The output schema comes from the declared successful handler type, not from a separate `#[schema(output = ...)]` declaration. At runtime, use `write_json` when you want the emitted JSON and generated schema to stay parameterized by the same `T`.
 

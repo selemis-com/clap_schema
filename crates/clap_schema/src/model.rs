@@ -64,7 +64,7 @@ impl CliContract {
     ///
     /// ```
     /// use clap::Command;
-    /// use clap_schema::ContractBuilder;
+    /// use clap_schema::{ContractBuilder, Operation};
     /// use schemars::JsonSchema;
     /// use serde::Serialize;
     ///
@@ -83,7 +83,7 @@ impl CliContract {
     ///     next_cursor: Option<String>,
     /// }
     ///
-    /// #[derive(clap_schema::Operation)]
+    /// #[derive(Operation)]
     /// struct ListOperation;
     ///
     /// #[clap_schema::handler]

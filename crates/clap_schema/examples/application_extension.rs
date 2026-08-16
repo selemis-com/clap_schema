@@ -4,7 +4,7 @@
 use std::convert::Infallible;
 
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliSchema, CommandSchema};
+use clap_schema::{CliSchema, CommandSchema, Operation};
 use schemars::JsonSchema;
 use serde::Serialize;
 
@@ -27,7 +27,7 @@ enum Commands {
 }
 
 /// Arguments accepted by resource listing.
-#[derive(Debug, Args, clap_schema::Operation)]
+#[derive(Debug, Args, Operation)]
 struct ListArgs {
     /// Opaque cursor returned by the previous page.
     #[arg(long)]

@@ -4,7 +4,7 @@
 #[cfg(test)]
 mod tests {
     use clap::{Args, Parser, Subcommand};
-    use clap_schema::{CliSchema, CommandSchema};
+    use clap_schema::{CliSchema, CommandSchema, Operation};
     use schemars::JsonSchema;
     use serde::Serialize;
 
@@ -31,7 +31,7 @@ mod tests {
     macro_rules! operation_args {
         ($($name:ident),+ $(,)?) => {
             $(
-                #[derive(Args, clap_schema::Operation)]
+                #[derive(Args, Operation)]
                 struct $name {}
             )+
         };

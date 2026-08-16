@@ -3,7 +3,7 @@
 use std::convert::Infallible;
 
 use clap::{Arg, Command};
-use clap_schema::ContractBuilder;
+use clap_schema::{ContractBuilder, Operation};
 use schemars::JsonSchema;
 use serde::Serialize;
 
@@ -17,7 +17,7 @@ struct Widget {
 }
 
 /// Rust identity of the builder-registered create operation.
-#[derive(clap_schema::Operation)]
+#[derive(Operation)]
 struct CreateOperation;
 
 /// Canonical implementation of the create operation.

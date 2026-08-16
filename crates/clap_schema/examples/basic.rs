@@ -4,7 +4,7 @@
 use std::convert::Infallible;
 
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliSchema, CommandSchema, write_json};
+use clap_schema::{CliSchema, CommandSchema, Operation, write_json};
 use schemars::JsonSchema;
 use serde::Serialize;
 
@@ -25,7 +25,7 @@ enum Commands {
 }
 
 /// Arguments accepted by item creation.
-#[derive(Debug, Args, clap_schema::Operation)]
+#[derive(Debug, Args, Operation)]
 struct CreateArgs {
     /// Name assigned to the new item.
     #[arg(long)]

@@ -7,6 +7,18 @@ use serde::Serialize;
 
 use crate::schema::{SchemaFactory, schema_for};
 
+/// Private sealing implementation for [`Operation`].
+mod sealed {
+    #[expect(
+        unnameable_types,
+        reason = "the public-but-unnameable trait intentionally seals Operation"
+    )]
+    /// Private sealing capability for operation types.
+    pub trait Sealed {}
+
+    impl<T> Sealed for T where T: crate::__private::OperationMarker {}
+}
+
 /// Compile-time identity of one executable operation.
 ///
 /// Operation identities are ordinary Rust types. In derive-based Clap applications, derive
@@ -19,7 +31,8 @@ use crate::schema::{SchemaFactory, schema_for};
 ///
 /// ```
 /// # use clap::Args;
-/// #[derive(Args, clap_schema::Operation)]
+/// # use clap_schema::Operation;
+/// #[derive(Args, Operation)]
 /// struct CreateArgs {
 ///     #[arg(long)]
 ///     name: String,
@@ -31,21 +44,6 @@ use crate::schema::{SchemaFactory, schema_for};
 ///     Ok(())
 /// }
 /// ```
-mod sealed {
-    #[expect(
-        unnameable_types,
-        reason = "the public-but-unnameable trait intentionally seals Operation"
-    )]
-    /// Private sealing capability for operation types.
-    pub trait Sealed {}
-
-    impl<T> Sealed for T where T: crate::__private::OperationMarker {}
-}
-
-/// Marker implemented by operation types declared with [`derive@crate::Operation`].
-///
-/// Applications should derive this trait rather than implement it directly. A canonical
-/// [`crate::handler`] is also required before the type satisfies this bound.
 pub trait Operation: sealed::Sealed + crate::__private::HandlerContract + 'static {}
 
 impl<T> Operation for T where

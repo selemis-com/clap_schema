@@ -19,7 +19,7 @@
 //!
 //! ```
 //! use clap::{Args, Parser, Subcommand};
-//! use clap_schema::{CliSchema, CommandSchema};
+//! use clap_schema::{CliSchema, CommandSchema, Operation};
 //! use schemars::JsonSchema;
 //! use serde::Serialize;
 //!
@@ -34,7 +34,7 @@
 //!     Create(CreateArgs),
 //! }
 //!
-//! #[derive(Debug, Args, clap_schema::Operation)]
+//! #[derive(Debug, Args, Operation)]
 //! struct CreateArgs {
 //!     #[arg(long)]
 //!     name: String,
@@ -78,7 +78,7 @@
 //!
 //! ```
 //! use clap::{Args, Parser, Subcommand};
-//! use clap_schema::{CliSchema, CommandGroup, CommandSchema};
+//! use clap_schema::{CliSchema, CommandGroup, CommandSchema, Operation};
 //!
 //! #[derive(Parser, CliSchema)]
 //! struct Cli {
@@ -92,7 +92,7 @@
 //!     Stash(StashArgs),
 //! }
 //!
-//! #[derive(Args, CommandGroup, clap_schema::Operation)]
+//! #[derive(Args, CommandGroup, Operation)]
 //! struct StashArgs {
 //!     #[command(subcommand)]
 //!     command: Option<StashCommands>,
@@ -103,7 +103,7 @@
 //!     List(ListArgs),
 //! }
 //!
-//! #[derive(Args, clap_schema::Operation)]
+//! #[derive(Args, Operation)]
 //! struct ListArgs {}
 //!
 //! #[clap_schema::handler]
@@ -145,7 +145,7 @@
 //!
 //! ```
 //! use clap::Command;
-//! use clap_schema::ContractBuilder;
+//! use clap_schema::{ContractBuilder, Operation};
 //! use schemars::JsonSchema;
 //! use serde::Serialize;
 //!
@@ -154,7 +154,7 @@
 //!     id: u64,
 //! }
 //!
-//! #[derive(clap_schema::Operation)]
+//! #[derive(Operation)]
 //! struct CreateOperation;
 //!
 //! #[clap_schema::handler]
@@ -178,7 +178,7 @@
 //!
 //! ```
 //! use clap::{Args, Parser, Subcommand};
-//! use clap_schema::{CliSchema, CommandSchema};
+//! use clap_schema::{CliSchema, CommandSchema, Operation};
 //! use schemars::JsonSchema;
 //! use serde::Serialize;
 //!
@@ -205,7 +205,7 @@
 //!     List(ListArgs),
 //! }
 //!
-//! #[derive(Debug, Args, clap_schema::Operation)]
+//! #[derive(Debug, Args, Operation)]
 //! struct ListArgs {
 //!     #[arg(long)]
 //!     cursor: Option<String>,

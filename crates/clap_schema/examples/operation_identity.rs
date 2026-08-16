@@ -4,7 +4,7 @@
 use std::convert::Infallible;
 
 use clap::{Args, Parser, Subcommand};
-use clap_schema::{CliSchema, CommandSchema};
+use clap_schema::{CliSchema, CommandSchema, Operation};
 use schemars::JsonSchema;
 use serde::Serialize;
 
@@ -33,7 +33,7 @@ enum WorkspacesCommands {
 }
 
 /// Arguments and Rust identity of the `workspaces get` operation.
-#[derive(Debug, Args, clap_schema::Operation)]
+#[derive(Debug, Args, Operation)]
 struct WorkspacesGetCommand {
     /// Workspace identifier.
     workspace_id: u64,

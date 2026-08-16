@@ -5,7 +5,7 @@ mod tests {
     use std::{convert::Infallible, ffi::OsString};
 
     use clap::{Args, Command, Parser, Subcommand};
-    use clap_schema::{CliSchema, CommandSchema, ContractBuilder, SchemaRequest};
+    use clap_schema::{CliSchema, CommandSchema, ContractBuilder, Operation, SchemaRequest};
     use schemars::JsonSchema;
     use serde::Serialize;
 
@@ -27,7 +27,7 @@ mod tests {
         name: String,
     }
 
-    #[derive(Debug, clap_schema::Operation)]
+    #[derive(Debug, Operation)]
     struct CreateOperation;
 
     #[clap_schema::handler]
@@ -41,7 +41,7 @@ mod tests {
     #[derive(Parser, CliSchema)]
     struct DiscoveryOnlyRoot;
 
-    #[derive(Parser, CliSchema, clap_schema::Operation)]
+    #[derive(Parser, CliSchema, Operation)]
     #[schema(executable)]
     struct RootCli;
 
@@ -63,7 +63,7 @@ mod tests {
         Get(FetchArgs),
     }
 
-    #[derive(Args, clap_schema::Operation)]
+    #[derive(Args, Operation)]
     struct FetchArgs {}
 
     #[expect(dead_code, reason = "handler supplies the operation contract")]
@@ -83,7 +83,7 @@ mod tests {
         Parent(UnregisteredChildrenArgs),
     }
 
-    #[derive(Args, clap_schema::Operation)]
+    #[derive(Args, Operation)]
     struct UnregisteredChildrenArgs {
         #[command(subcommand)]
         command: Option<ActualChildren>,
@@ -100,7 +100,7 @@ mod tests {
         Actual(ActualChildArgs),
     }
 
-    #[derive(Args, clap_schema::Operation)]
+    #[derive(Args, Operation)]
     struct ActualChildArgs {}
 
     #[expect(dead_code, reason = "handler supplies the operation contract")]
@@ -136,7 +136,7 @@ mod tests {
         Declared(DeclaredChildArgs),
     }
 
-    #[derive(Args, clap_schema::Operation)]
+    #[derive(Args, Operation)]
     struct DeclaredChildArgs {}
 
     #[expect(dead_code, reason = "handler supplies the operation contract")]
@@ -164,7 +164,7 @@ mod tests {
         External(Vec<String>),
     }
 
-    #[derive(Args, clap_schema::Operation)]
+    #[derive(Args, Operation)]
     struct VisibleArgs {}
 
     #[expect(dead_code, reason = "handler supplies the operation contract")]
@@ -185,7 +185,7 @@ mod tests {
         Help(HelpArgs),
     }
 
-    #[derive(Args, clap_schema::Operation)]
+    #[derive(Args, Operation)]
     struct HelpArgs {}
 
     #[expect(dead_code, reason = "handler supplies the operation contract")]

@@ -13,7 +13,7 @@ use crate::{
     schema::extended_schema_factory,
 };
 
-/// Marker implemented by `#[derive(clap_schema::Operation)]`.
+/// Marker implemented by `#[derive(Operation)]`.
 ///
 /// This trait is public solely so derive expansions can establish operation identity in
 /// downstream crates. The public [`crate::Operation`] capability is provided by `clap_schema`.

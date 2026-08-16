@@ -97,7 +97,9 @@ pub fn derive_command_schema(input: TokenStream) -> TokenStream {
 /// Receiver-based handlers use a dedicated inherent impl block:
 ///
 /// ```ignore
-/// #[derive(clap_schema::Operation)]
+/// use clap_schema::Operation;
+///
+/// #[derive(Operation)]
 /// struct CreateCommand;
 ///
 /// #[clap_schema::handler]

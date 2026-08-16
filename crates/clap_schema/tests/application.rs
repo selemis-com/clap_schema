@@ -2,7 +2,7 @@
 #![expect(dead_code, reason = "test data types are reflected rather than executed")]
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use clap_schema::{CliSchema, CommandGroup, CommandSchema};
+use clap_schema::{CliSchema, CommandGroup, CommandSchema, Operation};
 use schemars::JsonSchema;
 use serde::Serialize;
 
@@ -119,7 +119,7 @@ enum AdminCommands {
     Status(StatusArgs),
 }
 
-#[derive(Debug, Args, clap_schema::Operation)]
+#[derive(Debug, Args, Operation)]
 struct SearchArgs {
     /// Query text.
     #[arg(long)]
@@ -129,12 +129,12 @@ struct SearchArgs {
     #[arg(long, default_value = "25")]
     limit: u16,
 }
-#[derive(Debug, Args, clap_schema::Operation)]
+#[derive(Debug, Args, Operation)]
 struct GetObjectArgs {
     #[command(flatten)]
     key: ObjectKeyArgs,
 }
-#[derive(Debug, Args, clap_schema::Operation)]
+#[derive(Debug, Args, Operation)]
 struct DeleteObjectArgs {
     #[command(flatten)]
     key: ObjectKeyArgs,
@@ -152,7 +152,7 @@ struct ObjectKeyArgs {
     version_id: Option<String>,
 }
 
-#[derive(Debug, Args, clap_schema::Operation)]
+#[derive(Debug, Args, Operation)]
 struct ListObjectsArgs {
     /// Workspace whose objects should be listed.
     workspace_id: String,
@@ -173,7 +173,7 @@ struct ListObjectsArgs {
     #[arg(long, hide = true)]
     internal_token: Option<String>,
 }
-#[derive(Debug, Args, CommandGroup, clap_schema::Operation)]
+#[derive(Debug, Args, CommandGroup, Operation)]
 struct AccessArgs {
     /// Workspace containing the object.
     workspace_id: String,
@@ -205,19 +205,19 @@ struct GrantArgs {
     role: AccessRole,
 }
 
-#[derive(Debug, Args, clap_schema::Operation)]
+#[derive(Debug, Args, Operation)]
 struct GrantAccessArgs {
     #[command(flatten)]
     grant: GrantArgs,
 }
-#[derive(Debug, Args, clap_schema::Operation)]
+#[derive(Debug, Args, Operation)]
 struct RevokeAccessArgs {
     #[command(flatten)]
     grant: GrantArgs,
 }
-#[derive(Debug, Args, clap_schema::Operation)]
+#[derive(Debug, Args, Operation)]
 struct WhoamiArgs {}
-#[derive(Debug, Args, clap_schema::Operation)]
+#[derive(Debug, Args, Operation)]
 struct StatusArgs {}
 #[derive(Debug, Clone, ValueEnum)]
 #[value(rename_all = "kebab-case")]
