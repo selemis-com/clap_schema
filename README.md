@@ -69,8 +69,6 @@ assert!(get.output.is_some());
 
 That is the base case. There are only three clap_schema-specific pieces: `CliSchema` on the root parser, `CommandSchema` on the subcommand enum, and `#[schema_handler(GetArgs)]` on the Rust handler. `GetArgs` itself stays an ordinary Clap `Args` type.
 
-The handler annotation connects that command payload to the handler's `Result<Item, E>`. The successful `Item` type supplies the output JSON Schema, so there is no separate input schema or `#[schema(output = Item)]` declaration to keep synchronized.
-
 For `get`, the resulting contract contains the command path, description, usage, positional and option context from Clap, plus the JSON Schema for `Item`.
 
 The handler annotation names the command explicitly, so its Rust arguments remain unrestricted:
