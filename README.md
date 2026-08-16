@@ -169,11 +169,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-`#[schema_handler(DeployArgs)]` names the command explicitly, so the handler is free to use whatever Rust arguments and application context it needs.
+`#[schema_handler(DeployArgs)]` connects this function to the `deploy` command. Its successful return type, `Deployment`, becomes the command's `output` JSON Schema. Because the command type is named explicitly, the function can also take whatever additional application state or arguments it needs.
 
 ## What this enables
 
-The generated `CliContract` can power command discovery such as `tool --schema` or `tool schema`, including nested command navigation and optional full-tree expansion. Applications can also layer their own extension schemas onto commands without giving `clap_schema` ownership of those metadata values or semantics.
+Once generated, the contract can be used by agents and other tooling to discover which commands exist, what arguments they accept, and what they return. Applications can expose this through commands such as `tool --schema` or `tool schema`.
 
 ## Nested subcommands
 
@@ -198,15 +198,15 @@ enum ObjectCommands {
 }
 ```
 
-This describes a CLI such as:
+This describes:
 
 ```text
 app objects get
 ```
 
-Clap continues to define the command structure; `CommandSchema` makes that nested structure available to `clap_schema`.
+With `command: ObjectCommands`, Clap requires a child command, so `app objects` is not valid by itself.
 
-If the parent can also be run directly, make the nested subcommand optional:
+If `app objects` should also be valid, make the nested subcommand optional:
 
 ```rust
 #[derive(Args, CommandSchema)]
@@ -216,78 +216,70 @@ struct ObjectsArgs {
 }
 ```
 
-In that form, `objects` is both a command and a parent for child commands, so give `ObjectsArgs` its own `#[schema_handler(ObjectsArgs)]` as well.
+Now both are valid:
+
+```text
+app objects
+app objects get
+```
+
+Because `app objects` can return its own result, add a schema handler for `ObjectsArgs` just like for a leaf command:
+
+```rust
+#[schema_handler(ObjectsArgs)]
+fn objects(_args: ObjectsArgs) -> Result<Objects, Error> {
+    todo!()
+}
+```
 
 ## Command discovery
 
-A generated `CliContract` resolves user- or agent-selected discovery through one request type:
+Applications can expose schema discovery in whatever form fits their CLI. For example, command-local discovery can look like:
 
-```rust
-let shallow = contract.schema(&clap_schema::SchemaRequest::new(["objects"]))?;
-let full = contract.schema(
-    &clap_schema::SchemaRequest::new(["objects"]).with_full(true),
-)?;
-# let _ = (shallow, full);
-# Ok::<(), clap_schema::Error>(())
+```text
+tool --schema
+tool objects --schema
+tool objects get --schema
 ```
 
-The selected command itself is always fully described. Resolution depth applies only to its child
-commands:
-
-- `full = false` returns direct children as compact command summaries.
-- `full = true` recursively resolves every visible child into its complete command contract.
-- A leaf produces the same document in either mode because there are no children to expand.
-
-This gives command-local discovery predictable semantics: `tool --schema` resolves the root command
-and exposes its top-level command structure, while `tool --schema --full` resolves the same root and
-recursively includes the schema of every visible descendant. The same rule applies below the root.
-
-Applications can expose a dedicated namespace, command-local introspection, or both. Both routing
-forms should normalize to the same `SchemaRequest`:
+A dedicated command can expose the same documents:
 
 ```text
 tool schema
-tool schema --full
 tool schema objects
 tool schema objects get
-tool schema objects --full
-
-tool --schema
-tool --schema --full
-tool objects --schema
-tool objects get --schema
-tool objects --schema --full
 ```
 
-The runnable `schema_subcommand` example demonstrates both forms. `SchemaRequest::from_command_args`
-extracts the command-local form; tokens before `--schema` are a command path rather than a normal
-invocation, so required runtime operands are not needed merely to inspect a command.
+`SchemaRequest` represents a discovery request in Rust:
 
-Lower-level exact lookup remains available when an application already knows which command it
-wants to inspect:
+```rust
+let schema = contract.schema(&clap_schema::SchemaRequest::new(["objects"]))?;
+```
+
+The selected command is returned in full. Its direct child commands are summarized by default. Use `with_full(true)` to recursively include the full schema for every child:
+
+```rust
+let full = contract.schema(
+    &clap_schema::SchemaRequest::new(["objects"]).with_full(true),
+)?;
+```
+
+The runnable `schema_subcommand` example demonstrates both CLI forms. `SchemaRequest::from_command_args` helps implement command-local `--schema` discovery, so required runtime operands are not needed just to inspect a command.
+
+When Rust code already knows which command it wants to inspect, lower-level lookup is also available:
 
 | API | Purpose |
 | --- | --- |
-| `command_for::<CommandType>()` | Inspect a command already identified by its Rust payload type |
-| `command(path)` | Inspect one visible command or group selected by path |
+| `command_for::<CommandType>()` | Inspect a command identified by its Rust payload type |
+| `command(path)` | Inspect a command selected dynamically by path |
 
-`schema(request)` is the single discovery-document API. Use `SchemaRequest::with_full(true)` to
-change child resolution depth rather than switching to a second traversal or document shape.
+Paths accept visible Clap aliases, while returned paths are always canonical.
 
-Use type-based lookup from static Rust code so Clap renames cannot leave path literals behind. If
-one command type is intentionally registered at multiple commands, the association is ambiguous
-and the path API remains explicit. Path-based queries accept visible Clap aliases; returned paths
-are always canonical.
-
-Resolved command contracts include Clap-rendered usage plus compact positional/option context:
-identifiers, visible names and aliases, positional indexes, value names, help, unconditional
-requiredness, visible defaults, and visible finite possible values. This context is deliberately not
-a second argv grammar. Clap-generated `--help` remains authoritative for custom parsers, conditional
-requirements, conflicts, groups, and other invocation relationships.
+Generated contracts include common positional and option metadata such as names, help, defaults, requiredness, and possible values. They do not replace Clap's argument parser: Clap remains authoritative for custom parsers, conditional requirements, conflicts, groups, and other invocation rules.
 
 ## Application-defined extensions
 
-Applications can declare their own extension vocabulary as JSON Schema without giving `clap_schema` ownership of concrete values or semantics.
+Applications can attach their own schema metadata to commands. `clap_schema` does not define what that metadata means; your application owns its fields and values.
 
 ```rust
 #[derive(schemars::JsonSchema)]
@@ -306,7 +298,7 @@ struct Cli {
     // ...
 }
 
-// On an executable CommandSchema variant:
+// On a `CommandSchema` variant:
 // #[schema(extend = PaginationMetadata)]
 ```
 
@@ -319,15 +311,15 @@ command-specific layers are composed with JSON Schema `allOf`.
 
 ## Builder API
 
-Builder-style Clap applications use Rust command identity types through
-`ContractBuilder::command::<T>(path)`. Registration still names the canonical command path explicitly
-because builder-style Clap has no Rust subcommand payload relationship from which to derive it. The path is
-validated against the built Clap tree, while the command's output still comes only from its `#[schema_handler(Type)]` declaration. Use `command_with_extension::<T, E>(path)` when a builder-registered command adds an
-application-defined extension schema. See the `builder_api` example.
+If you use Clap's builder API instead of derive macros, build the contract with `ContractBuilder`.
+
+Register commands with `ContractBuilder::command::<T>(path)`. Because builder-style Clap has no Rust subcommand payload relationship to inspect, each command path is registered explicitly and validated against the Clap tree. The command's output still comes from its `#[schema_handler(Type)]` declaration.
+
+Use `command_with_extension::<T, E>(path)` when a builder-registered command also has application-defined extension metadata. See the `builder_api` example.
 
 ## Runnable examples
 
-The repository keeps the example set intentionally small:
+The repository includes runnable examples for the main APIs:
 
 | Example | Demonstrates |
 | --- | --- |
@@ -343,7 +335,7 @@ Run one with:
 cargo run --package clap_schema --example basic
 ```
 
-The examples print the contract or runtime value they demonstrate. More specialized derive shapes and diagnostics are covered by rustdoc and the test suite rather than separate example programs.
+The examples print the contract or runtime value they demonstrate.
 
 ## MSRV
 
