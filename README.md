@@ -2,7 +2,7 @@
 
 JSON Schema generation for Clap.
 
-`clap_schema` turns a Clap command and its typed Rust result into a compile-time checked, machine-readable contract.
+`clap_schema` turns a Clap command and its typed Rust result into a machine-readable contract, checked at compile time.
 
 ## What it produces
 
