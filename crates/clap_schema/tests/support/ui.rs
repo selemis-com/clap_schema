@@ -57,7 +57,7 @@ impl UiProject {
         Command::new(cargo)
             .current_dir(&self.root)
             .env("CARGO_TARGET_DIR", repository_root().join("target/ui-tests"))
-            .args(["check", "--quiet", "--offline", "--color", "never"])
+            .args(["check", "--quiet", "--color", "never"])
     }
 }
 
