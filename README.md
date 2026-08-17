@@ -17,6 +17,8 @@
 
 `clap_schema` turns Clap commands and typed Rust results into machine-readable contracts, with command registration and output types checked at compile time.
 
+It builds on the types your application already defines: Clap describes the command interface, Rust types describe the result, and `clap_schema` connects the two into a discoverable contract without introducing a separate command or type system.
+
 ## What it produces
 
 For a command such as:
