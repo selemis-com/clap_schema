@@ -326,6 +326,7 @@ This returns:
   ],
   "type": "object"
 }
+```
 
 `extended_schema()` returns the application-wide extension schema, while `extended_schema_for(path)` serves dynamic path-based discovery. Application-wide extensions can be attached with the same `#[schema(extend = CommandMetadata)]` attribute on the `Cli` type, and application-wide and command-specific layers are composed with JSON Schema `allOf`.
 
