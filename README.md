@@ -256,23 +256,29 @@ Generated contracts include common positional and option metadata such as names,
 
 ## Application-defined extensions
 
-Applications can attach their own schema metadata to commands. `clap_schema` does not define what that metadata means; your application owns its fields and values.
+Applications can attach their own schema metadata to commands. For example, an application may want agents to know whether a command mutates state:
 
 ```rust
 #[derive(schemars::JsonSchema)]
 struct CommandMetadata {
-    idempotent: bool,
-}
-
-#[derive(schemars::JsonSchema)]
-struct PaginationMetadata {
-    cursor_argument: String,
+    mutating: bool,
 }
 
 #[derive(clap::Parser, clap_schema::CliSchema)]
 #[schema(extend = CommandMetadata)]
 struct Cli {
     // ...
+}
+```
+
+clap_schema does not define what mutating means or which value a command should use. It only provides the extension point; your application owns the metadata vocabulary and values.
+
+Command-specific metadata can be added in the same way:
+
+```rust
+#[derive(schemars::JsonSchema)]
+struct PaginationMetadata {
+    cursor_argument: String,
 }
 
 // On a `CommandSchema` variant:
