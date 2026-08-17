@@ -1,9 +1,6 @@
 # Makefile for building and testing clap_schema.
 .DEFAULT_GOAL := help
 
-# Cargo profile for builds.
-PROFILE ?= dev
-
 ##@ Help
 
 .PHONY: help
@@ -17,7 +14,6 @@ build: ## Build the workspace into the `target` directory.
 	cargo build \
 		--workspace \
 		--all-features \
-		--profile "$(PROFILE)" \
 		--locked
 
 ##@ Test
