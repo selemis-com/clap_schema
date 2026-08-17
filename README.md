@@ -305,7 +305,7 @@ enum Commands {
 When Rust code already names the command payload type, its extension schema can be inspected directly:
 
 ```rust
-+let schema = contract
+let schema = contract
     .extended_schema_for_command::<DeployArgs>()
     .expect("deploy extension schema");
 
