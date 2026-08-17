@@ -1,4 +1,4 @@
-//! Proc macros for `clap_schema`.
+//! Procedural macros for `clap_schema`.
 
 #![doc(
     html_logo_url = "https://raw.githubusercontent.com/selemis-com/clap_schema/master/.github/assets/logo.jpg",
