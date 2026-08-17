@@ -293,33 +293,43 @@ struct CommandMetadata {
     mutating: bool,
 }
 
-#[derive(clap::Parser, clap_schema::CliSchema)]
-#[schema(extend = CommandMetadata)]
-struct Cli {
-    // ...
+#[derive(clap::Subcommand, clap_schema::CommandSchema)]
+enum Commands {
+    #[schema(extend = CommandMetadata)]
+    Deploy(DeployArgs),
 }
 ```
 
-clap_schema does not define what mutating means or which value a command should use. It only provides the extension point; your application owns the metadata vocabulary and values.
+`clap_schema` does not define what `mutating` means or which value a command should use. It only provides the extension point; your application owns the metadata vocabulary and values.
 
-Command-specific metadata can be added in the same way:
+When Rust code already names the command payload type, its extension schema can be inspected directly:
 
 ```rust
-#[derive(schemars::JsonSchema)]
-struct PaginationMetadata {
-    cursor_argument: String,
-}
++let schema = contract
+    .extended_schema_for_command::<DeployArgs>()
+    .expect("deploy extension schema");
 
-// On a `CommandSchema` variant:
-// #[schema(extend = PaginationMetadata)]
+println!("{}", serde_json::to_string_pretty(schema)?);
 ```
 
-`extended_schema()` returns the application-wide schema. When Rust code already names a command payload type,
-`extended_schema_for_command::<CommandType>()` returns its effective schema without repeating the
-command path; `extended_schema_for(path)` serves dynamic path-based discovery. Application-wide and
-command-specific layers are composed with JSON Schema `allOf`.
+This returns:
 
-`clap_schema` never constructs or serializes metadata values. The application decides which values to emit and how they appear in its own machine-facing document. See the runnable `application_extension` example for a complete value/schema workflow.
+```json
+{
+  "properties": {
+    "mutating": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "mutating"
+  ],
+  "type": "object"
+}
+
+`extended_schema()` returns the application-wide extension schema, while `extended_schema_for(path)` serves dynamic path-based discovery. Application-wide extensions can be attached with the same `#[schema(extend = CommandMetadata)]` attribute on the `Cli` type, and application-wide and command-specific layers are composed with JSON Schema `allOf`.
+
+`clap_schema` never constructs or serializes metadata values such as `{ "mutating": true }`. The application decides which values to emit and how they appear in its own machine-facing document. See the runnable `application_extension` example for a complete value/schema workflow.
 
 ## Builder API
 
