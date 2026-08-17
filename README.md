@@ -163,6 +163,9 @@ struct Deployment {
 
 #[schema_handler(DeployArgs)]
 fn deploy(args: DeployArgs) -> Result<Deployment, Infallible> {
+    // Perform some action using `args`...
+
+    // Return the typed result.
     Ok(Deployment {
         id: "dep_01".to_owned(),
         service: args.service,
