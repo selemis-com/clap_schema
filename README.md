@@ -15,7 +15,7 @@
   <a href="#license"><picture><source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/crates/l/clap_schema?colorA=21262d&colorB=21262d&style=flat"><img src="https://img.shields.io/crates/l/clap_schema?colorA=f6f8fa&colorB=f6f8fa&style=flat" alt="MIT OR Apache-2.0"></picture></a>
 </p>
 
-`clap_schema` turns a Clap command and its typed Rust result into a machine-readable contract, with the handler/output relationship checked at compile time.
+`clap_schema` turns Clap commands and typed Rust results into machine-readable contracts, with command registration and output types checked at compile time.
 
 ## What it produces
 
