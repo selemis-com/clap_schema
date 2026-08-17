@@ -12,8 +12,8 @@ use proc_macro_crate::{FoundCrate, crate_name};
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::{
-    Attribute, Data, DeriveInput, Expr, Fields, GenericArgument, Ident, Item, ItemFn, Lit, Meta,
-    PathArguments, ReturnType, Token, Type, parse_macro_input,
+    Attribute, Data, DeriveInput, Expr, Fields, GenericArgument, Ident, ImplItem, Item, ItemFn,
+    ItemImpl, Lit, Meta, PathArguments, ReturnType, Token, Type, parse_macro_input,
 };
 
 /// Derives the root `clap_schema::CliSchema` implementation.
@@ -38,9 +38,10 @@ pub fn derive_cli_schema(input: TokenStream) -> TokenStream {
 
 /// Derives command-tree registration for a Clap `Subcommand` enum or `Args` wrapper.
 ///
-/// Every contract-visible executable variant has one tuple payload with a canonical
-/// `#[schema_handler(PayloadType)]` declaration. The handler supplies the successful-output
-/// contract through normal Rust trait resolution.
+/// Every contract-visible executable variant has one tuple payload with one canonical schema
+/// handler contract. A free handler names that payload with `#[schema_handler(PayloadType)]`; an
+/// inherent impl names its handler method with `#[schema_handler(method)]`. The selected handler
+/// supplies the successful-output contract through normal Rust trait resolution.
 ///
 /// Normal `#[command(subcommand)]` and `#[command(flatten)]` nesting is followed automatically.
 /// When an `Args` payload itself contains a subcommand field, derive `CommandSchema` on that
@@ -58,9 +59,8 @@ pub fn derive_command_schema(input: TokenStream) -> TokenStream {
 
 /// Associates one executable command type with its handler-derived output contract.
 ///
-/// Apply the attribute to a free function. The attribute argument explicitly names the command type
-/// whose successful-output contract is supplied by the handler. Function arguments are otherwise
-/// unrestricted and may appear in any order:
+/// On a free function, the attribute argument explicitly names the command type whose
+/// successful-output contract is supplied by the handler:
 ///
 /// ```ignore
 /// #[schema_handler(GetArgs)]
@@ -69,51 +69,121 @@ pub fn derive_command_schema(input: TokenStream) -> TokenStream {
 /// }
 /// ```
 ///
-/// The handler's declared `Result<T, E>` is the sole source of the successful output contract; type
-/// aliases are supported. Generic handlers and opaque `impl Trait` return types are rejected
-/// because they do not identify one concrete output contract.
+/// When execution already lives on the command type, apply the attribute to an inherent impl and
+/// name the handler method instead. The impl's `Self` type becomes the command identity:
+///
+/// ```ignore
+/// #[schema_handler(run)]
+/// impl GetArgs {
+///     async fn run(self, state: State, auth: Auth) -> Result<Item, Error> {
+///         // ...
+///     }
+/// }
+/// ```
+///
+/// The selected handler's declared `Result<T, E>` is the sole source of the successful output
+/// contract; type aliases are supported. Generic handlers and opaque `impl Trait` return types are
+/// rejected because they do not identify one concrete output contract.
 #[proc_macro_attribute]
 pub fn schema_handler(attribute: TokenStream, input: TokenStream) -> TokenStream {
     let attribute = TokenStream2::from(attribute);
-    if attribute.is_empty() {
-        return syn::Error::new(
-            proc_macro2::Span::call_site(),
-            "#[schema_handler] requires a command type, for example #[schema_handler(GetArgs)]",
-        )
-        .into_compile_error()
-        .into();
-    }
-    let command_type = match syn::parse2::<Type>(attribute) {
-        Ok(command_type) => command_type,
-        Err(error) => return error.into_compile_error().into(),
-    };
-
     let item = match syn::parse::<Item>(input) {
         Ok(item) => item,
         Err(error) => return error.into_compile_error().into(),
     };
-    let Item::Fn(function) = item else {
-        return syn::Error::new_spanned(
+
+    let expanded = match item {
+        Item::Fn(function) => expand_free_handler(&function, attribute),
+        Item::Impl(implementation) => expand_impl_handler(&implementation, attribute),
+        item => Err(syn::Error::new_spanned(
             item,
-            "#[schema_handler(Type)] can only be applied to a free function",
-        )
-        .into_compile_error()
-        .into();
+            "#[schema_handler(...)] can only be applied to a free function or inherent impl block",
+        )),
     };
-    expand_item_handler(&function, &command_type)
-        .unwrap_or_else(syn::Error::into_compile_error)
-        .into()
+
+    expanded.unwrap_or_else(syn::Error::into_compile_error).into()
+}
+
+/// Parses and expands a free handler declaration.
+fn expand_free_handler(function: &ItemFn, attribute: TokenStream2) -> syn::Result<TokenStream2> {
+    if attribute.is_empty() {
+        return Err(syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "#[schema_handler] requires a command type, for example #[schema_handler(GetArgs)]",
+        ));
+    }
+    let command_type = syn::parse2::<Type>(attribute)?;
+    expand_item_handler(function, &command_type)
 }
 
 /// Expands a free handler and its command-type contract implementation.
 fn expand_item_handler(function: &ItemFn, command_type: &Type) -> syn::Result<TokenStream2> {
-    validate_handler_signature(&function.sig)?;
+    validate_handler_signature(&function.sig, false)?;
     let output = declared_return_type(&function.sig)?;
     let conditional = conditional_attributes(&function.attrs)?;
     let crate_path = clap_schema_path();
 
     Ok(quote! {
         #function
+
+        #(#conditional)*
+        impl #crate_path::__private::HandlerContract for #command_type {
+            type Output = <#output as #crate_path::__private::HandlerResult>::Output;
+        }
+    })
+}
+
+/// Parses and expands an inherent impl handler declaration.
+fn expand_impl_handler(
+    implementation: &ItemImpl,
+    attribute: TokenStream2,
+) -> syn::Result<TokenStream2> {
+    if attribute.is_empty() {
+        return Err(syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "#[schema_handler] on an impl requires a method name, for example #[schema_handler(run)]",
+        ));
+    }
+    let method_name = syn::parse2::<Ident>(attribute)?;
+    if implementation.trait_.is_some() {
+        return Err(syn::Error::new_spanned(
+            implementation,
+            "#[schema_handler(method)] requires an inherent impl block",
+        ));
+    }
+    if !implementation.generics.params.is_empty() || implementation.generics.where_clause.is_some()
+    {
+        return Err(syn::Error::new_spanned(
+            &implementation.generics,
+            "#[schema_handler(method)] requires a non-generic impl block",
+        ));
+    }
+
+    let method = implementation
+        .items
+        .iter()
+        .find_map(|item| match item {
+            ImplItem::Fn(method) if method.sig.ident == method_name => Some(method),
+            _ => None,
+        })
+        .ok_or_else(|| {
+            syn::Error::new_spanned(
+                implementation,
+                format!(
+                    "#[schema_handler({method_name})] method `{method_name}` was not found in this impl"
+                ),
+            )
+        })?;
+
+    validate_handler_signature(&method.sig, true)?;
+    let output = declared_return_type(&method.sig)?;
+    let mut conditional = conditional_attributes(&implementation.attrs)?;
+    conditional.extend(conditional_attributes(&method.attrs)?);
+    let command_type = &implementation.self_ty;
+    let crate_path = clap_schema_path();
+
+    Ok(quote! {
+        #implementation
 
         #(#conditional)*
         impl #crate_path::__private::HandlerContract for #command_type {
@@ -152,11 +222,13 @@ fn conditional_attributes(attrs: &[Attribute]) -> syn::Result<Vec<TokenStream2>>
 }
 
 /// Validates handler signature properties required for one concrete output contract.
-fn validate_handler_signature(signature: &syn::Signature) -> syn::Result<()> {
-    if signature.inputs.iter().any(|input| matches!(input, syn::FnArg::Receiver(_))) {
+fn validate_handler_signature(signature: &syn::Signature, allow_receiver: bool) -> syn::Result<()> {
+    if !allow_receiver
+        && signature.inputs.iter().any(|input| matches!(input, syn::FnArg::Receiver(_)))
+    {
         return Err(syn::Error::new_spanned(
             signature,
-            "#[schema_handler(Type)] can only be applied to a free function",
+            "#[schema_handler(Type)] free-function handlers cannot use a receiver; annotate the enclosing inherent impl with #[schema_handler(method)] instead",
         ));
     }
     if signature.unsafety.is_some()
@@ -453,7 +525,7 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
         let payload = payload.ok_or_else(|| {
             syn::Error::new_spanned(
                 &variant.ident,
-                "contract-visible executable commands require a single tuple Args payload with a #[schema_handler(PayloadType)] contract",
+                "contract-visible executable commands require a single tuple Args payload with a schema handler contract",
             )
         })?;
         let register_payload = schema.extended.as_ref().map_or_else(

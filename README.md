@@ -188,6 +188,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 `#[schema_handler(DeployArgs)]` connects this function to the `deploy` command. Its successful return type, `Deployment`, becomes the command's `output` JSON Schema. Because the command type is named explicitly, the function can also take whatever additional application state or arguments it needs.
 
+When execution already lives on the command type, the same contract can be attached directly to its inherent `impl` by naming the handler method:
+
+```rust
+use std::convert::Infallible;
+
+use clap_schema::schema_handler;
+
+#[schema_handler(run)]
+impl DeployArgs {
+    fn run(self) -> Result<Deployment, Infallible> {
+        // Perform some action using `args`...
+
+        // Return the typed result.
+        Ok(Deployment {
+            id: "dep_01".to_owned(),
+            service: self.service,
+            deployed: true,
+        })
+    }
+}
+```
+
+Here `DeployArgs` is inferred from the `impl` and `run` supplies the successful output contract, so no forwarding function is needed.
+
 ## What this enables
 
 Once generated, the contract can be used by agents and other tooling to discover which commands exist, what arguments they accept, and what they return. Applications can expose this through a dedicated command such as `tool schema`.
@@ -301,7 +325,7 @@ command-specific layers are composed with JSON Schema `allOf`.
 
 If you use Clap's builder API instead of derive macros, build the contract with `ContractBuilder`.
 
-Register commands with `ContractBuilder::command::<T>(path)`. Because builder-style Clap has no Rust subcommand payload relationship to inspect, each command path is registered explicitly and validated against the Clap tree. The command's output still comes from its `#[schema_handler(Type)]` declaration.
+Register commands with `ContractBuilder::command::<T>(path)`. Because builder-style Clap has no Rust subcommand payload relationship to inspect, each command path is registered explicitly and validated against the Clap tree. The command's output still comes from its schema handler declaration.
 
 Use `command_with_extension::<T, E>(path)` when a builder-registered command also has application-defined extension metadata. See the `builder_api` example.
 

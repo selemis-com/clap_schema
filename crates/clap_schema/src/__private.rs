@@ -16,8 +16,8 @@ use crate::{
 
 /// Handler-derived successful-output contract for an executable command type.
 ///
-/// This trait is intended only for `#[schema_handler(Type)]` expansions. It is public solely
-/// so those expansions can provide the contract from downstream crates.
+/// This trait is intended only for `#[schema_handler(...)]` expansions. It is public solely so
+/// those expansions can provide the contract from downstream crates.
 #[doc(hidden)]
 pub trait HandlerContract: 'static {
     /// Successful machine-output type declared by the canonical handler.

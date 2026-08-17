@@ -17,7 +17,11 @@ mod tests {
             "clap_schema handlers use a plain non-generic function signature",
             "clap_schema handlers require a concrete Result<T, E> output type",
             "clap_schema handlers must return Result<T, E>",
-            "#[schema_handler(Type)] can only be applied to a free function",
+            "free-function handlers cannot use a receiver",
+            "#[schema_handler(run)] method `run` was not found in this impl",
+            "#[schema_handler] on an impl requires a method name",
+            "#[schema_handler(method)] requires an inherent impl block",
+            "#[schema_handler(method)] requires a non-generic impl block",
         ] {
             assert!(stderr.contains(expected), "missing diagnostic: {expected}\n{stderr}");
         }

@@ -28,10 +28,41 @@ impl ReceiverHandler {
     }
 }
 
-struct ImplHandler;
+struct MissingMethod;
 
-#[schema_handler(Command)]
-impl ImplHandler {
+#[schema_handler(run)]
+impl MissingMethod {
+    fn execute(self) -> Result<(), ()> {
+        Ok(())
+    }
+}
+
+struct EmptyImpl;
+
+#[schema_handler]
+impl EmptyImpl {
+    fn run(self) -> Result<(), ()> {
+        Ok(())
+    }
+}
+
+trait Runner {
+    fn run(self) -> Result<(), ()>;
+}
+
+struct TraitImpl;
+
+#[schema_handler(run)]
+impl Runner for TraitImpl {
+    fn run(self) -> Result<(), ()> {
+        Ok(())
+    }
+}
+
+struct GenericImpl<T>(T);
+
+#[schema_handler(run)]
+impl<T> GenericImpl<T> {
     fn run(self) -> Result<(), ()> {
         Ok(())
     }
