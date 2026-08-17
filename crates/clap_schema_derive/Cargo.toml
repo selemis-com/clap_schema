@@ -11,9 +11,6 @@ homepage.workspace = true
 documentation = "https://docs.rs/clap_schema"
 keywords = ["clap", "agents", "cli", "schema", "derive"]
 categories = ["command-line-interface", "development-tools"]
-include = [
-  "/src/**",
-]
 
 [package.metadata.docs.rs]
 all-features = true
