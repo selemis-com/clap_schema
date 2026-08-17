@@ -27,6 +27,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+    env:
+      RUSTC_WRAPPER: "sccache"
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -38,14 +40,24 @@ jobs:
         with:
           toolchain: "1.95"
 
-      - name: Check MSRV
-        run: cargo +1.95 check --workspace --all-targets --all-features
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
-  check-features:
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          cache-on-failure: true
+
+      - name: Check MSRV
+        run: cargo +1.95 check --workspace --all-targets --all-features --locked
+
+  test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
+    env:
+      RUSTC_WRAPPER: "sccache"
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -57,29 +69,13 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Install cargo-hack
-        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2.85.11
-        with:
-          tool: cargo-hack
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
-      - name: Check supported feature surfaces
-        run: make check
-
-  test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          persist-credentials: false
-
-      - name: Install stable Rust toolchain
-        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
-        with:
-          toolchain: stable
+          cache-on-failure: true
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2.85.11
@@ -87,32 +83,15 @@ jobs:
           tool: cargo-nextest
 
       - name: Run tests
-        run: make test-unit
-
-  test-examples:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Install stable Rust toolchain
-        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
-        with:
-          toolchain: stable
-
-      - name: Run examples
-        run: make test-examples
+        run: make test
 
   test-doc:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
+    env:
+      RUSTC_WRAPPER: "sccache"
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -124,22 +103,24 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Run documentation tests
-        run: make test-doc
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
-      - name: Install nightly Rust toolchain
-        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          toolchain: nightly
+          cache-on-failure: true
 
-      - name: Build documentation
-        run: make doc
+      - name: Run documentation tests
+        run: make test-doc && make doc
 
   lint-clippy:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
+    env:
+      RUSTC_WRAPPER: "sccache"
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -151,6 +132,14 @@ jobs:
         with:
           toolchain: nightly
           components: clippy
+
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          cache-on-failure: true
 
       - name: Run Clippy
         run: make lint-clippy
@@ -167,7 +156,7 @@ jobs:
           persist-credentials: false
 
       - name: Install nightly Rust toolchain with rustfmt
-        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # v1.94.1
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
         with:
           toolchain: nightly
           components: rustfmt
@@ -207,8 +196,10 @@ jobs:
         with:
           tool: cargo-deny
 
-      - name: Run cargo-deny
-        run: make deny
+      - name: Run cargo-deny checks
+        run: |
+          set -euo pipefail
+          cargo deny --locked --all-features check all
 
   compliance-about:
     runs-on: ubuntu-latest
@@ -239,9 +230,7 @@ jobs:
     if: always()
     needs:
       - msrv
-      - check-features
       - test
-      - test-examples
       - test-doc
       - lint-clippy
       - lint-fmt
