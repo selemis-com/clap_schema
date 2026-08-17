@@ -23,6 +23,8 @@ mod tests {
         FreeForm(FreeFormArgs),
         Conditional(ConditionalArgs),
         ConditionalAttr(ConditionalAttrArgs),
+        ImplMethod(ImplMethodArgs),
+        ConditionalImpl(ConditionalImplArgs),
     }
 
     macro_rules! command_args {
@@ -43,6 +45,8 @@ mod tests {
         FreeFormArgs,
         ConditionalArgs,
         ConditionalAttrArgs,
+        ImplMethodArgs,
+        ConditionalImplArgs,
     );
 
     #[derive(JsonSchema)]
@@ -109,6 +113,29 @@ mod tests {
         Err(HandlerError)
     }
 
+    #[schema_handler(run)]
+    impl ImplMethodArgs {
+        async fn run(self, _context: &str) -> HandlerResult {
+            Err(HandlerError)
+        }
+    }
+
+    #[schema_handler(run)]
+    impl ConditionalImplArgs {
+        #[cfg(any())]
+        fn run(self) -> HandlerResult {
+            Err(HandlerError)
+        }
+    }
+
+    #[schema_handler(run)]
+    impl ConditionalImplArgs {
+        #[cfg(not(any()))]
+        fn run(self) -> HandlerResult {
+            Err(HandlerError)
+        }
+    }
+
     #[test]
     fn supported_handler_categories_infer_success_outputs() -> clap_schema::Result<()> {
         let contract = Cli::schema()?;
@@ -137,6 +164,8 @@ mod tests {
             FreeFormArgs,
             ConditionalArgs,
             ConditionalAttrArgs,
+            ImplMethodArgs,
+            ConditionalImplArgs,
         );
 
         Ok(())

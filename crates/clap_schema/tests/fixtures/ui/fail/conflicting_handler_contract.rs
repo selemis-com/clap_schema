@@ -1,16 +1,19 @@
-use clap_schema::schema_handler;
 use clap::Args;
+use clap_schema::schema_handler;
 
 #[derive(Args)]
 struct RunArgs {}
+
 #[schema_handler(RunArgs)]
 fn first(_command: RunArgs) -> Result<(), ()> {
     Ok(())
 }
 
-#[schema_handler(RunArgs)]
-fn second(_command: RunArgs) -> Result<(), ()> {
-    Ok(())
+#[schema_handler(run)]
+impl RunArgs {
+    fn run(self) -> Result<(), ()> {
+        Ok(())
+    }
 }
 
 fn main() {}

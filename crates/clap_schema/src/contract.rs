@@ -134,7 +134,7 @@ impl RegistrationState {
 ///
 /// Clap remains authoritative for invocation syntax and parser behavior. The builder
 /// associates canonical command paths with Rust types that have a canonical
-/// `#[schema_handler(Type)]`, so successful output schemas stay tied to real handler
+/// `#[schema_handler(...)]` contract, so successful output schemas stay tied to real handler
 /// signatures.
 /// The same built Clap command tree is reflected into the crate's read-only discovery view.
 /// Applications may additionally declare an application-wide schema extension with
@@ -165,8 +165,8 @@ impl ContractBuilder {
 
     /// Registers one executable command identity by canonical command path.
     ///
-    /// `T` is the Rust identity of the executable command. Its canonical
-    /// `#[schema_handler(T)]` supplies the successful output contract.
+    /// `T` is the Rust identity of the executable command. Its canonical schema handler
+    /// supplies the successful output contract.
     /// Builder paths are canonical Clap command names; alias resolution is a discovery-time feature
     /// after the contract has been built.
     #[must_use]
