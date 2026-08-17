@@ -11,6 +11,10 @@ homepage.workspace = true
 documentation = "https://docs.rs/clap_schema"
 keywords = ["clap", "agents", "cli", "schema", "json-schema"]
 categories = ["command-line-interface", "development-tools"]
+include = [
+  "/src/**",
+  "/examples/**",
+]
 
 [package.metadata.docs.rs]
 all-features = true
