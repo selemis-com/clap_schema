@@ -15,7 +15,7 @@
   <a href="#license"><picture><source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/crates/l/clap_schema?colorA=21262d&colorB=21262d&style=flat"><img src="https://img.shields.io/crates/l/clap_schema?colorA=f6f8fa&colorB=f6f8fa&style=flat" alt="MIT OR Apache-2.0"></picture></a>
 </p>
 
-`clap_schema` turns a Clap command and its typed Rust result into a machine-readable contract, checked at compile time.
+`clap_schema` turns a Clap command and its typed Rust result into a machine-readable contract, with the handler/output relationship checked at compile time.
 
 ## What it produces
 
@@ -217,39 +217,6 @@ app objects get
 
 With `command: ObjectCommands`, Clap requires a child command, so `app objects` is not valid by itself.
 
-If `app objects` should also be valid, make the nested subcommand optional:
-
-```rust
-#[derive(Args, CommandSchema)]
-struct ObjectsArgs {
-    #[command(subcommand)]
-    command: Option<ObjectCommands>,
-}
-```
-
-Now both are valid:
-
-```text
-app objects
-app objects get
-```
-
-Because `app objects` can return its own result, give that command a useful result type and schema handler just like a leaf command:
-
-```rust
-#[derive(JsonSchema)]
-struct ObjectsOverview {
-    total: usize,
-}
-
-#[schema_handler(ObjectsArgs)]
-fn objects(_args: ObjectsArgs) -> Result<ObjectsOverview, Infallible> {
-    Ok(ObjectsOverview { total: 42 })
-}
-```
-
-Now `app objects` can return a machine-readable overview, while `app objects get` remains a nested command with its own output contract.
-
 ## Command discovery
 
 Expose schema discovery as a normal Clap command so it is visible in generated help:
@@ -373,7 +340,7 @@ If you believe you have found a security vulnerability, please do not report it 
 
 ## Credit
 
-`clap_schema` was inspired in part by [Incur](https://github.com/wevm/incur#command-schema), particularly its approach to CLI schema discovery.
+`clap_schema` was inspired in part by [Incur](https://github.com/wevm/incur#command-schema), whose work on machine-readable CLI interfaces helped motivate this project.
 
 ## License
 

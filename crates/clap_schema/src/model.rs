@@ -212,6 +212,7 @@ impl CliContract {
 /// `path` selects a visible command or command group by canonical name or Clap alias. `full`
 /// controls only child resolution depth: the selected command itself is always fully described.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct SchemaRequest {
     /// Command path excluding the executable name. An empty path selects the root command.
     pub path: Vec<String>,
@@ -245,6 +246,7 @@ impl SchemaRequest {
 /// another fully resolved `SchemaDocument`. The wire shape is therefore stable while `--full`
 /// changes only the amount of child detail returned.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[non_exhaustive]
 pub struct SchemaDocument {
     /// Complete contract for the selected command itself.
     #[serde(flatten)]
@@ -257,6 +259,7 @@ pub struct SchemaDocument {
 /// One child entry in a [`SchemaDocument`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(untagged)]
+#[non_exhaustive]
 pub enum SchemaSubcommand {
     /// Compact child reference used by shallow schema discovery.
     Summary(SchemaCommandSummary),
@@ -277,6 +280,7 @@ pub(crate) struct ExecutableData {
 
 /// Shallow discovery information for one visible command or command group.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[non_exhaustive]
 pub struct CommandInfo {
     /// Canonical command name.
     pub name: String,
@@ -312,6 +316,7 @@ pub struct CommandInfo {
 
 /// Compact schema-discovery reference to one direct child command.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[non_exhaustive]
 pub struct SchemaCommandSummary {
     /// Canonical command path excluding the executable name.
     pub path: Vec<String>,
@@ -343,6 +348,7 @@ impl SchemaCommandSummary {
 /// This intentionally exposes only straightforward facts from Clap's built command model.
 /// Complete invocation semantics remain authoritative in Clap and its generated help.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[non_exhaustive]
 pub struct ArgumentInfo {
     /// Clap argument identifier.
     pub id: String,

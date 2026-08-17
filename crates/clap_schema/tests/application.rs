@@ -121,7 +121,7 @@ enum UtilityCommands {
     Whoami(WhoamiArgs),
 }
 
-#[derive(Debug, Subcommand, CommandSchema)]
+#[derive(Debug, Subcommand)]
 enum AdminCommands {
     /// Read internal service status.
     Status(StatusArgs),
@@ -292,11 +292,6 @@ struct Identity {
     display_name: String,
 }
 
-#[derive(Debug, JsonSchema)]
-struct Status {
-    healthy: bool,
-}
-
 #[derive(Debug)]
 struct TestError;
 
@@ -337,11 +332,6 @@ async fn search(_command: SearchArgs) -> Result<Page<ObjectRecord>, TestError> {
 
 #[schema_handler(WhoamiArgs)]
 async fn whoami(_command: WhoamiArgs) -> Result<Identity, TestError> {
-    Err(TestError)
-}
-
-#[schema_handler(StatusArgs)]
-async fn admin_status(_command: StatusArgs) -> Result<Status, TestError> {
     Err(TestError)
 }
 

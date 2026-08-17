@@ -12,7 +12,7 @@ use proc_macro_crate::{FoundCrate, crate_name};
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::{
-    Attribute, Data, DeriveInput, Fields, GenericArgument, Ident, Item, ItemFn, Meta,
+    Attribute, Data, DeriveInput, Expr, Fields, GenericArgument, Ident, Item, ItemFn, Lit, Meta,
     PathArguments, ReturnType, Token, Type, parse_macro_input,
 };
 
@@ -47,7 +47,7 @@ pub fn derive_cli_schema(input: TokenStream) -> TokenStream {
 /// payload. A required subcommand field makes the parent a group; an `Option<Subcommands>` field
 /// makes the parent executable as well.
 /// Executable commands may declare `extend = Type` to supplement the root application extension
-/// schema. Extensions can only be attached to executable commands; group-only, flattened,
+/// schema. Extensions can only be attached to executable commands; group-only, flattened, hidden,
 /// Clap-skipped, and external subcommands do not carry a command-specific extension schema. The
 /// application owns all concrete extension values.
 #[proc_macro_derive(CommandSchema, attributes(schema, command))]
@@ -332,6 +332,52 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
             continue;
         }
 
+        if command.hidden {
+            if !schema.is_empty() {
+                return Err(syn::Error::new_spanned(
+                    variant.ident,
+                    "schema extensions cannot be attached to a clap-hidden subcommand variant",
+                ));
+            }
+
+            if command.nesting == CommandNesting::Flatten {
+                let child = payload.ok_or_else(|| {
+                    syn::Error::new_spanned(
+                        &variant.ident,
+                        "flattened subcommands require a single tuple payload",
+                    )
+                })?;
+                steps.push(quote! {
+                    {
+                        let __count =
+                            <#child as #crate_path::__private::clap::Subcommand>::augment_subcommands(
+                                #crate_path::__private::clap::Command::new("__clap_schema_probe")
+                            )
+                            .get_subcommands()
+                            .count();
+                        for _ in 0..__count {
+                            if __clap_schema_commands.next().is_none() {
+                                return Err(#crate_path::Error::DerivedCommandMismatch {
+                                    type_name: ::core::any::type_name::<Self>(),
+                                });
+                            }
+                        }
+                    }
+                });
+            } else {
+                steps.push(quote! {
+                    {
+                        if __clap_schema_commands.next().is_none() {
+                            return Err(#crate_path::Error::DerivedCommandMismatch {
+                                type_name: ::core::any::type_name::<Self>(),
+                            });
+                        }
+                    }
+                });
+            }
+            continue;
+        }
+
         if command.nesting == CommandNesting::Flatten {
             let child = payload.ok_or_else(|| {
                 syn::Error::new_spanned(
@@ -562,6 +608,8 @@ struct CommandBehavior {
     nesting: CommandNesting,
     /// Whether the variant is represented.
     disposition: CommandDisposition,
+    /// Whether Clap hides this command from normal discovery.
+    hidden: bool,
 }
 
 /// Parses Clap attributes that affect command-tree registration.
@@ -570,6 +618,7 @@ fn parse_command_behavior(attrs: &[Attribute]) -> syn::Result<CommandBehavior> {
     let mut flatten = false;
     let mut skip = false;
     let mut external = false;
+    let mut hidden = false;
 
     for attr in attrs.iter().filter(|attr| attr.path().is_ident("command")) {
         let Meta::List(list) = &attr.meta else {
@@ -578,16 +627,19 @@ fn parse_command_behavior(attrs: &[Attribute]) -> syn::Result<CommandBehavior> {
         let metas =
             list.parse_args_with(syn::punctuated::Punctuated::<Meta, Token![,]>::parse_terminated)?;
         for meta in metas {
-            if let Meta::Path(path) = meta {
-                if path.is_ident("subcommand") {
-                    subcommand = true;
-                } else if path.is_ident("flatten") {
-                    flatten = true;
-                } else if path.is_ident("skip") {
-                    skip = true;
-                } else if path.is_ident("external_subcommand") {
-                    external = true;
+            match meta {
+                Meta::Path(path) if path.is_ident("subcommand") => subcommand = true,
+                Meta::Path(path) if path.is_ident("flatten") => flatten = true,
+                Meta::Path(path) if path.is_ident("skip") => skip = true,
+                Meta::Path(path) if path.is_ident("external_subcommand") => external = true,
+                Meta::NameValue(meta) if meta.path.is_ident("hide") => {
+                    if let Expr::Lit(expr) = meta.value
+                        && let Lit::Bool(value) = expr.lit
+                    {
+                        hidden = value.value;
+                    }
                 }
+                _ => {}
             }
         }
     }
@@ -615,7 +667,7 @@ fn parse_command_behavior(attrs: &[Attribute]) -> syn::Result<CommandBehavior> {
         }
     };
 
-    Ok(CommandBehavior { nesting, disposition })
+    Ok(CommandBehavior { nesting, disposition, hidden })
 }
 
 /// Parsed contract extensions for one subcommand variant.

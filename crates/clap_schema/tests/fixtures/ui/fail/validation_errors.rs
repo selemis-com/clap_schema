@@ -37,6 +37,13 @@ enum InvalidSkippedMetadata {
 }
 
 #[derive(CommandSchema)]
+enum InvalidHiddenMetadata {
+    #[command(hide = true)]
+    #[schema(extend = First)]
+    Run(Args),
+}
+
+#[derive(CommandSchema)]
 enum InvalidFlattenShape {
     #[command(flatten)]
     Flat,

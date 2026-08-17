@@ -309,6 +309,7 @@ mod tests {
         let visible = match &root.subcommands[0] {
             clap_schema::SchemaSubcommand::Summary(summary) => summary,
             clap_schema::SchemaSubcommand::Resolved(_) => panic!("shallow root schema"),
+            _ => panic!("unknown schema subcommand variant"),
         };
         assert_eq!(visible.path, ["visible"]);
         assert!(visible.executable);
