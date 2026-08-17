@@ -300,7 +300,7 @@ struct Cli {
 }
 ```
 
-clap_schema does not define what mutating means or which value a command should use. It only provides the extension point; your application owns the metadata vocabulary and values.
+`clap_schema` does not define what mutating means or which value a command should use. It only provides the extension point; your application owns the metadata vocabulary and values.
 
 Command-specific metadata can be added in the same way:
 
