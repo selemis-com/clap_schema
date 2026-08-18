@@ -63,6 +63,13 @@ pub enum Error {
         path: Vec<String>,
     },
 
+    /// The Clap command uses argv framing outside the process-style contract.
+    #[error("unsupported clap command framing mode: {mode}")]
+    UnsupportedCommandFraming {
+        /// Clap command setting that changes how argv begins.
+        mode: &'static str,
+    },
+
     /// Derived command registration and Clap's generated subcommand sequence disagree.
     #[error("derived CommandSchema registration does not match clap subcommands for `{type_name}`")]
     DerivedCommandMismatch {
@@ -241,13 +248,14 @@ impl ContractBuilder {
     ///
     /// Returns an error when a registered command path does not exist in the actual Clap tree, when
     /// the same command path is registered more than once, when an executable registration targets
-    /// a command that requires a child subcommand, or when more than one application-wide extension
-    /// is declared.
+    /// a command that requires a child subcommand, when the command uses unsupported argv framing,
+    /// or when more than one application-wide extension is declared.
     pub fn build(self) -> Result<CliContract> {
         let Self { mut root, registration } = self;
         let RegistrationState { registrations, extended } = registration;
         let extended = unique_application_extension(&extended)?;
         root.build();
+        reject_unsupported_command_framing(&root)?;
         reject_duplicate_paths(&registrations)?;
         reject_subcommand_required_registrations(&root, &registrations)?;
 
@@ -271,6 +279,17 @@ const fn unique_application_extension(
         [extended] => Ok(Some(*extended)),
         _ => Err(Error::DuplicateApplicationExtension),
     }
+}
+
+/// Rejects argv framing modes that do not use an executable-name-first process model.
+fn reject_unsupported_command_framing(root: &Command) -> Result<()> {
+    if root.is_multicall_set() {
+        return Err(Error::UnsupportedCommandFraming { mode: "multicall" });
+    }
+    if root.is_no_binary_name_set() {
+        return Err(Error::UnsupportedCommandFraming { mode: "no_binary_name" });
+    }
+    Ok(())
 }
 
 /// Rejects duplicate command paths before reflection.
@@ -475,6 +494,7 @@ fn argument_info(command: &Command, argument: &Arg) -> ArgumentInfo {
             .or_else(|| argument.get_long_help())
             .map(ToString::to_string),
         required: argument.is_required_set(),
+        global: argument.is_global_set(),
         value,
         repeatable: matches!(action, ArgAction::Append | ArgAction::Count),
         conflicts_with,
@@ -568,13 +588,13 @@ fn conditional_defaults(command: &Command, argument: &Arg) -> Vec<ConditionalDef
         .get_default_values_ifs()
         .iter()
         .filter_map(|(id, predicate, values)| {
-            let argument = reflected_argument_name(command, id)?;
+            let target = argument_target(command, id)?;
             let when = argument_predicate(predicate)?;
             let value = match values {
                 Some(values) => Some(lexical_value_set(values)?),
                 None => None,
             };
-            Some(ConditionalDefault { argument, when, value })
+            Some(ConditionalDefault { target, when, value })
         })
         .collect()
 }
@@ -749,6 +769,9 @@ fn referenced_group_ids(command: &Command, group_ids: &HashSet<String>) -> HashS
             record(id);
         }
         for id in argument.get_required_unless_present_all() {
+            record(id);
+        }
+        for (id, _, _) in argument.get_default_values_ifs() {
             record(id);
         }
     }

@@ -19,12 +19,12 @@ pub struct CliContract {
 }
 
 impl CliContract {
-    /// Finds the visible command bound to a Rust command identity type.
+    /// Finds the discoverable command bound to a Rust command identity type.
     ///
     /// This is the non-brittle counterpart to a static string path lookup. The derive macros
     /// obtain the canonical command path from Clap itself, so renaming a command with
     /// `#[command(name = "...")]` does not require updating Rust-side schema queries that already
-    /// name the command type. Returns `None` when the command is not schema-visible or the same
+    /// name the command type. Returns `None` when the command is not discoverable or the same
     /// command type is intentionally registered at more than one visible path; use
     /// [`Self::command`] for those ambiguous paths or when the path comes from user or agent input.
     #[must_use]
@@ -47,9 +47,9 @@ impl CliContract {
         self.extended_schema.as_ref()
     }
 
-    /// Returns the effective extended schema for one visible command.
+    /// Returns the effective extended schema for one discoverable command.
     ///
-    /// The application-wide extended schema applies throughout the schema-visible discovery tree.
+    /// The application-wide extended schema applies throughout the discovery tree.
     /// When the selected executable command declares an additional extension schema, both
     /// layers are composed with JSON Schema `allOf`; `clap_schema` never shallow-merges schema
     /// objects. A command group therefore sees only the application-wide schema, while an
@@ -100,7 +100,7 @@ impl CliContract {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::Error::UnknownCommand`] when `path` is not schema-visible. When static
+    /// Returns [`crate::Error::UnknownCommand`] when `path` is not discoverable. When static
     /// Rust code already names the command type, prefer [`Self::extended_schema_for_command`]
     /// to avoid repeating its canonical command path.
     pub fn extended_schema_for(&self, path: &[&str]) -> crate::Result<Option<&Value>> {
@@ -111,7 +111,7 @@ impl CliContract {
     /// Returns the effective extended schema for a visible Rust command identity type.
     ///
     /// This avoids repeating a canonical command path in application code that already names the
-    /// command type. Returns `None` when the command is not schema-visible, is registered at
+    /// command type. Returns `None` when the command is not discoverable, is registered at
     /// multiple visible paths, or has no applicable extended schema. Use
     /// [`Self::extended_schema_for`] when the path comes from user or agent input.
     #[must_use]
@@ -126,21 +126,21 @@ impl CliContract {
     /// Resolves one schema-discovery request.
     ///
     /// The selected command is always described completely. In shallow mode, direct child
-    /// commands are exposed as compact summaries. When `request.full` is true, every visible child
+    /// commands are exposed as compact summaries. When `request.full` is true, every discoverable child
     /// is recursively resolved into the same complete command shape. Leaves therefore produce the
     /// same document in either mode because they have no children to expand.
     ///
     /// # Errors
     ///
     /// Returns [`crate::Error::UnknownCommand`] when the request path is not present in the
-    /// schema-visible command tree.
+    /// discovery tree.
     pub fn schema(&self, request: &SchemaRequest) -> crate::Result<SchemaDocument> {
         let path = request.path.iter().map(String::as_str).collect::<Vec<_>>();
         let node = self.discovery.resolve(&path)?;
         Ok(self.schema_document(node, request.full))
     }
 
-    /// Resolves a visible command or command group by canonical name or Clap alias.
+    /// Resolves a discoverable command or command group by canonical name or Clap alias.
     ///
     /// Returned paths are always canonical and exclude the executable name. When static Rust code
     /// already names a command type, prefer [`Self::command_for`] so a Clap rename cannot
@@ -149,7 +149,7 @@ impl CliContract {
     /// # Errors
     ///
     /// Returns [`crate::Error::UnknownCommand`] when the path is not present in
-    /// the schema-visible command tree. Clap presentation visibility does not affect whether a
+    /// the discovery tree. Clap presentation visibility does not affect whether a
     /// registered command is present in the machine-readable contract.
     pub fn command(&self, path: &[&str]) -> crate::Result<CommandInfo> {
         let node = self.discovery.resolve(path)?;
@@ -211,7 +211,7 @@ impl CliContract {
         SchemaDocument { command, subcommands }
     }
 
-    /// Resolves a Rust command identity only when it names one visible command unambiguously.
+    /// Resolves a Rust command identity only when it names one discoverable command unambiguously.
     fn unique_command_node<T>(&self) -> Option<&DiscoveryNode>
     where
         T: 'static,
@@ -230,14 +230,14 @@ impl CliContract {
 
 /// One schema-discovery request.
 ///
-/// `path` selects a visible command or command group by canonical name or Clap alias. `full`
+/// `path` selects a discoverable command or command group by canonical name or Clap alias. `full`
 /// controls only child resolution depth: the selected command itself is always fully described.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct SchemaRequest {
     /// Command path excluding the executable name. An empty path selects the root command.
     pub path: Vec<String>,
-    /// Whether visible child commands should be recursively resolved.
+    /// Whether discoverable child commands should be recursively resolved.
     pub full: bool,
 }
 
@@ -289,7 +289,7 @@ pub enum SchemaSubcommand {
     Resolved(Box<SchemaDocument>),
 }
 
-/// Internal executable-command data attached directly to one schema-visible command node.
+/// Internal executable-command data attached directly to one discoverable command node.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ExecutableData {
     /// Stable in-process Rust command identity.
@@ -313,10 +313,10 @@ pub struct CommandContext {
     pub name: String,
     /// Canonical path to this command level, excluding the executable name.
     pub path: Vec<String>,
-    /// Visible positional arguments owned by this command level.
+    /// Non-global positional arguments owned by this command level.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub arguments: Vec<ArgumentInfo>,
-    /// Visible non-positional options owned by this command level.
+    /// Non-global options owned by this command level.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub options: Vec<ArgumentInfo>,
     /// Argument groups owned by this command level.
@@ -336,8 +336,8 @@ impl CommandContext {
         Self {
             name: node.name.clone(),
             path: node.path.clone(),
-            arguments: node.arguments.clone(),
-            options: node.options.clone(),
+            arguments: node.arguments.iter().filter(|argument| !argument.global).cloned().collect(),
+            options: node.options.iter().filter(|argument| !argument.global).cloned().collect(),
             groups: node.groups.clone(),
             syntax: node.syntax,
             subcommand_routing: node.subcommand_routing,
@@ -345,7 +345,7 @@ impl CommandContext {
     }
 }
 
-/// Canonical invocation contract for one visible command or command group.
+/// Canonical invocation contract for one discoverable command or command group.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
@@ -360,10 +360,10 @@ pub struct CommandInfo {
     /// Command description reflected from Clap help metadata.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Visible positional arguments in invocation order.
+    /// Positional arguments in invocation order.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub arguments: Vec<ArgumentInfo>,
-    /// Visible non-positional options using one canonical spelling each.
+    /// Non-positional options using one canonical spelling each.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub options: Vec<ArgumentInfo>,
     /// Argument groups that affect invocation validity.
@@ -431,7 +431,7 @@ pub struct SchemaCommandSummary {
     /// Whether this exact command path can be invoked as an operation.
     #[serde(default, skip_serializing_if = "is_false")]
     pub invocable: bool,
-    /// Whether this command has schema-visible child commands.
+    /// Whether this command has discoverable child commands.
     #[serde(default, skip_serializing_if = "is_false")]
     pub has_subcommands: bool,
 }
@@ -448,7 +448,7 @@ impl SchemaCommandSummary {
     }
 }
 
-/// Canonical invocation information for one visible positional argument or option.
+/// Canonical invocation information for one reflected positional argument or option.
 ///
 /// Positionals appear in the `arguments` array in invocation order and also carry their one-based
 /// `position`. Options use one canonical spelling in `name`, preferring `--long` over `-s` when
@@ -471,6 +471,12 @@ pub struct ArgumentInfo {
     /// Whether Clap's base required setting is enabled for this argument.
     #[serde(default, skip_serializing_if = "is_false")]
     pub required: bool,
+    /// Whether Clap propagates this argument to child commands.
+    ///
+    /// In a nested command contract, inherited global arguments are represented on the selected
+    /// command and omitted from ancestor contexts so the same logical argument is not duplicated.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub global: bool,
     /// Value contract. Absent for flags that consume no value.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<ArgumentValue>,
@@ -634,9 +640,9 @@ pub struct ArgumentValueCondition {
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct ConditionalDefault {
-    /// Argument whose state controls this default.
-    pub argument: String,
-    /// Predicate applied to `argument` using Clap's non-default value-source semantics.
+    /// Argument or group whose state controls this default.
+    pub target: ArgumentTarget,
+    /// Predicate applied to `target` using Clap's non-default value-source semantics.
     pub when: ArgumentPredicate,
     /// Lexical default to apply, or `null` to suppress the unconditional default.
     pub value: Option<Value>,
@@ -665,7 +671,7 @@ pub struct ArgumentGroupInfo {
     pub conflicts_with: Vec<ArgumentTarget>,
 }
 
-/// Internal schema-visible command topology reflected from Clap.
+/// Internal discoverable command topology reflected from Clap.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct DiscoveryNode {
     /// Canonical command name.
@@ -686,14 +692,14 @@ pub(crate) struct DiscoveryNode {
     pub(crate) syntax: CommandSyntax,
     /// Parent/subcommand routing semantics reflected from Clap.
     pub(crate) subcommand_routing: SubcommandRouting,
-    /// Executable-command data when this visible command can produce a machine output.
+    /// Executable-command data when this discoverable command can produce a machine output.
     pub(crate) executable: Option<ExecutableData>,
-    /// Schema-visible child commands.
+    /// Discoverable child commands.
     pub(crate) children: Vec<Self>,
 }
 
 impl DiscoveryNode {
-    /// Finds one Rust command identity only when it appears at exactly one visible command node.
+    /// Finds one Rust command identity only when it appears at exactly one discoverable command node.
     pub(crate) fn unique_command(&self, id: TypeId) -> Option<&Self> {
         fn visit<'a>(
             node: &'a DiscoveryNode,

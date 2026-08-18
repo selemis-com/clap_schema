@@ -260,14 +260,14 @@
 //!
 //! # Scope
 //!
-//! The wire model describes a canonical invocation contract without serializing Clap's own help
-//! representation. Positional order, canonical option spellings, value arity, lexical defaults and
-//! possible values, delimiters, terminators, conflicts, repeatability,
-//! exclusivity, required equals syntax, and required option-terminator syntax are reflected from
-//! Clap's built command tree. Human-facing aliases, short alternatives, value placeholders, and
-//! rendered usage strings are intentionally omitted. Input values remain lexical rather than
-//! inferring Rust parser result types. Clap remains authoritative for parser behavior and advanced
-//! relationships that its public reflection API does not expose. A present output schema
+//! The wire model describes a canonical process-style invocation contract without serializing
+//! Clap's own help representation. Global argument scope, positional order, canonical option
+//! spellings, value arity, lexical defaults and possible values, delimiters, terminators, conflicts,
+//! repeatability, exclusivity, required equals syntax, and required option-terminator syntax are
+//! reflected from Clap's built command tree. Human-facing aliases, short alternatives, value
+//! placeholders, and rendered usage strings are intentionally omitted. Input values remain lexical
+//! rather than inferring Rust parser result types. Clap remains authoritative for parser-specific
+//! validation, and argv framing modes outside the process model are rejected. A present output schema
 //! means the command's successful value has a machine-readable JSON Schema; absence means no typed
 //! successful-output contract is declared. See `SPECIFICATION.md` for the complete wire contract
 //! and reflection boundary.

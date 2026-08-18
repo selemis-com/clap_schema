@@ -1,4 +1,5 @@
 //! Representative handler forms and their inferred successful outputs.
+
 #[cfg(test)]
 mod tests {
     use clap::{Args, Parser, Subcommand};

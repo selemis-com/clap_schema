@@ -68,7 +68,7 @@ A complete command document can contain:
 
 `ancestors`, when present, contains the invocation-relevant command levels above the selected command, ordered from the root command to the immediate parent. Root command documents omit this field.
 
-Each ancestor uses the same `arguments`, `options`, `groups`, command-syntax, and subcommand-routing properties defined for the selected command. Its `path` identifies the command boundary that owns those semantics. Ancestor contexts do not carry `invocable`, `output`, or child topology because they describe how to reach the selected command rather than a separately selected operation.
+Each ancestor uses the same `arguments`, `options`, `groups`, command-syntax, and subcommand-routing properties defined for the selected command. Its `path` identifies the command boundary that owns those semantics. Global arguments propagated by Clap are omitted from ancestor argument lists and represented once on the selected command. Ancestor relationships and groups may still reference those global arguments by canonical name. Ancestor contexts do not carry `invocable`, `output`, or child topology because they describe how to reach the selected command rather than a separately selected operation.
 
 Consumers constructing a nested invocation **MUST** apply ancestor requirements and routing rules at the command level where they are declared. In particular, selecting a child does not implicitly discard a parent's required arguments unless that ancestor has `subcommandNegatesRequirements: true`.
 
@@ -173,6 +173,14 @@ invocation.
 
 Absence is equivalent to `false`. Conditional requiredness is represented separately by
 `requiredIfAny`, `requiredIfAll`, `requiredUnlessAny`, and `requiredUnlessAll`.
+
+### `global`
+
+`global: true` means Clap propagates this argument to child commands. A global argument may be supplied at the command level where it is declared or at any descendant level accepted by Clap.
+
+In a complete nested command document, inherited global arguments are represented once on the selected command and omitted from `ancestors`. Consumers SHOULD therefore emit a selected global argument only once; placing it with the selected command's own arguments provides a canonical representation.
+
+Absence is equivalent to `false`.
 
 ### `value`
 
@@ -332,7 +340,7 @@ Clap's `hide_default_value` setting affects human help only and does not suppres
 
 ### `defaultIf`
 
-`defaultIf` is an ordered array of conditional-default rules. Each rule identifies another canonical argument, a presence or equality predicate, and a lexical default. Predicate evaluation retains Clap's value-source semantics: values originating only from a default do not satisfy the predicate. Rules are evaluated in declaration order; the first matching rule wins. A JSON `null` value represents a matching rule that suppresses the unconditional default.
+`defaultIf` is an ordered array of conditional-default rules. Each rule identifies an argument or argument-group `target`, a presence or equality predicate, and a lexical default. Predicate evaluation retains Clap's value-source semantics: values originating only from a default do not satisfy the predicate. For a group target, an equality predicate compares against the stable ID of the selected group member. Rules are evaluated in declaration order; the first matching rule wins. A JSON `null` value represents a matching rule that suppresses the unconditional default.
 
 ### `delimiter`
 
@@ -413,8 +421,8 @@ A summary contains:
 Given the executable name separately and one complete command document, a consumer can construct a canonical invocation as follows:
 
 1. Start with the executable name.
-2. Walk `ancestors` from root to immediate parent. At each ancestor level, construct that level's selected options and positional values according to its local argument, group, and syntax properties, then append the next canonical token from the selected command's `path`. Respect that ancestor's `argsConflictWithSubcommands`, `subcommandPrecedenceOverArg`, and `subcommandNegatesRequirements` while crossing the command boundary.
-3. After the final path token, construct the selected command's own options and positional values from the top-level command properties.
+2. Walk `ancestors` from root to immediate parent. At each ancestor level, construct that level's non-global options and positional values according to its local argument, group, and syntax properties, then append the next canonical token from the selected command's `path`. Respect that ancestor's `argsConflictWithSubcommands`, `subcommandPrecedenceOverArg`, and `subcommandNegatesRequirements` while crossing the command boundary.
+3. After the final path token, construct the selected command's own options and positional values from the top-level command properties. Inherited global arguments appear here once rather than being duplicated across ancestor levels.
 4. For a selected option with `value`, supply a number of values within `minValues..=maxValues`. When `maxValues` is `null`, there is no finite upper bound.
 5. If `requireEquals` is true, attach the first option value with `=`.
 6. Respect `delimiter`, `terminator`, `repeatable`, `conflictsWith`, `overrides`, `requires`, conditional requiredness, `ignoreCase`, and `exclusive` when they are present.
@@ -429,11 +437,13 @@ The schema does not prescribe shell quoting or escaping. The caller is responsib
 
 `clap_schema` 0.2 describes semantics that can be obtained reliably from Clap's public built-command reflection plus the registered Rust output type.
 
-The core contract includes canonical paths and option spellings, positional order, base and conditional requiredness, requirement and override relationships, argument-group rules, value arity, unconditional/missing/conditional defaults, advertised possible values, delimiters, value terminators, repeatability, conflicts, exclusive arguments, required `=` syntax, required `--` syntax, trailing variadic capture, case-insensitive value matching, missing-positional behavior, trailing-value delimiting, parent/subcommand routing semantics, and typed successful-output JSON Schema.
+The core contract includes canonical paths and option spellings, global argument scope, positional order, base and conditional requiredness, requirement and override relationships, argument-group rules, value arity, unconditional/missing/conditional defaults, advertised possible values, delimiters, value terminators, repeatability, conflicts, exclusive arguments, required `=` syntax, required `--` syntax, trailing variadic capture, case-insensitive value matching, missing-positional behavior, trailing-value delimiting, parent/subcommand routing semantics, and typed successful-output JSON Schema.
 
 Input values remain lexical command-line values. `clap_schema` does not infer Rust result types from Clap's erased value parser, and Clap remains authoritative for parser-specific validation.
 
 Only UTF-8 lexical relationship and default values can be represented directly by this JSON contract. A rule whose lexical predicate cannot be represented as UTF-8 is omitted rather than converted lossily. Consumers MUST interpret omission as “not stated by this contract”, not as proof that no application-specific constraint exists.
+
+The contract uses the normal process-style argv framing where the executable name is separate from the command path. `ContractBuilder::build` rejects Clap's `no_binary_name` and `multicall` modes because they change the meaning of the beginning of argv. Runtime external-subcommand capture and parser control flow such as `arg_required_else_help` remain Clap-authoritative outside the structured contract.
 
 This boundary is intentional: `clap_schema` does not guess parser behavior or make private Clap implementation details part of its wire protocol.
 
@@ -472,6 +482,7 @@ Notable 0.2 changes include:
 - `hasSubcommands` is removed from complete command documents and retained only where needed by shallow summaries;
 - argument `id`, `index`, `short`, `long`, `value_names`, `help`, `default_values`, and `possible_values` are replaced by the canonical semantic argument/value shape specified here;
 - input value arity is explicit while values remain lexical;
+- global argument scope is explicit and inherited globals are represented once on nested commands;
 - syntax-affecting details such as required `=`, required `--`, delimiters, terminators, repeatability, conflicts, and exclusivity are exposed directly;
 - conditional requirements, required-unless rules, overrides, missing/conditional defaults, and argument-group constraints are reflected as structured semantics.
 

@@ -1,4 +1,5 @@
 //! End-to-end contract behavior over one realistic nested CLI.
+
 #[cfg(test)]
 mod tests {
     use clap::{Args, Parser, Subcommand, ValueEnum};
