@@ -377,7 +377,6 @@ mod tests {
 
         let aliased = contract.command(&["objects", "show"])?;
         assert_eq!(aliased.path, vec!["objects".to_owned(), "get".to_owned()]);
-        assert_eq!(aliased.aliases, vec!["show".to_owned()]);
         Ok(())
     }
 
@@ -441,67 +440,87 @@ mod tests {
     }
 
     #[test]
-    fn discovery_combines_usage_and_compact_clap_argument_context() -> clap_schema::Result<()> {
+    fn discovery_exposes_canonical_invocation_contracts() -> clap_schema::Result<()> {
         let contract = Cli::schema()?;
         let get = contract.command_for::<GetObjectArgs>().expect("get command");
 
-        assert!(!get.usage.is_empty());
         assert_eq!(
-            get.arguments.iter().map(|argument| argument.id.as_str()).collect::<Vec<_>>(),
-            ["workspace_id", "object_id"]
+            get.arguments.iter().map(|argument| argument.name.as_str()).collect::<Vec<_>>(),
+            vec!["workspace_id", "object_id"]
         );
-        assert_eq!(get.arguments[0].index, Some(1));
-        assert_eq!(get.arguments[1].index, Some(2));
+        assert_eq!(get.arguments[0].position, Some(1));
+        assert_eq!(get.arguments[1].position, Some(2));
         assert!(get.arguments.iter().all(|argument| argument.required));
+        assert!(get.arguments.iter().all(|argument| {
+            argument.value.as_ref().is_some_and(|value| {
+                value.value_type == clap_schema::ArgumentValueType::String
+                    && value.min_values == 1
+                    && value.max_values == Some(1)
+            })
+        }));
 
         let version = get
             .options
             .iter()
-            .find(|argument| argument.id == "version_id")
+            .find(|argument| argument.name == "--version-id")
             .expect("version option");
-        assert_eq!(version.long.as_deref(), Some("version-id"));
-        assert_eq!(version.value_names, vec!["VERSION_ID".to_owned()]);
+        assert_eq!(version.position, None);
+        assert_eq!(
+            version.value.as_ref().map(|value| value.value_type),
+            Some(clap_schema::ArgumentValueType::String)
+        );
 
-        let json = get.options.iter().find(|argument| argument.id == "json").expect("json option");
-        assert_eq!(json.short, Some('j'));
-        assert_eq!(json.long.as_deref(), Some("json"));
-        assert!(json.value_names.is_empty());
+        let json =
+            get.options.iter().find(|argument| argument.name == "--json").expect("json option");
+        assert!(json.value.is_none());
 
-        let url = get.options.iter().find(|argument| argument.id == "url").expect("url option");
-        assert_eq!(url.default_values, vec!["https://example.test".to_owned()]);
+        let url = get.options.iter().find(|argument| argument.name == "--url").expect("url option");
+        assert_eq!(
+            url.value.as_ref().and_then(|value| value.default.as_ref()),
+            Some(&serde_json::Value::String("https://example.test".to_owned()))
+        );
 
         let list = contract.command_for::<ListObjectsArgs>().expect("list command");
         let order =
-            list.options.iter().find(|argument| argument.id == "order").expect("order option");
-        assert_eq!(order.aliases, vec!["sort".to_owned()]);
-        assert_eq!(order.default_values, vec!["newest".to_owned()]);
-        assert_eq!(order.possible_values, vec!["newest".to_owned(), "oldest".to_owned()]);
-        assert!(!list.options.iter().any(|argument| argument.id == "internal_token"));
+            list.options.iter().find(|argument| argument.name == "--order").expect("order option");
+        let order_value = order.value.as_ref().expect("order value contract");
+        assert_eq!(order_value.default, Some(serde_json::Value::String("newest".to_owned())));
+        assert_eq!(order_value.values, vec!["newest".to_owned(), "oldest".to_owned()]);
+        assert!(!list.options.iter().any(|argument| argument.name == "--internal-token"));
 
         let grant = contract.command_for::<GrantAccessArgs>().expect("grant command");
         let user_id = grant
             .options
             .iter()
-            .find(|argument| argument.id == "user_id")
+            .find(|argument| argument.name == "--user-id")
             .expect("user principal option");
         let group_id = grant
             .options
             .iter()
-            .find(|argument| argument.id == "group_id")
+            .find(|argument| argument.name == "--group-id")
             .expect("group principal option");
         assert!(!user_id.required);
         assert!(!group_id.required);
-        assert!(grant.options.iter().any(|argument| argument.id == "role"));
-        assert!(!grant.usage.is_empty());
+        assert!(user_id.conflicts_with.contains(&"--group-id".to_owned()));
+        assert!(group_id.conflicts_with.contains(&"--user-id".to_owned()));
+        assert!(grant.options.iter().any(|argument| argument.name == "--role"));
 
         let search = contract.command_for::<SearchArgs>().expect("search command");
         assert!(search.arguments.is_empty());
-        let query =
-            search.options.iter().find(|argument| argument.id == "query").expect("query option");
+        let query = search
+            .options
+            .iter()
+            .find(|argument| argument.name == "--query")
+            .expect("query option");
         assert!(query.required);
-        let limit =
-            search.options.iter().find(|argument| argument.id == "limit").expect("limit option");
-        assert_eq!(limit.default_values, vec!["25".to_owned()]);
+        let limit = search
+            .options
+            .iter()
+            .find(|argument| argument.name == "--limit")
+            .expect("limit option");
+        let limit_value = limit.value.as_ref().expect("limit value contract");
+        assert_eq!(limit_value.value_type, clap_schema::ArgumentValueType::Integer);
+        assert_eq!(limit_value.default, Some(serde_json::Value::String("25".to_owned())));
         Ok(())
     }
 
@@ -531,7 +550,7 @@ mod tests {
                 _ => None,
             })
             .expect("access summary");
-        assert!(access.executable);
+        assert!(access.invocable);
         assert!(access.has_subcommands);
 
         let full =
@@ -556,7 +575,7 @@ mod tests {
                 _ => None,
             })
             .expect("resolved access command");
-        assert!(access.command.executable);
+        assert!(access.command.invocable);
         assert!(access.command.output.is_some());
         assert_eq!(access.subcommands.len(), 2);
         assert!(
@@ -577,7 +596,7 @@ mod tests {
                 _ => None,
             })
             .expect("resolved revoke command");
-        assert!(revoke.command.executable);
+        assert!(revoke.command.invocable);
         assert!(revoke.command.output.is_none());
 
         let leaf = clap_schema::SchemaRequest::new(["objects", "get"]);

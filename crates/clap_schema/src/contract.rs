@@ -4,9 +4,13 @@ use std::{any::TypeId, collections::HashSet};
 
 use clap::{Arg, ArgAction, Command};
 use schemars::JsonSchema;
+use serde_json::Value;
 
 use crate::{
-    model::{ArgumentInfo, CliContract, DiscoveryNode, ExecutableData},
+    model::{
+        ArgumentInfo, ArgumentSyntax, ArgumentValue, ArgumentValueType, CliContract, DiscoveryNode,
+        ExecutableData,
+    },
     schema::{
         ExtendedSchemaFactory, SchemaFactory, compose_extended_schemas, extended_schema_factory,
         output_schema_factory,
@@ -339,12 +343,10 @@ fn build_discovery_node(
         name: command.get_name().to_owned(),
         path,
         aliases: command.get_all_aliases().map(ToOwned::to_owned).collect(),
-        visible_aliases: command.get_visible_aliases().map(ToOwned::to_owned).collect(),
         description: command
             .get_about()
             .or_else(|| command.get_long_about())
             .map(ToString::to_string),
-        usage: usage_synopsis(command),
         arguments: reflected_positionals(command),
         options: reflected_options(command),
         executable,
@@ -357,7 +359,7 @@ fn reflected_positionals(command: &Command) -> Vec<ArgumentInfo> {
     command
         .get_positionals()
         .filter(|argument| reflected_argument(argument))
-        .map(argument_info)
+        .map(|argument| argument_info(command, argument))
         .collect()
 }
 
@@ -367,7 +369,7 @@ fn reflected_options(command: &Command) -> Vec<ArgumentInfo> {
         .get_arguments()
         .filter(|argument| !argument.is_positional())
         .filter(|argument| reflected_argument(argument))
-        .map(argument_info)
+        .map(|argument| argument_info(command, argument))
         .collect()
 }
 
@@ -382,59 +384,130 @@ fn reflected_argument(argument: &Arg) -> bool {
     )
 }
 
-/// Projects the small, stable subset of Clap argument metadata useful for discovery.
-fn argument_info(argument: &Arg) -> ArgumentInfo {
-    let takes_values = argument.get_action().takes_values();
-    let default_values = if takes_values && !argument.is_hide_default_value_set() {
-        argument
-            .get_default_values()
-            .iter()
-            .filter_map(|value| value.to_str())
-            .map(ToOwned::to_owned)
-            .collect()
-    } else {
+/// Projects canonical invocation semantics from one built Clap argument.
+fn argument_info(command: &Command, argument: &Arg) -> ArgumentInfo {
+    let action = argument.get_action();
+    let takes_values = action.takes_values();
+    let value = takes_values.then(|| argument_value(argument));
+    let conflicts_with = command
+        .get_arg_conflicts_with(argument)
+        .into_iter()
+        .filter(|conflict| conflict.get_id() != argument.get_id())
+        .filter(|conflict| reflected_argument(conflict))
+        .map(canonical_argument_name)
+        .collect();
+
+    ArgumentInfo {
+        name: canonical_argument_name(argument),
+        position: argument.get_index(),
+        description: argument
+            .get_help()
+            .or_else(|| argument.get_long_help())
+            .map(ToString::to_string),
+        required: argument.is_required_set(),
+        value,
+        repeatable: matches!(action, ArgAction::Append | ArgAction::Count),
+        conflicts_with,
+        syntax: ArgumentSyntax {
+            require_equals: takes_values
+                && !argument.is_positional()
+                && argument.is_require_equals_set(),
+            requires_double_dash: argument.is_positional() && argument.is_last_set(),
+        },
+        exclusive: argument.is_exclusive_set(),
+    }
+}
+
+/// Builds the value contract for one value-taking Clap argument.
+fn argument_value(argument: &Arg) -> ArgumentValue {
+    let (min_values, max_values) = argument.get_num_args().map_or((1, Some(1)), |range| {
+        let max = range.max_values();
+        (range.min_values(), (max != usize::MAX).then_some(max))
+    });
+
+    let values = if argument.is_hide_possible_values_set() {
         Vec::new()
-    };
-    let possible_values = if takes_values && !argument.is_hide_possible_values_set() {
+    } else {
         argument
             .get_possible_values()
             .into_iter()
             .filter(|value| !value.is_hide_set())
             .map(|value| value.get_name().to_owned())
             .collect()
-    } else {
-        Vec::new()
     };
 
-    ArgumentInfo {
-        id: argument.get_id().to_string(),
-        index: argument.get_index(),
-        short: argument.get_short(),
-        long: argument.get_long().map(ToOwned::to_owned),
-        short_aliases: argument.get_visible_short_aliases().unwrap_or_default(),
-        aliases: argument
-            .get_visible_aliases()
-            .unwrap_or_default()
-            .into_iter()
-            .map(ToOwned::to_owned)
-            .collect(),
-        value_names: if takes_values {
-            argument.get_value_names().unwrap_or_default().iter().map(ToString::to_string).collect()
-        } else {
-            Vec::new()
-        },
-        help: argument.get_help().or_else(|| argument.get_long_help()).map(ToString::to_string),
-        required: argument.is_required_set(),
-        default_values,
-        possible_values,
+    ArgumentValue {
+        value_type: argument_value_type(argument),
+        min_values,
+        max_values,
+        values,
+        default: argument_default(argument),
+        delimiter: argument.get_value_delimiter(),
+        terminator: argument.get_value_terminator().map(ToString::to_string),
+        allow_hyphen_values: argument.is_allow_hyphen_values_set(),
     }
 }
 
-/// Renders Clap's canonical usage statement without the presentation heading.
-fn usage_synopsis(command: &Command) -> String {
-    let mut command = command.clone();
-    let rendered = command.render_usage().to_string();
-    rendered.strip_prefix("Usage: ").unwrap_or(&rendered).trim().to_owned()
+/// Returns one canonical spelling suitable for constructing an invocation.
+fn canonical_argument_name(argument: &Arg) -> String {
+    if argument.is_positional() {
+        argument.get_id().to_string()
+    } else if let Some(long) = argument.get_long() {
+        format!("--{long}")
+    } else if let Some(short) = argument.get_short() {
+        format!("-{short}")
+    } else {
+        argument.get_id().to_string()
+    }
+}
+
+/// Infers the small scalar type vocabulary that Clap exposes through its erased parser `TypeId`.
+fn argument_value_type(argument: &Arg) -> ArgumentValueType {
+    let type_id = argument.get_value_parser().type_id();
+
+    if type_id == TypeId::of::<bool>() {
+        ArgumentValueType::Boolean
+    } else if type_id == TypeId::of::<i8>()
+        || type_id == TypeId::of::<i16>()
+        || type_id == TypeId::of::<i32>()
+        || type_id == TypeId::of::<i64>()
+        || type_id == TypeId::of::<i128>()
+        || type_id == TypeId::of::<isize>()
+        || type_id == TypeId::of::<u8>()
+        || type_id == TypeId::of::<u16>()
+        || type_id == TypeId::of::<u32>()
+        || type_id == TypeId::of::<u64>()
+        || type_id == TypeId::of::<u128>()
+        || type_id == TypeId::of::<usize>()
+    {
+        ArgumentValueType::Integer
+    } else if type_id == TypeId::of::<f32>() || type_id == TypeId::of::<f64>() {
+        ArgumentValueType::Number
+    } else {
+        // Command-line values are lexical tokens. Unknown custom parser output types remain
+        // representable as strings rather than being guessed from Rust type names.
+        ArgumentValueType::String
+    }
+}
+
+/// Returns visible lexical defaults without pretending they are already parsed Rust values.
+fn argument_default(argument: &Arg) -> Option<Value> {
+    if argument.is_hide_default_value_set() {
+        return None;
+    }
+
+    let values = argument
+        .get_default_values()
+        .iter()
+        .filter_map(|value| value.to_str())
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+
+    match values.as_slice() {
+        [] => None,
+        [value] => Some(Value::String(value.clone())),
+        values => Some(Value::Array(values.iter().cloned().map(Value::String).collect())),
+    }
 }
 
 /// Formats a canonical command path for diagnostics.

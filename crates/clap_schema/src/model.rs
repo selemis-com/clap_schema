@@ -161,14 +161,11 @@ impl CliContract {
         CommandInfo {
             name: node.name.clone(),
             path: node.path.clone(),
-            aliases: node.visible_aliases.clone(),
             description: node.description.clone(),
-            usage: node.usage.clone(),
             arguments: node.arguments.clone(),
             options: node.options.clone(),
-            executable: node.executable.is_some(),
+            invocable: node.executable.is_some(),
             output: node.executable.as_ref().and_then(|executable| executable.output.clone()),
-            has_subcommands: !node.children.is_empty(),
         }
     }
 
@@ -183,7 +180,10 @@ impl CliContract {
                     SchemaSubcommand::Resolved(Box::new(self.schema_document(child, true)))
                 } else {
                     let command = self.command_info(child);
-                    SchemaSubcommand::Summary(SchemaCommandSummary::from_command(&command))
+                    SchemaSubcommand::Summary(SchemaCommandSummary::from_command(
+                        &command,
+                        !child.children.is_empty(),
+                    ))
                 }
             })
             .collect();
@@ -278,7 +278,7 @@ pub(crate) struct ExecutableData {
     pub(crate) extended_schema: Option<Value>,
 }
 
-/// Shallow discovery information for one visible command or command group.
+/// Canonical invocation contract for one visible command or command group.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[non_exhaustive]
 pub struct CommandInfo {
@@ -286,32 +286,21 @@ pub struct CommandInfo {
     pub name: String,
     /// Canonical path excluding the executable name.
     pub path: Vec<String>,
-    /// Aliases that Clap exposes in generated help.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub aliases: Vec<String>,
     /// Command description reflected from Clap help metadata.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Invocation synopsis rendered by Clap.
-    ///
-    /// This is presentation output, not a structured grammar; Clap may collapse groups of options
-    /// behind placeholders such as `[OPTIONS]`.
-    pub usage: String,
-    /// Visible positional arguments reflected directly from Clap.
+    /// Visible positional arguments in invocation order.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub arguments: Vec<ArgumentInfo>,
-    /// Visible non-positional options reflected directly from Clap.
+    /// Visible non-positional options using one canonical spelling each.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub options: Vec<ArgumentInfo>,
-    /// Whether this node is executable.
+    /// Whether this exact command path can be invoked as an operation.
     #[serde(default, skip_serializing_if = "is_false")]
-    pub executable: bool,
+    pub invocable: bool,
     /// Successful output schema when the command returns a non-unit value.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output: Option<Value>,
-    /// Whether the node has schema-visible child commands.
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub has_subcommands: bool,
 }
 
 /// Compact schema-discovery reference to one direct child command.
@@ -323,65 +312,124 @@ pub struct SchemaCommandSummary {
     /// Command description reflected from Clap help metadata.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Whether this command is executable.
+    /// Whether this exact command path can be invoked as an operation.
     #[serde(default, skip_serializing_if = "is_false")]
-    pub executable: bool,
+    pub invocable: bool,
     /// Whether this command has schema-visible child commands.
     #[serde(default, skip_serializing_if = "is_false")]
     pub has_subcommands: bool,
 }
 
 impl SchemaCommandSummary {
-    /// Projects the compact child shape from the canonical command projection.
-    fn from_command(command: &CommandInfo) -> Self {
+    /// Projects the compact child shape from a command and its topology.
+    fn from_command(command: &CommandInfo, has_subcommands: bool) -> Self {
         Self {
             path: command.path.clone(),
             description: command.description.clone(),
-            executable: command.executable,
-            has_subcommands: command.has_subcommands,
+            invocable: command.invocable,
+            has_subcommands,
         }
     }
 }
 
-/// Compact context for one visible Clap argument or option.
+/// Canonical invocation information for one visible positional argument or option.
 ///
-/// This intentionally exposes only straightforward facts from Clap's built command model.
-/// Complete invocation semantics remain authoritative in Clap and its generated help.
+/// Positionals appear in the `arguments` array in invocation order and also carry their one-based
+/// `position`. Options use one canonical spelling in `name`, preferring `--long` over `-s` when
+/// both are available. Human-facing aliases and value placeholders are intentionally omitted.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[non_exhaustive]
 pub struct ArgumentInfo {
-    /// Clap argument identifier.
-    pub id: String,
-    /// Positional index when this is a positional argument.
+    /// Canonical invocation name.
+    ///
+    /// Positional arguments use their stable Clap identifier. Options include their leading dash,
+    /// for example `--limit` or `-v`.
+    pub name: String,
+    /// One-based positional order. Absent for options.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub index: Option<usize>,
-    /// Short option name when configured.
+    pub position: Option<usize>,
+    /// Human-readable semantic description reflected from Clap help metadata.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub short: Option<char>,
-    /// Long option name when configured.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub long: Option<String>,
-    /// Short aliases that Clap exposes in generated help.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub short_aliases: Vec<char>,
-    /// Long aliases that Clap exposes in generated help.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub aliases: Vec<String>,
-    /// Value placeholders such as `FILE` or `WORKSPACE_ID`.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub value_names: Vec<String>,
-    /// Human-readable argument help reflected from Clap.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub help: Option<String>,
+    pub description: Option<String>,
     /// Whether Clap marks this argument as unconditionally required.
     #[serde(default, skip_serializing_if = "is_false")]
     pub required: bool,
-    /// Visible UTF-8 default values for value-taking arguments.
+    /// Value contract. Absent for flags that consume no value.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<ArgumentValue>,
+    /// Whether the same argument may be supplied repeatedly.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub repeatable: bool,
+    /// Canonical invocation names that conflict with this argument.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub default_values: Vec<String>,
-    /// Visible finite values reported by the configured Clap value parser.
+    pub conflicts_with: Vec<String>,
+    /// Token-placement syntax required to invoke this argument correctly.
+    #[serde(flatten)]
+    pub syntax: ArgumentSyntax,
+    /// Whether this argument must be used without any other argument.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub exclusive: bool,
+}
+
+/// Token-placement syntax required for one argument.
+///
+/// This is flattened into [`ArgumentInfo`] on the wire so these properties remain adjacent to the
+/// argument they constrain while keeping the Rust model focused by concern.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, JsonSchema)]
+#[non_exhaustive]
+pub struct ArgumentSyntax {
+    /// Whether a value-taking option requires `=<value>` syntax.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub require_equals: bool,
+    /// Whether this positional must follow the `--` option terminator.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub requires_double_dash: bool,
+}
+
+/// Value contract for one positional argument or option occurrence.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[non_exhaustive]
+pub struct ArgumentValue {
+    /// Scalar value type recognized from Clap's configured value parser.
+    #[serde(rename = "type")]
+    pub value_type: ArgumentValueType,
+    /// Minimum number of values consumed by one occurrence.
+    pub min_values: usize,
+    /// Maximum number of values consumed by one occurrence, or `null` when unbounded.
+    pub max_values: Option<usize>,
+    /// Visible finite values advertised by the configured Clap value parser.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub possible_values: Vec<String>,
+    pub values: Vec<String>,
+    /// Visible default spelling used when the argument is omitted.
+    ///
+    /// A single default is serialized as a string; multiple defaults are serialized as an array
+    /// of strings because command-line defaults are lexical values before parsing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default: Option<Value>,
+    /// Delimiter Clap uses to split multiple values inside one token.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delimiter: Option<char>,
+    /// Token that terminates parsing of a multi-valued argument.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub terminator: Option<String>,
+    /// Whether value tokens beginning with a hyphen are accepted without disambiguation.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub allow_hyphen_values: bool,
+}
+
+/// Scalar input types that can be inferred reliably from Clap's erased value parser.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum ArgumentValueType {
+    /// Textual or otherwise application-defined token.
+    String,
+    /// Signed or unsigned integer.
+    Integer,
+    /// Floating-point number.
+    Number,
+    /// Boolean value.
+    Boolean,
 }
 
 /// Internal schema-visible command topology reflected from Clap.
@@ -393,12 +441,8 @@ pub(crate) struct DiscoveryNode {
     pub(crate) path: Vec<String>,
     /// Every Clap alias accepted while resolving a path.
     pub(crate) aliases: Vec<String>,
-    /// Aliases exposed in Clap-generated help.
-    pub(crate) visible_aliases: Vec<String>,
     /// Command description reflected from Clap help metadata.
     pub(crate) description: Option<String>,
-    /// Canonical invocation synopsis rendered by Clap.
-    pub(crate) usage: String,
     /// Visible positional arguments reflected directly from Clap.
     pub(crate) arguments: Vec<ArgumentInfo>,
     /// Visible non-positional options reflected directly from Clap.

@@ -4,7 +4,7 @@
 mod tests {
     use std::convert::Infallible;
 
-    use clap::{Args, Command, Parser, Subcommand};
+    use clap::{Arg, ArgAction, Args, Command, Parser, Subcommand};
     use clap_schema::{CliSchema, CommandSchema, ContractBuilder, SchemaRequest, schema_handler};
     use schemars::JsonSchema;
 
@@ -192,10 +192,73 @@ mod tests {
     }
 
     #[test]
+    fn builder_reflects_invocation_syntax_that_changes_tokenization() -> clap_schema::Result<()> {
+        let contract = ContractBuilder::new(
+            Command::new("fixture").subcommand(
+                Command::new("create")
+                    .arg(
+                        Arg::new("count")
+                            .long("count")
+                            .value_parser(clap::value_parser!(u16))
+                            .default_value("2"),
+                    )
+                    .arg(
+                        Arg::new("define")
+                            .long("define")
+                            .action(ArgAction::Append)
+                            .num_args(1..)
+                            .value_delimiter(',')
+                            .value_terminator(";")
+                            .require_equals(true),
+                    )
+                    .arg(Arg::new("alone").long("alone").action(ArgAction::SetTrue).exclusive(true))
+                    .arg(Arg::new("raw").last(true).num_args(1..).allow_hyphen_values(true)),
+            ),
+        )
+        .command::<CreateCommand>(["create"])
+        .build()?;
+
+        let command = contract.command(&["create"])?;
+        let count = command
+            .options
+            .iter()
+            .find(|argument| argument.name == "--count")
+            .expect("count option");
+        let count_value = count.value.as_ref().expect("count value");
+        assert_eq!(count_value.value_type, clap_schema::ArgumentValueType::Integer);
+        assert_eq!(count_value.default, Some(serde_json::Value::String("2".to_owned())));
+
+        let define = command
+            .options
+            .iter()
+            .find(|argument| argument.name == "--define")
+            .expect("define option");
+        assert!(define.repeatable);
+        assert!(define.syntax.require_equals);
+        let define_value = define.value.as_ref().expect("define value");
+        assert_eq!(define_value.min_values, 1);
+        assert_eq!(define_value.max_values, None);
+        assert_eq!(define_value.delimiter, Some(','));
+        assert_eq!(define_value.terminator.as_deref(), Some(";"));
+
+        let alone = command
+            .options
+            .iter()
+            .find(|argument| argument.name == "--alone")
+            .expect("exclusive option");
+        assert!(alone.exclusive);
+
+        let raw = command.arguments.iter().find(|argument| argument.name == "raw").expect("raw");
+        assert!(raw.syntax.requires_double_dash);
+        assert!(raw.value.as_ref().is_some_and(|value| value.allow_hyphen_values));
+        Ok(())
+    }
+
+    #[test]
     fn derive_root_with_required_subcommand_has_no_output_contract() -> clap_schema::Result<()> {
         let contract = DiscoveryOnlyRoot::schema()?;
         let root = contract.schema(&SchemaRequest::default())?;
-        assert!(!root.command.executable);
+        assert!(!root.command.invocable);
         Ok(())
     }
 
@@ -312,7 +375,7 @@ mod tests {
             _ => panic!("unknown schema subcommand variant"),
         };
         assert_eq!(visible.path, ["visible"]);
-        assert!(visible.executable);
+        assert!(visible.invocable);
         Ok(())
     }
 

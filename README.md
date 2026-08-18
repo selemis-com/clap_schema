@@ -36,34 +36,36 @@ deployctl deploy --environment production api
     "deploy"
   ],
   "description": "Deploy a service",
-  "usage": "deployctl deploy --environment <ENVIRONMENT> <SERVICE>",
   "arguments": [
     {
-      "id": "service",
-      "index": 1,
-      "value_names": [
-        "SERVICE"
-      ],
-      "help": "Service to deploy",
-      "required": true
+      "name": "service",
+      "position": 1,
+      "description": "Service to deploy",
+      "required": true,
+      "value": {
+        "type": "string",
+        "min_values": 1,
+        "max_values": 1
+      }
     }
   ],
   "options": [
     {
-      "id": "environment",
-      "long": "environment",
-      "value_names": [
-        "ENVIRONMENT"
-      ],
-      "help": "Target environment",
+      "name": "--environment",
+      "description": "Target environment",
       "required": true,
-      "possible_values": [
-        "staging",
-        "production"
-      ]
+      "value": {
+        "type": "string",
+        "min_values": 1,
+        "max_values": 1,
+        "values": [
+          "staging",
+          "production"
+        ]
+      }
     }
   ],
-  "executable": true,
+  "invocable": true,
   "output": {
     "description": "Result of deploying a service.",
     "properties": {
@@ -90,9 +92,18 @@ deployctl deploy --environment production api
 }
 ```
 
-The command path, usage, arguments, options, help, and possible values come from Clap. The `output` field is the JSON Schema of the successful Rust result.
+The command path and canonical invocation contract come from Clap. Positional order, canonical
+option spellings, value arity, recognized scalar types, visible defaults and finite values,
+conflicts, repeatability, delimiters, value terminators, required `=` syntax, required `--` syntax,
+and exclusivity are reflected from the built command model. The `output` field is the JSON Schema
+of the successful Rust result.
 
-This gives agents and other tooling a structured description of what a command accepts and what it returns, while Clap remains the source of truth for the CLI itself.
+This gives agents a canonical invocation contract without making rendered Clap help part of the
+wire format. Clap remains authoritative for parsing, including advanced relationships that its
+public reflection API does not expose, and Rust types remain authoritative for typed successful
+results.
+
+The full wire contract and compatibility rules are documented in [`SPECIFICATION.md`](SPECIFICATION.md).
 
 ## Installation
 
@@ -281,7 +292,7 @@ When Rust code already knows which command it wants to inspect, lower-level look
 
 Paths accept Clap aliases, while returned paths are always canonical.
 
-Generated contracts include common positional and option metadata such as names, help, defaults, requiredness, and possible values. They do not replace Clap's argument parser: Clap remains authoritative for custom parsers, conditional requirements, conflicts, groups, and other invocation rules.
+Generated contracts include canonical invocation metadata such as names, positional order, value arity, recognized scalar types, visible defaults and possible values, repeatability, conflicts, and token-level syntax requirements. They do not replace Clap's argument parser: Clap remains authoritative for custom parser constraints and advanced relationships that its public reflection API does not expose, including conditional requirements and defaults, missing-value defaults, overrides, and some argument-group requirements.
 
 ## Application-defined extensions
 
