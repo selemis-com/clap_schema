@@ -304,17 +304,17 @@ These fields apply per occurrence. `repeatable` separately describes whether the
 
 ### `values`
 
-`values`, when present, contains visible finite values advertised by the configured parser. Consumers SHOULD prefer one of these values when constructing an invocation.
+`values`, when present, contains canonical finite values accepted by the configured parser. Consumers SHOULD prefer one of these canonical values when constructing an invocation. Hidden aliases are not emitted as additional canonical values.
 
-Hidden possible values are not emitted.
+Clap help/completion visibility does not change this field. Values hidden with Clap's presentation controls remain part of the machine-readable parser contract.
 
 ### `default`
 
-`default`, when present, is the visible lexical default used when the argument is omitted.
+`default`, when present, is the lexical default used when the argument is omitted.
 
 A single default is a JSON string. Multiple defaults are an array of JSON strings. Defaults remain lexical because Clap parses them into application values after command-line processing.
 
-Hidden defaults are not emitted.
+Clap's `hide_default_value` setting affects human help only and does not suppress the default from this machine-readable contract.
 
 ### `defaultMissing`
 
@@ -419,7 +419,7 @@ The schema does not prescribe shell quoting or escaping. The caller is responsib
 
 `clap_schema` 0.2 describes semantics that can be obtained reliably from Clap's public built-command reflection plus the registered Rust output type.
 
-The core contract includes canonical paths and option spellings, positional order, unconditional and conditional requiredness, requirement and override relationships, argument-group rules, value arity, visible unconditional/missing/conditional defaults, advertised finite values, delimiters, value terminators, repeatability, conflicts, exclusive arguments, required `=` syntax, required `--` syntax, trailing variadic capture, case-insensitive value matching, missing-positional behavior, trailing-value delimiting, parent/subcommand routing semantics, and typed successful-output JSON Schema.
+The core contract includes canonical paths and option spellings, positional order, unconditional and conditional requiredness, requirement and override relationships, argument-group rules, value arity, unconditional/missing/conditional defaults, canonical finite values, delimiters, value terminators, repeatability, conflicts, exclusive arguments, required `=` syntax, required `--` syntax, trailing variadic capture, case-insensitive value matching, missing-positional behavior, trailing-value delimiting, parent/subcommand routing semantics, and typed successful-output JSON Schema.
 
 The remaining important boundary is arbitrary value-parser validation. Clap exposes the erased parser's result `TypeId` and advertised possible values, but a custom parser can enforce constraints that are not reflectable as structured data. `type: "string"` in particular can therefore represent an application-defined parser rather than an unconstrained string.
 

@@ -4,7 +4,9 @@
 mod tests {
     use std::convert::Infallible;
 
-    use clap::{Arg, ArgAction, ArgGroup, Args, Command, Parser, Subcommand};
+    use clap::{
+        Arg, ArgAction, ArgGroup, Args, Command, Parser, Subcommand, builder::PossibleValue,
+    };
     use clap_schema::{CliSchema, CommandSchema, ContractBuilder, SchemaRequest, schema_handler};
     use schemars::JsonSchema;
 
@@ -214,6 +216,17 @@ mod tests {
                             .require_equals(true)
                             .ignore_case(true),
                     )
+                    .arg(
+                        Arg::new("mode")
+                            .long("mode")
+                            .value_parser([
+                                PossibleValue::new("public"),
+                                PossibleValue::new("legacy").hide(true),
+                            ])
+                            .hide_possible_values(true)
+                            .default_value("legacy")
+                            .hide_default_value(true),
+                    )
                     .arg(Arg::new("alone").long("alone").action(ArgAction::SetTrue).exclusive(true))
                     .arg(Arg::new("raw").last(true).num_args(1..).allow_hyphen_values(true)),
             ),
@@ -250,6 +263,12 @@ mod tests {
         assert_eq!(define_value.delimiter, Some(','));
         assert_eq!(define_value.terminator.as_deref(), Some(";"));
         assert!(define_value.ignore_case);
+
+        let mode =
+            command.options.iter().find(|argument| argument.name == "--mode").expect("mode option");
+        let mode_value = mode.value.as_ref().expect("mode value");
+        assert_eq!(mode_value.values, ["public", "legacy"]);
+        assert_eq!(mode_value.default, Some(serde_json::Value::String("legacy".to_owned())));
 
         let alone = command
             .options

@@ -478,16 +478,11 @@ fn argument_value(command: &Command, argument: &Arg) -> ArgumentValue {
         (range.min_values(), (max != usize::MAX).then_some(max))
     });
 
-    let values = if argument.is_hide_possible_values_set() {
-        Vec::new()
-    } else {
-        argument
-            .get_possible_values()
-            .into_iter()
-            .filter(|value| !value.is_hide_set())
-            .map(|value| value.get_name().to_owned())
-            .collect()
-    };
+    let values = argument
+        .get_possible_values()
+        .into_iter()
+        .map(|value| value.get_name().to_owned())
+        .collect();
 
     ArgumentValue {
         value_type: argument_value_type(argument),
@@ -547,11 +542,8 @@ fn argument_value_type(argument: &Arg) -> ArgumentValueType {
     }
 }
 
-/// Returns visible lexical defaults without pretending they are already parsed Rust values.
+/// Returns lexical defaults without pretending they are already parsed Rust values.
 fn argument_default(argument: &Arg) -> Option<Value> {
-    if argument.is_hide_default_value_set() {
-        return None;
-    }
     lexical_values(argument.get_default_values())
 }
 

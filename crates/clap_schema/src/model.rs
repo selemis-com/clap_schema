@@ -476,10 +476,10 @@ pub struct ArgumentValue {
     pub min_values: usize,
     /// Maximum number of values consumed by one occurrence, or `null` when unbounded.
     pub max_values: Option<usize>,
-    /// Visible finite values advertised by the configured Clap value parser.
+    /// Canonical finite values accepted by the configured Clap value parser.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub values: Vec<String>,
-    /// Visible default spelling used when the argument is omitted.
+    /// Default spelling used when the argument is omitted.
     ///
     /// A single default is serialized as a string; multiple defaults are serialized as an array
     /// of strings because command-line defaults are lexical values before parsing.
