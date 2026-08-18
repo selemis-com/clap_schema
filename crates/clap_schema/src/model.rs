@@ -364,25 +364,30 @@ pub struct ArgumentInfo {
     /// Whether the same argument may be supplied repeatedly.
     #[serde(default, skip_serializing_if = "is_false")]
     pub repeatable: bool,
-    /// Canonical invocation names that conflict with this argument.
+    /// Canonical invocation names in argument-level conflict relationships with this argument.
+    ///
+    /// Argument-level conflicts are normalized symmetrically. Conflicts owned by an argument group
+    /// remain represented by that group.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub conflicts_with: Vec<String>,
-    /// Arguments overridden by this argument when both are present.
+    /// Arguments or groups mutually overridable with this argument.
+    ///
+    /// Concrete argument relationships are normalized symmetrically.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub overrides: Vec<String>,
+    pub overrides: Vec<ArgumentTarget>,
     /// Arguments or groups required when this argument matches the stated predicate.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub requires: Vec<ArgumentRequirement>,
-    /// Conditions where any match makes this argument required.
+    /// Conditions on arguments or groups where any match makes this argument required.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub required_if_any: Vec<ArgumentValueCondition>,
-    /// Conditions that must all match to make this argument required.
+    /// Conditions on arguments or groups that must all match to make this argument required.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub required_if_all: Vec<ArgumentValueCondition>,
-    /// Arguments or groups where any presence makes this argument optional.
+    /// Arguments or groups where any presence satisfies this required-unless rule.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub required_unless_any: Vec<ArgumentTarget>,
-    /// Arguments or groups that must all be present to make this argument optional.
+    /// Arguments or groups that must all be present to satisfy this required-unless rule.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub required_unless_all: Vec<ArgumentTarget>,
     /// Token-placement syntax required to invoke this argument correctly.
@@ -489,13 +494,15 @@ pub struct ArgumentRequirement {
     pub target: ArgumentTarget,
 }
 
-/// Equality condition on another argument.
+/// Equality condition on another argument or argument group.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[non_exhaustive]
 pub struct ArgumentValueCondition {
-    /// Canonical name of the argument to inspect.
-    pub argument: String,
+    /// Argument or group to inspect.
+    pub target: ArgumentTarget,
     /// Lexical value that must match.
+    ///
+    /// For a group target, this is the stable ID of a selected group member.
     pub equals: String,
 }
 
@@ -507,7 +514,7 @@ pub struct ConditionalDefault {
     pub argument: String,
     /// Predicate applied to `argument`.
     pub when: ArgumentPredicate,
-    /// Lexical default to apply, or `null` to clear the unconditional default.
+    /// Lexical default to apply, or `null` to suppress the unconditional default.
     pub value: Option<Value>,
 }
 

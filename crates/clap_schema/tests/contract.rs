@@ -264,13 +264,14 @@ mod tests {
                     .arg(Arg::new("mode").long("mode"))
                     .arg(Arg::new("format").long("format"))
                     .arg(Arg::new("source").long("source"))
-                    .arg(Arg::new("auth").long("auth"))
+                    .arg(Arg::new("auth").long("auth").conflicts_with("legacy"))
                     .arg(Arg::new("input").long("input"))
                     .arg(Arg::new("stdin").long("stdin").action(ArgAction::SetTrue))
                     .arg(Arg::new("file").long("file"))
                     .arg(Arg::new("host").long("host"))
                     .arg(Arg::new("port").long("port"))
                     .arg(Arg::new("legacy").long("legacy"))
+                    .arg(Arg::new("replacement").long("replacement").overrides_with("config"))
                     .arg(
                         Arg::new("config")
                             .long("config")
@@ -278,10 +279,10 @@ mod tests {
                             .default_value("fallback")
                             .default_missing_value("default-missing")
                             .default_value_if("mode", "auto", Some("generated"))
-                            .overrides_with("legacy")
+                            .overrides_with_all(["legacy", "selector"])
                             .requires("selector")
                             .requires_if("special", "input")
-                            .required_if_eq_any([("format", "json"), ("mode", "strict")])
+                            .required_if_eq_any([("implicit_like", "source"), ("format", "json")])
                             .required_if_eq_all([("source", "remote"), ("auth", "token")])
                             .required_unless_present_any(["stdin", "file"])
                             .required_unless_present_all(["host", "port"]),
@@ -308,7 +309,19 @@ mod tests {
             .find(|argument| argument.name == "--config")
             .expect("config option");
 
-        assert_eq!(config.overrides, ["--legacy"]);
+        assert_eq!(config.overrides.len(), 3);
+        assert!(matches!(
+            &config.overrides[0],
+            clap_schema::ArgumentTarget::Argument { name } if name == "--legacy"
+        ));
+        assert!(matches!(
+            &config.overrides[1],
+            clap_schema::ArgumentTarget::Group { name } if name == "selector"
+        ));
+        assert!(matches!(
+            &config.overrides[2],
+            clap_schema::ArgumentTarget::Argument { name } if name == "--replacement"
+        ));
         assert_eq!(config.requires.len(), 2);
         assert!(config.requires.iter().any(|requirement| matches!(
             (&requirement.when, &requirement.target),
@@ -325,11 +338,25 @@ mod tests {
             ) if value == "special" && name == "--input"
         )));
         assert_eq!(config.required_if_any.len(), 2);
-        assert_eq!(config.required_if_any[0].argument, "--format");
-        assert_eq!(config.required_if_any[0].equals, "json");
+        assert!(matches!(
+            &config.required_if_any[0].target,
+            clap_schema::ArgumentTarget::Group { name } if name == "implicit_like"
+        ));
+        assert_eq!(config.required_if_any[0].equals, "source");
+        assert!(matches!(
+            &config.required_if_any[1].target,
+            clap_schema::ArgumentTarget::Argument { name } if name == "--format"
+        ));
+        assert_eq!(config.required_if_any[1].equals, "json");
         assert_eq!(config.required_if_all.len(), 2);
-        assert_eq!(config.required_if_all[0].argument, "--source");
-        assert_eq!(config.required_if_all[1].argument, "--auth");
+        assert!(matches!(
+            &config.required_if_all[0].target,
+            clap_schema::ArgumentTarget::Argument { name } if name == "--source"
+        ));
+        assert!(matches!(
+            &config.required_if_all[1].target,
+            clap_schema::ArgumentTarget::Argument { name } if name == "--auth"
+        ));
         assert_eq!(config.required_unless_any.len(), 2);
         assert_eq!(config.required_unless_all.len(), 2);
 
@@ -347,7 +374,21 @@ mod tests {
         );
 
         assert!(command.groups.iter().any(|group| group.name == "selector"));
-        assert!(!command.groups.iter().any(|group| group.name == "implicit_like"));
+        assert!(command.groups.iter().any(|group| group.name == "implicit_like"));
+
+        let legacy = command
+            .options
+            .iter()
+            .find(|argument| argument.name == "--legacy")
+            .expect("legacy option");
+        let auth =
+            command.options.iter().find(|argument| argument.name == "--auth").expect("auth option");
+        assert!(legacy.conflicts_with.contains(&"--auth".to_owned()));
+        assert!(auth.conflicts_with.contains(&"--legacy".to_owned()));
+        assert!(matches!(
+            &legacy.overrides[0],
+            clap_schema::ArgumentTarget::Argument { name } if name == "--config"
+        ));
 
         let group =
             command.groups.iter().find(|group| group.name == "transport").expect("transport group");
@@ -362,6 +403,8 @@ mod tests {
             &group.conflicts_with[0],
             clap_schema::ArgumentTarget::Argument { name } if name == "--legacy"
         ));
+        assert!(!legacy.conflicts_with.contains(&"--stdin".to_owned()));
+        assert!(!legacy.conflicts_with.contains(&"--file".to_owned()));
         Ok(())
     }
 

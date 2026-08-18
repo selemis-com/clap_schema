@@ -391,18 +391,8 @@ fn argument_info(command: &Command, argument: &Arg) -> ArgumentInfo {
     let action = argument.get_action();
     let takes_values = action.takes_values();
     let value = takes_values.then(|| argument_value(command, argument));
-    let conflicts_with = command
-        .get_arg_conflicts_with(argument)
-        .into_iter()
-        .filter(|conflict| conflict.get_id() != argument.get_id())
-        .filter(|conflict| reflected_argument(conflict))
-        .map(canonical_argument_name)
-        .collect();
-    let overrides = argument
-        .get_overrides()
-        .iter()
-        .filter_map(|id| reflected_argument_name(command, id))
-        .collect();
+    let conflicts_with = reflected_argument_conflicts(command, argument);
+    let overrides = reflected_argument_overrides(command, argument);
     let requires = argument
         .get_requires()
         .iter()
@@ -418,7 +408,7 @@ fn argument_info(command: &Command, argument: &Arg) -> ArgumentInfo {
         .iter()
         .filter_map(|(id, value)| {
             Some(ArgumentValueCondition {
-                argument: reflected_argument_name(command, id)?,
+                target: argument_target(command, id)?,
                 equals: value.to_str()?.to_owned(),
             })
         })
@@ -428,7 +418,7 @@ fn argument_info(command: &Command, argument: &Arg) -> ArgumentInfo {
         .iter()
         .filter_map(|(id, value)| {
             Some(ArgumentValueCondition {
-                argument: reflected_argument_name(command, id)?,
+                target: argument_target(command, id)?,
                 equals: value.to_str()?.to_owned(),
             })
         })
@@ -610,6 +600,66 @@ fn reflected_argument_name(command: &Command, id: &Id) -> Option<String> {
         .map(canonical_argument_name)
 }
 
+/// Reflects argument-level conflicts as the mutual relationship Clap enforces at runtime.
+///
+/// Group-owned conflicts remain represented by [`ArgumentGroupInfo`] rather than being duplicated
+/// onto every member argument.
+fn reflected_argument_conflicts(command: &Command, argument: &Arg) -> Vec<String> {
+    let mut conflicts = Vec::new();
+
+    let mut push = |candidate: &Arg| {
+        if candidate.get_id() == argument.get_id() || !reflected_argument(candidate) {
+            return;
+        }
+        let name = canonical_argument_name(candidate);
+        if !conflicts.contains(&name) {
+            conflicts.push(name);
+        }
+    };
+
+    for conflict in command.get_arg_conflicts_with(argument) {
+        push(conflict);
+    }
+
+    for candidate in command.get_arguments() {
+        if command
+            .get_arg_conflicts_with(candidate)
+            .into_iter()
+            .any(|conflict| conflict.get_id() == argument.get_id())
+        {
+            push(candidate);
+        }
+    }
+
+    conflicts
+}
+
+/// Reflects configured override targets and the reverse side of concrete argument overrides.
+///
+/// Clap treats argument-to-argument overrides as mutual. Group targets are preserved structurally
+/// without inferring member-level override relationships.
+fn reflected_argument_overrides(command: &Command, argument: &Arg) -> Vec<ArgumentTarget> {
+    let mut overrides = argument
+        .get_overrides()
+        .iter()
+        .filter_map(|id| argument_target(command, id))
+        .collect::<Vec<_>>();
+
+    for candidate in command.get_arguments().filter(|candidate| reflected_argument(candidate)) {
+        if candidate.get_id() == argument.get_id() {
+            continue;
+        }
+        if candidate.get_overrides().iter().any(|id| id == argument.get_id()) {
+            let target = ArgumentTarget::Argument { name: canonical_argument_name(candidate) };
+            if !overrides.contains(&target) {
+                overrides.push(target);
+            }
+        }
+    }
+
+    overrides
+}
+
 /// Resolves an ID used by a Clap relationship to an argument or group reference.
 fn argument_target(command: &Command, id: &Id) -> Option<ArgumentTarget> {
     if let Some(name) = reflected_argument_name(command, id) {
@@ -688,7 +738,16 @@ fn referenced_group_ids(command: &Command, group_ids: &HashSet<String>) -> HashS
     };
 
     for argument in command.get_arguments().filter(|argument| reflected_argument(argument)) {
+        for id in argument.get_overrides() {
+            record(id);
+        }
         for (_, id) in argument.get_requires() {
+            record(id);
+        }
+        for (id, _) in argument.get_required_if_eq_any() {
+            record(id);
+        }
+        for (id, _) in argument.get_required_if_eq_all() {
             record(id);
         }
         for id in argument.get_required_unless_present_any() {

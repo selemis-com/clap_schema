@@ -145,13 +145,26 @@ A canonical consumer SHOULD repeat an argument only when `repeatable` is true.
 
 ### `conflicts_with`
 
-`conflicts_with` contains canonical argument names that cannot be used together with this argument.
+`conflicts_with` contains canonical argument names in argument-level conflict relationships with this argument. These relationships are normalized symmetrically, matching Clap's two-way conflict semantics.
 
-A consumer MUST NOT construct an invocation containing an argument together with a listed conflict.
+A consumer MUST NOT construct an invocation containing an argument together with a listed conflict. Conflicts owned by an argument group remain represented by that group's `conflicts_with` rule and are not duplicated onto every member argument.
 
 ### `overrides`
 
-`overrides` contains canonical argument names whose effective value is replaced when this argument is also present. Consumers SHOULD avoid supplying both unless the overriding behavior is intentional.
+`overrides` contains argument or group targets configured as mutually overridable with this argument:
+
+```json
+{
+  "overrides": [
+    {"kind": "argument", "name": "--legacy"},
+    {"kind": "group", "name": "selector"}
+  ]
+}
+```
+
+Concrete argument-to-argument relationships are normalized symmetrically, matching Clap's last-one-wins behavior. Group targets are preserved as group references rather than expanded into inferred member-level overrides.
+
+Consumers SHOULD avoid supplying mutually overridable targets together unless the overriding behavior is intentional.
 
 ### `requires`
 
@@ -161,7 +174,18 @@ When a predicate matches, the referenced target MUST be satisfied. An argument t
 
 ### `required_if_any` and `required_if_all`
 
-Each entry is an equality condition on another canonical argument. The array is one aggregate rule; consumers MUST preserve whether that rule uses `any` or `all`.
+Each entry is an equality condition on another argument or argument group. Its `target` uses the same tagged `argument` / `group` representation as other relationship targets:
+
+```json
+{
+  "required_if_any": [
+    {"target": {"kind": "argument", "name": "--format"}, "equals": "json"},
+    {"target": {"kind": "group", "name": "selector"}, "equals": "mode"}
+  ]
+}
+```
+
+For an argument target, `equals` is the lexical argument value. For a group target, `equals` is the stable ID of a selected group member. The array is one aggregate rule; consumers MUST preserve whether that rule uses `any` or `all`.
 
 For `required_if_any`, the argument is required when **at least one** listed condition matches. The listed conditions are therefore combined with logical OR.
 
@@ -171,11 +195,13 @@ These rules are independent of unconditional `required`.
 
 ### `required_unless_any` and `required_unless_all`
 
-Each entry identifies an argument or group whose presence can satisfy an exception to requiredness. The array is one aggregate rule; consumers MUST preserve whether that rule uses `any` or `all`.
+Each entry identifies an argument or group whose presence can satisfy this required-unless rule. The array is one aggregate rule; consumers MUST preserve whether that rule uses `any` or `all`.
 
-For `required_unless_any`, the argument is required unless **at least one** listed target is present. Equivalently, the argument becomes optional when any listed target is present.
+For `required_unless_any`, this rule requires the argument unless **at least one** listed target is present.
 
-For `required_unless_all`, the argument is required unless **every** listed target is present. Equivalently, the argument becomes optional only when all listed targets are present.
+For `required_unless_all`, this rule requires the argument unless **every** listed target is present.
+
+Satisfying one of these rules does not by itself prove the argument is optional: another conditional-requiredness rule may still require it.
 
 ### `require_equals`
 
@@ -270,7 +296,7 @@ Hidden defaults are not emitted.
 
 ### `default_if`
 
-`default_if` is an ordered array of conditional-default rules. Each rule identifies another canonical argument, a presence or equality predicate, and a lexical default. Rules are evaluated in declaration order; the first matching rule wins. A JSON `null` value explicitly clears an unconditional default when the rule matches.
+`default_if` is an ordered array of conditional-default rules. Each rule identifies another canonical argument, a presence or equality predicate, and a lexical default. Rules are evaluated in declaration order; the first matching rule wins. A JSON `null` value represents a matching rule that suppresses the unconditional default.
 
 ### `delimiter`
 
