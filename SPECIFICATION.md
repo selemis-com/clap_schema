@@ -78,9 +78,9 @@ Consumers constructing a nested invocation **MUST** apply ancestor requirements 
 
 ### `invocable`
 
-`invocable: true` means the exact selected command path can be invoked as an operation.
+`invocable: true` means the exact selected command path can terminate as an application operation. Builder registrations that target a Clap command with `subcommand_required(true)` are rejected because that path cannot terminate without selecting a child.
 
-A command can be both invocable and have subcommands. Absence of `invocable` is equivalent to `false`.
+A command can be both invocable and have optional subcommands. Absence of `invocable` is equivalent to `false`.
 
 `invocable` does not refer to an operating-system executable or binary.
 

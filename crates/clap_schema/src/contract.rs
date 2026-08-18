@@ -43,6 +43,16 @@ pub enum Error {
     #[error("application-wide extension schema may only be declared once")]
     DuplicateApplicationExtension,
 
+    /// An executable registration targets a Clap command that requires a child subcommand.
+    #[error(
+        "executable command registration targets a command that requires a subcommand: {path}",
+        path = format_path(.path)
+    )]
+    ExecutableCommandRequiresSubcommand {
+        /// Canonical command path that cannot terminate as an invocation.
+        path: Vec<String>,
+    },
+
     /// A command-specific extension was declared for a group that is not directly executable.
     #[error(
         "command-specific extension requires an executable command: {path}",
@@ -230,14 +240,16 @@ impl ContractBuilder {
     /// # Errors
     ///
     /// Returns an error when a registered command path does not exist in the actual Clap tree, when
-    /// the same command path is registered more than once, or when more than one
-    /// application-wide extension is declared.
+    /// the same command path is registered more than once, when an executable registration targets
+    /// a command that requires a child subcommand, or when more than one application-wide extension
+    /// is declared.
     pub fn build(self) -> Result<CliContract> {
         let Self { mut root, registration } = self;
         let RegistrationState { registrations, extended } = registration;
         let extended = unique_application_extension(&extended)?;
         root.build();
         reject_duplicate_paths(&registrations)?;
+        reject_subcommand_required_registrations(&root, &registrations)?;
 
         let application_extended_schema = extended.map(ExtendedSchemaFactory::root);
         let mut registrations = registrations;
@@ -270,6 +282,33 @@ fn reject_duplicate_paths(registrations: &[PendingCommandRegistration]) -> Resul
         }
     }
     Ok(())
+}
+
+/// Rejects executable registrations for command paths that Clap requires to continue into a child.
+fn reject_subcommand_required_registrations(
+    root: &Command,
+    registrations: &[PendingCommandRegistration],
+) -> Result<()> {
+    for registration in registrations {
+        let Some(command) = canonical_command(root, &registration.path) else {
+            continue;
+        };
+        if command.is_subcommand_required_set() {
+            return Err(Error::ExecutableCommandRequiresSubcommand {
+                path: registration.path.clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Resolves one canonical command path without accepting aliases.
+fn canonical_command<'a>(root: &'a Command, path: &[String]) -> Option<&'a Command> {
+    let mut command = root;
+    for segment in path {
+        command = command.get_subcommands().find(|child| child.get_name() == segment)?;
+    }
+    Some(command)
 }
 
 /// Reconciles registered executable commands with Clap while building the visible discovery

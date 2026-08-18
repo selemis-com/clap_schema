@@ -575,6 +575,19 @@ mod tests {
             .expect_err("duplicate root command");
         assert_eq!(duplicate.to_string(), "duplicate executable command registration: <root>");
 
+        let requires_subcommand = ContractBuilder::new(
+            Command::new("fixture")
+                .subcommand_required(true)
+                .subcommand(Command::new("child")),
+        )
+        .command::<CreateCommand>(std::iter::empty::<&str>())
+        .build()
+        .expect_err("root command requires a child subcommand");
+        assert!(matches!(
+            &requires_subcommand,
+            clap_schema::Error::ExecutableCommandRequiresSubcommand { path } if path.is_empty()
+        ));
+
         let duplicate_extension = ContractBuilder::new(Command::new("fixture"))
             .extend::<ApplicationMetadata>()
             .extend::<CreateMetadata>()

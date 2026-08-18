@@ -348,7 +348,7 @@ This returns:
 
 If you use Clap's builder API instead of derive macros, build the contract with `ContractBuilder`.
 
-Register commands with `ContractBuilder::command::<T>(path)`. Because builder-style Clap has no Rust subcommand payload relationship to inspect, each command path is registered explicitly and validated against the Clap tree. The command's output still comes from its schema handler declaration.
+Register commands with `ContractBuilder::command::<T>(path)`. Because builder-style Clap has no Rust subcommand payload relationship to inspect, each command path is registered explicitly and validated against the Clap tree. Registrations must identify a path that can terminate as an operation; Clap commands with `subcommand_required(true)` cannot be registered as executable commands. The command's output still comes from its schema handler declaration.
 
 Use `command_with_extension::<T, E>(path)` when a builder-registered command also has application-defined extension metadata. See the `builder_api` example.
 
