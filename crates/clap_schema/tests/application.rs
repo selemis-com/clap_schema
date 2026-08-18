@@ -479,11 +479,13 @@ mod tests {
         assert_eq!(version.position, None);
         assert!(version.value.is_some());
 
+        let root = get.ancestors.first().expect("root command context");
         let json =
-            get.options.iter().find(|argument| argument.name == "--json").expect("json option");
+            root.options.iter().find(|argument| argument.name == "--json").expect("json option");
         assert!(json.value.is_none());
 
-        let url = get.options.iter().find(|argument| argument.name == "--url").expect("url option");
+        let url =
+            root.options.iter().find(|argument| argument.name == "--url").expect("url option");
         assert_eq!(
             url.value.as_ref().and_then(|value| value.default.as_ref()),
             Some(&serde_json::Value::String("https://example.test".to_owned()))

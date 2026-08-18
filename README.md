@@ -291,7 +291,7 @@ When Rust code already knows which command it wants to inspect, lower-level look
 
 Paths accept Clap aliases, while returned paths are always canonical.
 
-Generated contracts include canonical invocation metadata such as names, global argument scope, positional order, value arity, lexical defaults and possible values, repeatability, conflicts, overrides, conditional requirements, argument-group constraints, and token-level syntax requirements. They do not replace Clap's argument parser: Clap remains authoritative for parser-specific validation that cannot be reflected structurally.
+Generated contracts include canonical invocation metadata such as names, global argument scope and canonical ownership, positional order, value arity, lexical defaults and possible values, repeatability, conflicts, overrides, conditional requirements, argument-group constraints, and token-level syntax requirements. They do not replace Clap's argument parser: Clap remains authoritative for parser-specific validation that cannot be reflected structurally.
 
 ## Application-defined extensions
 

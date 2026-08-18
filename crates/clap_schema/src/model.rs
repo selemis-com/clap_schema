@@ -1,6 +1,6 @@
 //! In-memory command contracts and serializable discovery views.
 
-use std::any::TypeId;
+use std::{any::TypeId, collections::HashSet};
 
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -126,9 +126,9 @@ impl CliContract {
     /// Resolves one schema-discovery request.
     ///
     /// The selected command is always described completely. In shallow mode, direct child
-    /// commands are exposed as compact summaries. When `request.full` is true, every discoverable child
-    /// is recursively resolved into the same complete command shape. Leaves therefore produce the
-    /// same document in either mode because they have no children to expand.
+    /// commands are exposed as compact summaries. When `request.full` is true, every discoverable
+    /// child is recursively resolved into the same complete command shape. Leaves therefore
+    /// produce the same document in either mode because they have no children to expand.
     ///
     /// # Errors
     ///
@@ -158,13 +158,14 @@ impl CliContract {
 
     /// Builds a complete public view of one internal discovery node.
     fn command_info(&self, node: &DiscoveryNode) -> CommandInfo {
+        let (ancestors, inherited_globals) = self.ancestor_contexts(node);
         CommandInfo {
             name: node.name.clone(),
             path: node.path.clone(),
-            ancestors: self.ancestor_contexts(node),
+            ancestors,
             description: node.description.clone(),
-            arguments: node.arguments.clone(),
-            options: node.options.clone(),
+            arguments: owned_arguments(&node.arguments, &inherited_globals),
+            options: owned_arguments(&node.options, &inherited_globals),
             groups: node.groups.clone(),
             syntax: node.syntax,
             subcommand_routing: node.subcommand_routing,
@@ -174,12 +175,18 @@ impl CliContract {
     }
 
     /// Returns invocation-relevant command levels above `node`, from root to immediate parent.
-    fn ancestor_contexts(&self, node: &DiscoveryNode) -> Vec<CommandContext> {
+    ///
+    /// Clap propagates global arguments into descendant command models during build. The contract
+    /// keeps each global at the highest command level where it appears so ancestor-local groups and
+    /// relationships retain their original command boundary without duplicating the argument.
+    fn ancestor_contexts(&self, node: &DiscoveryNode) -> (Vec<CommandContext>, HashSet<String>) {
         let mut current = &self.discovery;
         let mut ancestors = Vec::with_capacity(node.path.len());
+        let mut inherited_globals = HashSet::new();
 
         for segment in &node.path {
-            ancestors.push(CommandContext::from_node(current));
+            ancestors.push(CommandContext::from_node(current, &inherited_globals));
+            remember_globals(current, &mut inherited_globals);
             current = current
                 .children
                 .iter()
@@ -187,7 +194,7 @@ impl CliContract {
                 .expect("canonical discovery paths resolve through their ancestors");
         }
 
-        ancestors
+        (ancestors, inherited_globals)
     }
 
     /// Builds one schema-discovery document at the requested child-resolution depth.
@@ -313,10 +320,10 @@ pub struct CommandContext {
     pub name: String,
     /// Canonical path to this command level, excluding the executable name.
     pub path: Vec<String>,
-    /// Non-global positional arguments owned by this command level.
+    /// Positional arguments canonically owned by this command level.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub arguments: Vec<ArgumentInfo>,
-    /// Non-global options owned by this command level.
+    /// Options canonically owned by this command level.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub options: Vec<ArgumentInfo>,
     /// Argument groups owned by this command level.
@@ -332,17 +339,40 @@ pub struct CommandContext {
 
 impl CommandContext {
     /// Projects invocation-relevant context from one discovery node.
-    fn from_node(node: &DiscoveryNode) -> Self {
+    fn from_node(node: &DiscoveryNode, inherited_globals: &HashSet<String>) -> Self {
         Self {
             name: node.name.clone(),
             path: node.path.clone(),
-            arguments: node.arguments.iter().filter(|argument| !argument.global).cloned().collect(),
-            options: node.options.iter().filter(|argument| !argument.global).cloned().collect(),
+            arguments: owned_arguments(&node.arguments, inherited_globals),
+            options: owned_arguments(&node.options, inherited_globals),
             groups: node.groups.clone(),
             syntax: node.syntax,
             subcommand_routing: node.subcommand_routing,
         }
     }
+}
+
+/// Removes global arguments already owned by an ancestor command level.
+fn owned_arguments(
+    arguments: &[ArgumentInfo],
+    inherited_globals: &HashSet<String>,
+) -> Vec<ArgumentInfo> {
+    arguments
+        .iter()
+        .filter(|argument| !argument.global || !inherited_globals.contains(&argument.name))
+        .cloned()
+        .collect()
+}
+
+/// Records the global arguments visible at one command level for descendant de-duplication.
+fn remember_globals(node: &DiscoveryNode, globals: &mut HashSet<String>) {
+    globals.extend(
+        node.arguments
+            .iter()
+            .chain(&node.options)
+            .filter(|argument| argument.global)
+            .map(|argument| argument.name.clone()),
+    );
 }
 
 /// Canonical invocation contract for one discoverable command or command group.
@@ -456,6 +486,10 @@ impl SchemaCommandSummary {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "independent boolean properties are part of the serialized invocation contract"
+)]
 pub struct ArgumentInfo {
     /// Canonical invocation name.
     ///
@@ -473,8 +507,9 @@ pub struct ArgumentInfo {
     pub required: bool,
     /// Whether Clap propagates this argument to child commands.
     ///
-    /// In a nested command contract, inherited global arguments are represented on the selected
-    /// command and omitted from ancestor contexts so the same logical argument is not duplicated.
+    /// In a nested command contract, a propagated global argument is represented at the highest
+    /// command level where it appears and omitted from descendant levels so the same logical
+    /// argument is not duplicated.
     #[serde(default, skip_serializing_if = "is_false")]
     pub global: bool,
     /// Value contract. Absent for flags that consume no value.
@@ -596,14 +631,18 @@ pub enum ArgumentTarget {
     },
 }
 
-/// Predicate applied to an argument when evaluating a relationship.
+/// Predicate reflected from Clap for relationship and conditional-default rules.
+///
+/// Value-source handling depends on the Clap feature evaluating the predicate. Relationship
+/// predicates ignore values sourced only from defaults, while conditional defaults may evaluate
+/// against defaulted target values.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 #[non_exhaustive]
 pub enum ArgumentPredicate {
-    /// The argument is present for Clap predicate evaluation from a non-default value source.
+    /// The target is present for the predicate evaluation.
     Present,
-    /// The argument has the stated lexical value from a non-default value source.
+    /// The target has the stated lexical value for the predicate evaluation.
     Equals {
         /// Lexical value compared by Clap.
         value: String,
@@ -642,7 +681,7 @@ pub struct ArgumentValueCondition {
 pub struct ConditionalDefault {
     /// Argument or group whose state controls this default.
     pub target: ArgumentTarget,
-    /// Predicate applied to `target` using Clap's non-default value-source semantics.
+    /// Predicate applied to `target` using Clap's conditional-default semantics.
     pub when: ArgumentPredicate,
     /// Lexical default to apply, or `null` to suppress the unconditional default.
     pub value: Option<Value>,
@@ -699,7 +738,8 @@ pub(crate) struct DiscoveryNode {
 }
 
 impl DiscoveryNode {
-    /// Finds one Rust command identity only when it appears at exactly one discoverable command node.
+    /// Finds one Rust command identity only when it appears at exactly one discoverable command
+    /// node.
     pub(crate) fn unique_command(&self, id: TypeId) -> Option<&Self> {
         fn visit<'a>(
             node: &'a DiscoveryNode,
