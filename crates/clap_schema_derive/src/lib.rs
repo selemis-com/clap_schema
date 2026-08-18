@@ -405,44 +405,6 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
         }
 
         if command.nesting == CommandNesting::Flatten {
-                let child = payload.ok_or_else(|| {
-                    syn::Error::new_spanned(
-                        &variant.ident,
-                        "flattened subcommands require a single tuple payload",
-                    )
-                })?;
-                steps.push(quote! {
-                    {
-                        let __count =
-                            <#child as #crate_path::__private::clap::Subcommand>::augment_subcommands(
-                                #crate_path::__private::clap::Command::new("__clap_schema_probe")
-                            )
-                            .get_subcommands()
-                            .count();
-                        for _ in 0..__count {
-                            if __clap_schema_commands.next().is_none() {
-                                return Err(#crate_path::Error::DerivedCommandMismatch {
-                                    type_name: ::core::any::type_name::<Self>(),
-                                });
-                            }
-                        }
-                    }
-                });
-            } else {
-                steps.push(quote! {
-                    {
-                        if __clap_schema_commands.next().is_none() {
-                            return Err(#crate_path::Error::DerivedCommandMismatch {
-                                type_name: ::core::any::type_name::<Self>(),
-                            });
-                        }
-                    }
-                });
-            }
-            continue;
-        }
-
-        if command.nesting == CommandNesting::Flatten {
             let child = payload.ok_or_else(|| {
                 syn::Error::new_spanned(
                     &variant.ident,
