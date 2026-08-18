@@ -43,7 +43,6 @@ deployctl deploy --environment production api
       "description": "Service to deploy",
       "required": true,
       "value": {
-        "type": "string",
         "minValues": 1,
         "maxValues": 1
       }
@@ -55,7 +54,6 @@ deployctl deploy --environment production api
       "description": "Target environment",
       "required": true,
       "value": {
-        "type": "string",
         "minValues": 1,
         "maxValues": 1,
         "values": [
@@ -93,7 +91,7 @@ deployctl deploy --environment production api
 ```
 
 The command path and canonical invocation contract come from Clap. Positional order, canonical
-option spellings, value arity, recognized scalar types, visible defaults and finite values,
+option spellings, value arity, lexical defaults and possible values,
 declared conflicts and overrides, conditional requirements, argument groups, repeatability, defaults,
 delimiters, value terminators, required `=` syntax, required `--` syntax, and exclusivity are
 reflected from the built command model. The `output` field is the JSON Schema of the successful
@@ -293,7 +291,7 @@ When Rust code already knows which command it wants to inspect, lower-level look
 
 Paths accept Clap aliases, while returned paths are always canonical.
 
-Generated contracts include canonical invocation metadata such as names, positional order, value arity, recognized scalar types, defaults and possible values, repeatability, declared conflicts and overrides, conditional requirements, argument-group constraints, and token-level syntax requirements. They do not replace Clap's argument parser: Clap remains authoritative for custom value-parser constraints that cannot be reflected structurally.
+Generated contracts include canonical invocation metadata such as names, positional order, value arity, lexical defaults and possible values, repeatability, declared conflicts and overrides, conditional requirements, argument-group constraints, and token-level syntax requirements. They do not replace Clap's argument parser: Clap remains authoritative for custom value-parser constraints that cannot be reflected structurally.
 
 ## Application-defined extensions
 

@@ -535,9 +535,6 @@ pub struct ArgumentSyntax {
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct ArgumentValue {
-    /// Scalar value type recognized from Clap's configured value parser.
-    #[serde(rename = "type")]
-    pub value_type: ArgumentValueType,
     /// Minimum number of values consumed by one occurrence.
     pub min_values: usize,
     /// Maximum number of values consumed by one occurrence, or `null` when unbounded.
@@ -663,21 +660,6 @@ pub struct ArgumentGroupInfo {
     /// Arguments or groups that conflict with this group.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub conflicts_with: Vec<ArgumentTarget>,
-}
-
-/// Scalar input types that can be inferred reliably from Clap's erased value parser.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
-#[serde(rename_all = "lowercase")]
-#[non_exhaustive]
-pub enum ArgumentValueType {
-    /// Textual or otherwise application-defined token.
-    String,
-    /// Signed or unsigned integer.
-    Integer,
-    /// Floating-point number.
-    Number,
-    /// Boolean value.
-    Boolean,
 }
 
 /// Internal schema-visible command topology reflected from Clap.

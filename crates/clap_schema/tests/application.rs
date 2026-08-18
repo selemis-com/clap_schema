@@ -462,11 +462,10 @@ mod tests {
         assert_eq!(get.arguments[1].position, Some(2));
         assert!(get.arguments.iter().all(|argument| argument.required));
         assert!(get.arguments.iter().all(|argument| {
-            argument.value.as_ref().is_some_and(|value| {
-                value.value_type == clap_schema::ArgumentValueType::String
-                    && value.min_values == 1
-                    && value.max_values == Some(1)
-            })
+            argument
+                .value
+                .as_ref()
+                .is_some_and(|value| value.min_values == 1 && value.max_values == Some(1))
         }));
 
         let version = get
@@ -475,10 +474,7 @@ mod tests {
             .find(|argument| argument.name == "--version-id")
             .expect("version option");
         assert_eq!(version.position, None);
-        assert_eq!(
-            version.value.as_ref().map(|value| value.value_type),
-            Some(clap_schema::ArgumentValueType::String)
-        );
+        assert!(version.value.is_some());
 
         let json =
             get.options.iter().find(|argument| argument.name == "--json").expect("json option");
@@ -529,7 +525,6 @@ mod tests {
             .find(|argument| argument.name == "--limit")
             .expect("limit option");
         let limit_value = limit.value.as_ref().expect("limit value contract");
-        assert_eq!(limit_value.value_type, clap_schema::ArgumentValueType::Integer);
         assert_eq!(limit_value.default, Some(serde_json::Value::String("25".to_owned())));
         Ok(())
     }

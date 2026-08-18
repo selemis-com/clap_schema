@@ -9,7 +9,7 @@ use serde_json::Value;
 use crate::{
     model::{
         ArgumentGroupInfo, ArgumentInfo, ArgumentPredicate, ArgumentRequirement, ArgumentSyntax,
-        ArgumentTarget, ArgumentValue, ArgumentValueCondition, ArgumentValueType, CliContract,
+        ArgumentTarget, ArgumentValue, ArgumentValueCondition, CliContract,
         CommandSyntax, ConditionalDefault, DiscoveryNode, ExecutableData, SubcommandRouting,
     },
     schema::{
@@ -513,7 +513,6 @@ fn argument_value(command: &Command, argument: &Arg) -> ArgumentValue {
         .collect();
 
     ArgumentValue {
-        value_type: argument_value_type(argument),
         min_values,
         max_values,
         values,
@@ -538,35 +537,6 @@ fn canonical_argument_name(argument: &Arg) -> String {
         format!("-{short}")
     } else {
         argument.get_id().to_string()
-    }
-}
-
-/// Infers the small scalar type vocabulary that Clap exposes through its erased parser `TypeId`.
-fn argument_value_type(argument: &Arg) -> ArgumentValueType {
-    let type_id = argument.get_value_parser().type_id();
-
-    if type_id == TypeId::of::<bool>() {
-        ArgumentValueType::Boolean
-    } else if type_id == TypeId::of::<i8>()
-        || type_id == TypeId::of::<i16>()
-        || type_id == TypeId::of::<i32>()
-        || type_id == TypeId::of::<i64>()
-        || type_id == TypeId::of::<i128>()
-        || type_id == TypeId::of::<isize>()
-        || type_id == TypeId::of::<u8>()
-        || type_id == TypeId::of::<u16>()
-        || type_id == TypeId::of::<u32>()
-        || type_id == TypeId::of::<u64>()
-        || type_id == TypeId::of::<u128>()
-        || type_id == TypeId::of::<usize>()
-    {
-        ArgumentValueType::Integer
-    } else if type_id == TypeId::of::<f32>() || type_id == TypeId::of::<f64>() {
-        ArgumentValueType::Number
-    } else {
-        // Command-line values are lexical tokens. Unknown custom parser output types remain
-        // representable as strings rather than being guessed from Rust type names.
-        ArgumentValueType::String
     }
 }
 

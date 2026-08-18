@@ -261,13 +261,13 @@
 //! # Scope
 //!
 //! The wire model describes a canonical invocation contract without serializing Clap's own help
-//! representation. Positional order, canonical option spellings, value arity, recognized scalar
-//! types, visible defaults and finite values, delimiters, terminators, conflicts, repeatability,
+//! representation. Positional order, canonical option spellings, value arity, lexical defaults and
+//! possible values, delimiters, terminators, conflicts, repeatability,
 //! exclusivity, required equals syntax, and required option-terminator syntax are reflected from
 //! Clap's built command tree. Human-facing aliases, short alternatives, value placeholders, and
-//! rendered usage strings are intentionally omitted. Unknown custom parser output types are
-//! represented as strings rather than guessed. Clap remains authoritative for parser behavior and
-//! advanced relationships that its public reflection API does not expose. A present output schema
+//! rendered usage strings are intentionally omitted. Input values remain lexical rather than
+//! inferring Rust parser result types. Clap remains authoritative for parser behavior and advanced
+//! relationships that its public reflection API does not expose. A present output schema
 //! means the command's successful value has a machine-readable JSON Schema; absence means no typed
 //! successful-output contract is declared. See `SPECIFICATION.md` for the complete wire contract
 //! and reflection boundary.
@@ -296,7 +296,7 @@ pub use clap_schema_derive::{CliSchema, CommandSchema, schema_handler};
 pub use contract::{ContractBuilder, Error, Result};
 pub use model::{
     ArgumentGroupInfo, ArgumentInfo, ArgumentPredicate, ArgumentRequirement, ArgumentSyntax,
-    ArgumentTarget, ArgumentValue, ArgumentValueCondition, ArgumentValueType, CliContract,
+    ArgumentTarget, ArgumentValue, ArgumentValueCondition, CliContract,
     CommandContext, CommandInfo, CommandSyntax, ConditionalDefault, SchemaCommandSummary,
     SchemaDocument, SchemaRequest, SchemaSubcommand, SubcommandRouting,
 };

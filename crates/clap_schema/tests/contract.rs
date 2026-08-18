@@ -246,7 +246,6 @@ mod tests {
             .find(|argument| argument.name == "--count")
             .expect("count option");
         let count_value = count.value.as_ref().expect("count value");
-        assert_eq!(count_value.value_type, clap_schema::ArgumentValueType::Integer);
         assert_eq!(count_value.default, Some(serde_json::Value::String("2".to_owned())));
         assert!(count_value.allow_negative_numbers);
 

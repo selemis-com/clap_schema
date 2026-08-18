@@ -41,7 +41,7 @@ mod tests {
         assert_eq!(get["invocable"], true);
         assert_eq!(get["arguments"][0]["name"], "id");
         assert_eq!(get["arguments"][0]["position"], 1);
-        assert_eq!(get["arguments"][0]["value"]["type"], "string");
+        assert_eq!(get["arguments"][0]["value"]["minValues"], 1);
     }
 
     #[test]

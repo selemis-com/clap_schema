@@ -139,7 +139,6 @@ Positionals and options use the same argument shape:
   "name": "--limit",
   "description": "Maximum number of items",
   "value": {
-    "type": "integer",
     "minValues": 1,
     "maxValues": 1,
     "default": "50"
@@ -279,7 +278,6 @@ A value-taking argument contains a `value` document:
 
 ```json
 {
-  "type": "string",
   "minValues": 1,
   "maxValues": 1,
   "values": ["active", "archived"],
@@ -289,17 +287,6 @@ A value-taking argument contains a `value` document:
   "allowHyphenValues": true
 }
 ```
-
-### `type`
-
-`type` is the scalar class that `clap_schema` can reliably infer from the configured value parser:
-
-- `string`
-- `integer`
-- `number`
-- `boolean`
-
-CLI values are lexical tokens. Custom parser output types that cannot be classified reliably are represented as `string` rather than guessed from Rust type names. `type: "string"` therefore does not imply that every string is semantically valid; applications may apply additional parsing or validation.
 
 ### `minValues` and `maxValues`
 
@@ -437,9 +424,9 @@ The schema does not prescribe shell quoting or escaping. The caller is responsib
 
 `clap_schema` 0.2 describes semantics that can be obtained reliably from Clap's public built-command reflection plus the registered Rust output type.
 
-The core contract includes canonical paths and option spellings, positional order, unconditional and conditional requiredness, requirement and override relationships, argument-group rules, value arity, unconditional/missing/conditional defaults, canonical finite values, delimiters, value terminators, repeatability, conflicts, exclusive arguments, required `=` syntax, required `--` syntax, trailing variadic capture, case-insensitive value matching, missing-positional behavior, trailing-value delimiting, parent/subcommand routing semantics, and typed successful-output JSON Schema.
+The core contract includes canonical paths and option spellings, positional order, unconditional and conditional requiredness, requirement and override relationships, argument-group rules, value arity, unconditional/missing/conditional defaults, canonical possible values, delimiters, value terminators, repeatability, conflicts, exclusive arguments, required `=` syntax, required `--` syntax, trailing variadic capture, case-insensitive value matching, missing-positional behavior, trailing-value delimiting, parent/subcommand routing semantics, and typed successful-output JSON Schema.
 
-The remaining important boundary is arbitrary value-parser validation. Clap exposes the erased parser's result `TypeId` and advertised possible values, but a custom parser can enforce constraints that are not reflectable as structured data. `type: "string"` in particular can therefore represent an application-defined parser rather than an unconstrained string.
+Input values remain lexical command-line values. `clap_schema` does not infer Rust result types from Clap's erased value parser, and Clap remains authoritative for parser-specific validation.
 
 Only UTF-8 lexical relationship and default values can be represented directly by this JSON contract. A rule whose lexical predicate cannot be represented as UTF-8 is omitted rather than converted lossily. Consumers MUST interpret omission as “not stated by this contract”, not as proof that no application-specific constraint exists.
 
@@ -479,7 +466,7 @@ Notable 0.2 changes include:
 - command aliases are not emitted;
 - `hasSubcommands` is removed from complete command documents and retained only where needed by shallow summaries;
 - argument `id`, `index`, `short`, `long`, `value_names`, `help`, `default_values`, and `possible_values` are replaced by the canonical semantic argument/value shape specified here;
-- input value arity and scalar type are explicit;
+- input value arity is explicit while values remain lexical;
 - syntax-affecting details such as required `=`, required `--`, delimiters, terminators, repeatability, conflicts, and exclusivity are exposed directly;
 - conditional requirements, required-unless rules, overrides, missing/conditional defaults, and argument-group constraints are reflected as structured semantics.
 
