@@ -349,15 +349,19 @@ mod tests {
         let get = nested_contract.command(&["objects", "get"])?;
         assert_eq!(get.ancestors.len(), 2);
         assert_eq!(get.ancestors[0].path, Vec::<String>::new());
-        assert!(get.ancestors[0]
-            .options
-            .iter()
-            .any(|argument| argument.name == "--config" && argument.required));
+        assert!(
+            get.ancestors[0]
+                .options
+                .iter()
+                .any(|argument| argument.name == "--config" && argument.required)
+        );
         assert_eq!(get.ancestors[1].path, ["objects"]);
-        assert!(get.ancestors[1]
-            .options
-            .iter()
-            .any(|argument| argument.name == "--workspace" && argument.required));
+        assert!(
+            get.ancestors[1]
+                .options
+                .iter()
+                .any(|argument| argument.name == "--workspace" && argument.required)
+        );
         assert!(get.arguments.iter().any(|argument| argument.name == "id" && argument.required));
 
         let serialized_get = serde_json::to_value(&get).expect("serialize nested command");
@@ -576,9 +580,7 @@ mod tests {
         assert_eq!(duplicate.to_string(), "duplicate executable command registration: <root>");
 
         let requires_subcommand = ContractBuilder::new(
-            Command::new("fixture")
-                .subcommand_required(true)
-                .subcommand(Command::new("child")),
+            Command::new("fixture").subcommand_required(true).subcommand(Command::new("child")),
         )
         .command::<CreateCommand>(std::iter::empty::<&str>())
         .build()

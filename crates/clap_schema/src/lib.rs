@@ -298,8 +298,7 @@ pub use model::{
     ArgumentGroupInfo, ArgumentInfo, ArgumentPredicate, ArgumentRequirement, ArgumentSyntax,
     ArgumentTarget, ArgumentValue, ArgumentValueCondition, ArgumentValueType, CliContract,
     CommandContext, CommandInfo, CommandSyntax, ConditionalDefault, SchemaCommandSummary,
-    SchemaDocument,
-    SchemaRequest, SchemaSubcommand, SubcommandRouting,
+    SchemaDocument, SchemaRequest, SchemaSubcommand, SubcommandRouting,
 };
 
 /// Trait implemented by a machine-contract-aware root Clap parser.
