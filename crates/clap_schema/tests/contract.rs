@@ -4,7 +4,7 @@
 mod tests {
     use std::convert::Infallible;
 
-    use clap::{Arg, ArgAction, Args, Command, Parser, Subcommand};
+    use clap::{Arg, ArgAction, ArgGroup, Args, Command, Parser, Subcommand};
     use clap_schema::{CliSchema, CommandSchema, ContractBuilder, SchemaRequest, schema_handler};
     use schemars::JsonSchema;
 
@@ -200,7 +200,8 @@ mod tests {
                         Arg::new("count")
                             .long("count")
                             .value_parser(clap::value_parser!(u16))
-                            .default_value("2"),
+                            .default_value("2")
+                            .allow_negative_numbers(true),
                     )
                     .arg(
                         Arg::new("define")
@@ -227,6 +228,7 @@ mod tests {
         let count_value = count.value.as_ref().expect("count value");
         assert_eq!(count_value.value_type, clap_schema::ArgumentValueType::Integer);
         assert_eq!(count_value.default, Some(serde_json::Value::String("2".to_owned())));
+        assert!(count_value.allow_negative_numbers);
 
         let define = command
             .options
@@ -251,6 +253,115 @@ mod tests {
         let raw = command.arguments.iter().find(|argument| argument.name == "raw").expect("raw");
         assert!(raw.syntax.requires_double_dash);
         assert!(raw.value.as_ref().is_some_and(|value| value.allow_hyphen_values));
+        Ok(())
+    }
+
+    #[test]
+    fn builder_reflects_argument_relationships_and_groups() -> clap_schema::Result<()> {
+        let contract = ContractBuilder::new(
+            Command::new("fixture").subcommand(
+                Command::new("create")
+                    .arg(Arg::new("mode").long("mode"))
+                    .arg(Arg::new("format").long("format"))
+                    .arg(Arg::new("source").long("source"))
+                    .arg(Arg::new("auth").long("auth"))
+                    .arg(Arg::new("input").long("input"))
+                    .arg(Arg::new("stdin").long("stdin").action(ArgAction::SetTrue))
+                    .arg(Arg::new("file").long("file"))
+                    .arg(Arg::new("host").long("host"))
+                    .arg(Arg::new("port").long("port"))
+                    .arg(Arg::new("legacy").long("legacy"))
+                    .arg(
+                        Arg::new("config")
+                            .long("config")
+                            .num_args(0..=1)
+                            .default_value("fallback")
+                            .default_missing_value("default-missing")
+                            .default_value_if("mode", "auto", Some("generated"))
+                            .overrides_with("legacy")
+                            .requires("selector")
+                            .requires_if("special", "input")
+                            .required_if_eq_any([("format", "json"), ("mode", "strict")])
+                            .required_if_eq_all([("source", "remote"), ("auth", "token")])
+                            .required_unless_present_any(["stdin", "file"])
+                            .required_unless_present_all(["host", "port"]),
+                    )
+                    .group(ArgGroup::new("selector").args(["mode", "format"]).multiple(true))
+                    .group(ArgGroup::new("implicit_like").args(["source", "host"]).multiple(true))
+                    .group(
+                        ArgGroup::new("transport")
+                            .args(["stdin", "file"])
+                            .required(true)
+                            .multiple(true)
+                            .requires("auth")
+                            .conflicts_with("legacy"),
+                    ),
+            ),
+        )
+        .command::<CreateCommand>(["create"])
+        .build()?;
+
+        let command = contract.command(&["create"])?;
+        let config = command
+            .options
+            .iter()
+            .find(|argument| argument.name == "--config")
+            .expect("config option");
+
+        assert_eq!(config.overrides, ["--legacy"]);
+        assert_eq!(config.requires.len(), 2);
+        assert!(config.requires.iter().any(|requirement| matches!(
+            (&requirement.when, &requirement.target),
+            (
+                clap_schema::ArgumentPredicate::Present,
+                clap_schema::ArgumentTarget::Group { name }
+            ) if name == "selector"
+        )));
+        assert!(config.requires.iter().any(|requirement| matches!(
+            (&requirement.when, &requirement.target),
+            (
+                clap_schema::ArgumentPredicate::Equals { value },
+                clap_schema::ArgumentTarget::Argument { name }
+            ) if value == "special" && name == "--input"
+        )));
+        assert_eq!(config.required_if_any.len(), 2);
+        assert_eq!(config.required_if_any[0].argument, "--format");
+        assert_eq!(config.required_if_any[0].equals, "json");
+        assert_eq!(config.required_if_all.len(), 2);
+        assert_eq!(config.required_if_all[0].argument, "--source");
+        assert_eq!(config.required_if_all[1].argument, "--auth");
+        assert_eq!(config.required_unless_any.len(), 2);
+        assert_eq!(config.required_unless_all.len(), 2);
+
+        let value = config.value.as_ref().expect("config value");
+        assert_eq!(value.default, Some(serde_json::Value::String("fallback".to_owned())));
+        assert_eq!(
+            value.default_missing,
+            Some(serde_json::Value::String("default-missing".to_owned()))
+        );
+        assert_eq!(value.default_if.len(), 1);
+        assert_eq!(value.default_if[0].argument, "--mode");
+        assert_eq!(
+            value.default_if[0].value,
+            Some(serde_json::Value::String("generated".to_owned()))
+        );
+
+        assert!(command.groups.iter().any(|group| group.name == "selector"));
+        assert!(!command.groups.iter().any(|group| group.name == "implicit_like"));
+
+        let group =
+            command.groups.iter().find(|group| group.name == "transport").expect("transport group");
+        assert_eq!(group.members, ["--stdin", "--file"]);
+        assert!(group.required);
+        assert!(group.multiple);
+        assert!(matches!(
+            &group.requires[0],
+            clap_schema::ArgumentTarget::Argument { name } if name == "--auth"
+        ));
+        assert!(matches!(
+            &group.conflicts_with[0],
+            clap_schema::ArgumentTarget::Argument { name } if name == "--legacy"
+        ));
         Ok(())
     }
 

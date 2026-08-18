@@ -94,13 +94,14 @@ deployctl deploy --environment production api
 
 The command path and canonical invocation contract come from Clap. Positional order, canonical
 option spellings, value arity, recognized scalar types, visible defaults and finite values,
-conflicts, repeatability, delimiters, value terminators, required `=` syntax, required `--` syntax,
-and exclusivity are reflected from the built command model. The `output` field is the JSON Schema
-of the successful Rust result.
+conflicts, overrides, conditional requirements, argument groups, repeatability, defaults,
+delimiters, value terminators, required `=` syntax, required `--` syntax, and exclusivity are
+reflected from the built command model. The `output` field is the JSON Schema of the successful
+Rust result.
 
 This gives agents a canonical invocation contract without making rendered Clap help part of the
-wire format. Clap remains authoritative for parsing, including advanced relationships that its
-public reflection API does not expose, and Rust types remain authoritative for typed successful
+wire format. Clap remains authoritative for parsing, including custom value-parser constraints
+that cannot be reflected structurally, and Rust types remain authoritative for typed successful
 results.
 
 The full wire contract and compatibility rules are documented in [`SPECIFICATION.md`](SPECIFICATION.md).
@@ -292,7 +293,7 @@ When Rust code already knows which command it wants to inspect, lower-level look
 
 Paths accept Clap aliases, while returned paths are always canonical.
 
-Generated contracts include canonical invocation metadata such as names, positional order, value arity, recognized scalar types, visible defaults and possible values, repeatability, conflicts, and token-level syntax requirements. They do not replace Clap's argument parser: Clap remains authoritative for custom parser constraints and advanced relationships that its public reflection API does not expose, including conditional requirements and defaults, missing-value defaults, overrides, and some argument-group requirements.
+Generated contracts include canonical invocation metadata such as names, positional order, value arity, recognized scalar types, defaults and possible values, repeatability, conflicts, overrides, conditional requirements, argument-group constraints, and token-level syntax requirements. They do not replace Clap's argument parser: Clap remains authoritative for custom value-parser constraints that cannot be reflected structurally.
 
 ## Application-defined extensions
 

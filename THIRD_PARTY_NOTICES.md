@@ -437,15 +437,15 @@ Apache License 2.0
 Apache License 2.0
 
 #### Used by
+- [clap]( https://github.com/clap-rs/clap ) 4.6.6
+- [clap_builder]( https://github.com/clap-rs/clap ) 4.6.6
+- [clap_derive]( https://github.com/clap-rs/clap ) 4.6.4
+- [clap_lex]( https://github.com/clap-rs/clap ) 1.1.0
 - [anstream]( https://github.com/rust-cli/anstyle.git ) 1.0.0
 - [anstyle-parse]( https://github.com/rust-cli/anstyle.git ) 1.0.0
 - [anstyle-query]( https://github.com/rust-cli/anstyle.git ) 1.1.5
 - [anstyle-wincon]( https://github.com/rust-cli/anstyle.git ) 3.0.11
 - [anstyle]( https://github.com/rust-cli/anstyle.git ) 1.0.14
-- [clap]( https://github.com/clap-rs/clap ) 4.6.6
-- [clap_builder]( https://github.com/clap-rs/clap ) 4.6.6
-- [clap_derive]( https://github.com/clap-rs/clap ) 4.6.4
-- [clap_lex]( https://github.com/clap-rs/clap ) 1.1.0
 - [colorchoice]( https://github.com/rust-cli/anstyle.git ) 1.0.5
 - [escargot]( https://github.com/crate-ci/escargot.git ) 0.5.15
 - [is_terminal_polyfill]( https://github.com/polyfill-rs/is_terminal_polyfill ) 1.70.2

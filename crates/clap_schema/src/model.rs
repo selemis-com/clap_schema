@@ -164,6 +164,7 @@ impl CliContract {
             description: node.description.clone(),
             arguments: node.arguments.clone(),
             options: node.options.clone(),
+            groups: node.groups.clone(),
             invocable: node.executable.is_some(),
             output: node.executable.as_ref().and_then(|executable| executable.output.clone()),
         }
@@ -295,6 +296,9 @@ pub struct CommandInfo {
     /// Visible non-positional options using one canonical spelling each.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub options: Vec<ArgumentInfo>,
+    /// Argument groups that affect invocation validity.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<ArgumentGroupInfo>,
     /// Whether this exact command path can be invoked as an operation.
     #[serde(default, skip_serializing_if = "is_false")]
     pub invocable: bool,
@@ -363,6 +367,24 @@ pub struct ArgumentInfo {
     /// Canonical invocation names that conflict with this argument.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub conflicts_with: Vec<String>,
+    /// Arguments overridden by this argument when both are present.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub overrides: Vec<String>,
+    /// Arguments or groups required when this argument matches the stated predicate.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub requires: Vec<ArgumentRequirement>,
+    /// Conditions where any match makes this argument required.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub required_if_any: Vec<ArgumentValueCondition>,
+    /// Conditions that must all match to make this argument required.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub required_if_all: Vec<ArgumentValueCondition>,
+    /// Arguments or groups where any presence makes this argument optional.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub required_unless_any: Vec<ArgumentTarget>,
+    /// Arguments or groups that must all be present to make this argument optional.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub required_unless_all: Vec<ArgumentTarget>,
     /// Token-placement syntax required to invoke this argument correctly.
     #[serde(flatten)]
     pub syntax: ArgumentSyntax,
@@ -406,6 +428,12 @@ pub struct ArgumentValue {
     /// of strings because command-line defaults are lexical values before parsing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default: Option<Value>,
+    /// Lexical value used when the argument is present without an explicit value.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_missing: Option<Value>,
+    /// Ordered conditional defaults evaluated before the unconditional default.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub default_if: Vec<ConditionalDefault>,
     /// Delimiter Clap uses to split multiple values inside one token.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub delimiter: Option<char>,
@@ -415,6 +443,94 @@ pub struct ArgumentValue {
     /// Whether value tokens beginning with a hyphen are accepted without disambiguation.
     #[serde(default, skip_serializing_if = "is_false")]
     pub allow_hyphen_values: bool,
+    /// Whether negative-number tokens are accepted without being treated as options.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub allow_negative_numbers: bool,
+}
+
+/// Reference to an argument or argument group in one command contract.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ArgumentTarget {
+    /// One concrete argument, named by its canonical invocation name.
+    Argument {
+        /// Canonical argument name.
+        name: String,
+    },
+    /// One named Clap argument group.
+    Group {
+        /// Stable group identifier.
+        name: String,
+    },
+}
+
+/// Predicate applied to an argument when evaluating a relationship.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ArgumentPredicate {
+    /// The argument is present on the command line.
+    Present,
+    /// The argument has the stated lexical value.
+    Equals {
+        /// Lexical value compared by Clap.
+        value: String,
+    },
+}
+
+/// Requirement introduced by selecting an argument.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[non_exhaustive]
+pub struct ArgumentRequirement {
+    /// Predicate applied to the argument that owns this requirement.
+    pub when: ArgumentPredicate,
+    /// Argument or group that becomes required when `when` matches.
+    pub target: ArgumentTarget,
+}
+
+/// Equality condition on another argument.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[non_exhaustive]
+pub struct ArgumentValueCondition {
+    /// Canonical name of the argument to inspect.
+    pub argument: String,
+    /// Lexical value that must match.
+    pub equals: String,
+}
+
+/// Conditional default evaluated in declaration order.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[non_exhaustive]
+pub struct ConditionalDefault {
+    /// Argument whose state controls this default.
+    pub argument: String,
+    /// Predicate applied to `argument`.
+    pub when: ArgumentPredicate,
+    /// Lexical default to apply, or `null` to clear the unconditional default.
+    pub value: Option<Value>,
+}
+
+/// Invocation-validity contract for one Clap argument group.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[non_exhaustive]
+pub struct ArgumentGroupInfo {
+    /// Stable group identifier used by relationship references.
+    pub name: String,
+    /// Canonical names of visible arguments in this group.
+    pub members: Vec<String>,
+    /// Whether at least one member of this group is required.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub required: bool,
+    /// Whether more than one member of this group may be used together.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub multiple: bool,
+    /// Arguments or groups required when this group is present.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub requires: Vec<ArgumentTarget>,
+    /// Arguments or groups that conflict with this group.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub conflicts_with: Vec<ArgumentTarget>,
 }
 
 /// Scalar input types that can be inferred reliably from Clap's erased value parser.
@@ -447,6 +563,8 @@ pub(crate) struct DiscoveryNode {
     pub(crate) arguments: Vec<ArgumentInfo>,
     /// Visible non-positional options reflected directly from Clap.
     pub(crate) options: Vec<ArgumentInfo>,
+    /// Argument groups reflected directly from Clap.
+    pub(crate) groups: Vec<ArgumentGroupInfo>,
     /// Executable-command data when this visible command can produce a machine output.
     pub(crate) executable: Option<ExecutableData>,
     /// Schema-visible child commands.

@@ -295,8 +295,10 @@ pub mod __private;
 pub use clap_schema_derive::{CliSchema, CommandSchema, schema_handler};
 pub use contract::{ContractBuilder, Error, Result};
 pub use model::{
-    ArgumentInfo, ArgumentSyntax, ArgumentValue, ArgumentValueType, CliContract, CommandInfo,
-    SchemaCommandSummary, SchemaDocument, SchemaRequest, SchemaSubcommand,
+    ArgumentGroupInfo, ArgumentInfo, ArgumentPredicate, ArgumentRequirement, ArgumentSyntax,
+    ArgumentTarget, ArgumentValue, ArgumentValueCondition, ArgumentValueType, CliContract,
+    CommandInfo, ConditionalDefault, SchemaCommandSummary, SchemaDocument, SchemaRequest,
+    SchemaSubcommand,
 };
 
 /// Trait implemented by a machine-contract-aware root Clap parser.

@@ -76,6 +76,12 @@ The array is ordered by invocation position. Each positional also carries an exp
 
 Alternative short names and aliases are intentionally not part of the core contract.
 
+### `groups`
+
+`groups`, when present, describes Clap argument groups that contain visible arguments and materially affect invocation validity. Group references used by argument relationships resolve against this array. Unconstraining groups that are neither required, mutually exclusive, related to another target, nor referenced by a relationship are omitted.
+
+See [Argument groups](#argument-groups).
+
 ### `output`
 
 `output`, when present, is a JSON Schema Draft 2020-12 schema describing the typed successful result registered for the command.
@@ -142,6 +148,34 @@ A canonical consumer SHOULD repeat an argument only when `repeatable` is true.
 `conflicts_with` contains canonical argument names that cannot be used together with this argument.
 
 A consumer MUST NOT construct an invocation containing an argument together with a listed conflict.
+
+### `overrides`
+
+`overrides` contains canonical argument names whose effective value is replaced when this argument is also present. Consumers SHOULD avoid supplying both unless the overriding behavior is intentional.
+
+### `requires`
+
+`requires` contains requirements introduced by this argument. Each entry has a `when` predicate and a `target`. `when` is either `present` or an equality predicate on this argument's lexical value. `target` identifies either a canonical argument or a named argument group.
+
+When a predicate matches, the referenced target MUST be satisfied. An argument target is satisfied by supplying that argument. A group target is satisfied by supplying a member in accordance with that group's cardinality rules.
+
+### `required_if_any` and `required_if_all`
+
+Each entry is an equality condition on another canonical argument. The array is one aggregate rule; consumers MUST preserve whether that rule uses `any` or `all`.
+
+For `required_if_any`, the argument is required when **at least one** listed condition matches. The listed conditions are therefore combined with logical OR.
+
+For `required_if_all`, the argument is required only when **every** listed condition matches. The listed conditions are therefore combined with logical AND.
+
+These rules are independent of unconditional `required`.
+
+### `required_unless_any` and `required_unless_all`
+
+Each entry identifies an argument or group whose presence can satisfy an exception to requiredness. The array is one aggregate rule; consumers MUST preserve whether that rule uses `any` or `all`.
+
+For `required_unless_any`, the argument is required unless **at least one** listed target is present. Equivalently, the argument becomes optional when any listed target is present.
+
+For `required_unless_all`, the argument is required unless **every** listed target is present. Equivalently, the argument becomes optional only when all listed targets are present.
 
 ### `require_equals`
 
@@ -230,6 +264,14 @@ A single default is a JSON string. Multiple defaults are an array of JSON string
 
 Hidden defaults are not emitted.
 
+### `default_missing`
+
+`default_missing`, when present, is the lexical value Clap supplies when the argument itself is present but no explicit value is supplied. This is distinct from `default`, which applies when the argument is omitted.
+
+### `default_if`
+
+`default_if` is an ordered array of conditional-default rules. Each rule identifies another canonical argument, a presence or equality predicate, and a lexical default. Rules are evaluated in declaration order; the first matching rule wins. A JSON `null` value explicitly clears an unconditional default when the rule matches.
+
 ### `delimiter`
 
 `delimiter`, when present, is the character used to split multiple values inside one command-line token.
@@ -241,6 +283,33 @@ Hidden defaults are not emitted.
 ### `allow_hyphen_values`
 
 `allow_hyphen_values: true` means values beginning with `-` can be consumed as values without otherwise disambiguating them from options.
+
+### `allow_negative_numbers`
+
+`allow_negative_numbers: true` means negative-number tokens may be consumed as values without being interpreted as options.
+
+## Argument groups
+
+A group document has the following semantic shape:
+
+```json
+{
+  "name": "input",
+  "members": ["--stdin", "--file"],
+  "required": true,
+  "multiple": false,
+  "requires": [{"kind": "argument", "name": "--format"}],
+  "conflicts_with": [{"kind": "argument", "name": "--legacy"}]
+}
+```
+
+`name` is the stable group identifier used by relationship references. `members` contains canonical visible argument names.
+
+`required: true` means at least one group member must be present. Absence is equivalent to `false`.
+
+`multiple: true` means more than one member may be present. Absence is equivalent to `false`, so a group with multiple visible members is mutually exclusive by default. Combined with `required: true`, `multiple: false` means exactly one member must be present.
+
+`requires` and `conflicts_with` apply when the group is present and may refer to either arguments or other groups. A group that would otherwise impose no constraint is still emitted when another reflected relationship targets it.
 
 ## Shallow subcommand summaries
 
@@ -282,9 +351,11 @@ Given the executable name separately and one complete command document, a consum
 3. Append selected options using their exact `name`.
 4. For a selected option with `value`, supply a number of values within `min_values..=max_values`. When `max_values` is `null`, there is no finite upper bound.
 5. If `require_equals` is true, attach the first option value with `=`.
-6. Respect `delimiter`, `terminator`, `repeatable`, `conflicts_with`, and `exclusive` when they are present.
-7. Append positional values in ascending `position` order. If any positional has `requires_double_dash: true`, insert `--` before that positional as required by the command contract.
-8. When `values` is present, prefer one of the advertised values. Values must also satisfy the parser represented by `type` and any application-specific validation.
+6. Respect `delimiter`, `terminator`, `repeatable`, `conflicts_with`, `overrides`, `requires`, conditional requiredness, and `exclusive` when they are present.
+7. Satisfy every applicable argument-group cardinality, requirement, and conflict rule.
+8. Append positional values in ascending `position` order. If any positional has `requires_double_dash: true`, insert `--` before that positional as required by the command contract.
+9. When `values` is present, prefer one of the advertised values. Values must also satisfy the parser represented by `type` and any application-specific validation.
+10. When relying on defaults, distinguish omission (`default`) from selecting an option without an explicit value (`default_missing`) and apply ordered `default_if` rules before the unconditional default.
 
 The schema does not prescribe shell quoting or escaping. The caller is responsible for passing the resulting argument vector safely to the process. Agents and tools SHOULD prefer direct argv/process APIs over constructing a shell command string.
 
@@ -292,11 +363,11 @@ The schema does not prescribe shell quoting or escaping. The caller is responsib
 
 `clap_schema` 0.2 describes semantics that can be obtained reliably from Clap's public built-command reflection plus the registered Rust output type.
 
-The core contract includes canonical paths, positional order, canonical option spelling, unconditional requiredness, value arity, a small set of inferable scalar types, visible defaults and advertised values, delimiters, value terminators, repeatability, conflicts, exclusive arguments, required `=` syntax, required `--` syntax, and typed successful-output JSON Schema.
+The core contract includes canonical paths and option spellings, positional order, unconditional and conditional requiredness, requirement and override relationships, argument-group rules, value arity, visible unconditional/missing/conditional defaults, advertised finite values, delimiters, value terminators, repeatability, conflicts, exclusive arguments, required `=` syntax, required `--` syntax, and typed successful-output JSON Schema.
 
-Some invocation semantics are configurable through Clap's public builder API but are not exposed through its public reflection surface. In particular, the core 0.2 contract cannot currently serialize conditional requiredness (`required_if_eq*`, `required_unless_present*`), conditional dependencies (`requires*`), conditional defaults (`default_value_if*` / `default_values_if*`), defaults used when an option is present without a value (`default_missing_value*`), overrides (`overrides_with*`), or group-level requirement relationships (`ArgGroup::requires*`). Applications using such semantics SHOULD expose them through application-owned metadata until Clap can reflect them without depending on private internals.
+The remaining important boundary is arbitrary value-parser validation. Clap exposes the erased parser's result `TypeId` and advertised possible values, but a custom parser can enforce constraints that are not reflectable as structured data. `type: "string"` in particular can therefore represent an application-defined parser rather than an unconstrained string.
 
-Consumers MUST interpret omission as “not stated by this contract”, not as proof that no application-specific constraint exists.
+Only UTF-8 lexical relationship and default values can be represented directly by this JSON contract. A rule whose lexical predicate cannot be represented as UTF-8 is omitted rather than converted lossily. Consumers MUST interpret omission as “not stated by this contract”, not as proof that no application-specific constraint exists.
 
 This boundary is intentional: `clap_schema` does not guess parser behavior or make private Clap implementation details part of its wire protocol.
 
@@ -335,7 +406,8 @@ Notable 0.2 changes include:
 - `has_subcommands` is removed from complete command documents and retained only where needed by shallow summaries;
 - argument `id`, `index`, `short`, `long`, `value_names`, `help`, `default_values`, and `possible_values` are replaced by the canonical semantic argument/value shape specified here;
 - input value arity and scalar type are explicit;
-- syntax-affecting details such as required `=`, required `--`, delimiters, terminators, repeatability, conflicts, and exclusivity are exposed directly.
+- syntax-affecting details such as required `=`, required `--`, delimiters, terminators, repeatability, conflicts, and exclusivity are exposed directly;
+- conditional requirements, required-unless rules, overrides, missing/conditional defaults, and argument-group constraints are reflected as structured semantics.
 
 Within the 0.2 line, adding an optional field is compatible. Consumers MUST ignore unknown fields.
 
