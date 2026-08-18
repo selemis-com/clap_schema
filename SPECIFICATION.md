@@ -166,11 +166,13 @@ The `arguments` array order and `position` carry the same ordering intentionally
 
 ### `required`
 
-`required: true` means the argument is unconditionally required by the reflected command model.
+`required: true` means Clap's base required setting is enabled for the argument. This base
+requiredness is evaluated together with reflected conflicts and other relationship rules; for
+example, a conflict can make an otherwise-required argument inapplicable for a particular
+invocation.
 
-Absence is equivalent to `false`.
-
-See [Reflection boundary](#reflection-boundary) for conditional requirements.
+Absence is equivalent to `false`. Conditional requiredness is represented separately by
+`requiredIfAny`, `requiredIfAll`, `requiredUnlessAny`, and `requiredUnlessAll`.
 
 ### `value`
 
@@ -209,6 +211,9 @@ Consumers SHOULD avoid supplying mutually overridable targets together unless th
 
 `requires` contains requirements introduced by this argument. Each entry has a `when` predicate and a `target`. `when` is either `present` or an equality predicate on this argument's lexical value. `target` identifies either a canonical argument or a named argument group.
 
+These predicates retain Clap's value-source semantics: values originating only from a
+default do not satisfy `present` or equality predicates.
+
 When a predicate matches, the referenced target MUST be satisfied. An argument target is satisfied by supplying that argument. A group target is satisfied by supplying a member in accordance with that group's cardinality rules.
 
 ### `requiredIfAny` and `requiredIfAll`
@@ -224,7 +229,7 @@ Each entry is an equality condition on another argument or argument group. Its `
 }
 ```
 
-For an argument target, `equals` is the lexical argument value. For a group target, `equals` is the stable ID of a selected group member. The array is one aggregate rule; consumers MUST preserve whether that rule uses `any` or `all`.
+For an argument target, `equals` is the lexical argument value. For a group target, `equals` is the stable ID of a selected group member. Equality conditions retain Clap's predicate semantics, including that values originating only from a default do not satisfy the predicate. The array is one aggregate rule; consumers MUST preserve whether that rule uses `any` or `all`.
 
 For `requiredIfAny`, the argument is required when **at least one** listed condition matches. The listed conditions are therefore combined with logical OR.
 
@@ -309,9 +314,9 @@ These fields apply per occurrence. `repeatable` separately describes whether the
 
 ### `values`
 
-`values`, when present, contains canonical finite values accepted by the configured parser. Consumers SHOULD prefer one of these canonical values when constructing an invocation. Hidden aliases are not emitted as additional canonical values.
+`values`, when present, contains canonical possible values advertised by the configured parser. Consumers SHOULD prefer one of these values when constructing an invocation, but MUST NOT treat the array as proof that other values are invalid: Clap exposes possible values as reflection metadata and a parser may advertise values without making that list exhaustive. Hidden aliases are not emitted as additional canonical values.
 
-Clap help/completion visibility does not change this field. Values hidden with Clap's presentation controls remain part of the machine-readable parser contract.
+Clap help/completion visibility does not change this field. Canonical possible values hidden with Clap's presentation controls remain part of the machine-readable contract.
 
 ### `default`
 
@@ -327,7 +332,7 @@ Clap's `hide_default_value` setting affects human help only and does not suppres
 
 ### `defaultIf`
 
-`defaultIf` is an ordered array of conditional-default rules. Each rule identifies another canonical argument, a presence or equality predicate, and a lexical default. Rules are evaluated in declaration order; the first matching rule wins. A JSON `null` value represents a matching rule that suppresses the unconditional default.
+`defaultIf` is an ordered array of conditional-default rules. Each rule identifies another canonical argument, a presence or equality predicate, and a lexical default. Predicate evaluation retains Clap's value-source semantics: values originating only from a default do not satisfy the predicate. Rules are evaluated in declaration order; the first matching rule wins. A JSON `null` value represents a matching rule that suppresses the unconditional default.
 
 ### `delimiter`
 
@@ -347,7 +352,7 @@ Clap's `hide_default_value` setting affects human help only and does not suppres
 
 ### `ignoreCase`
 
-`ignoreCase: true` means Clap performs supported value comparisons case-insensitively. This applies to advertised possible-value matching and to Clap relationships whose equality predicates use that argument. Consumers MUST NOT assume lexical case is significant for those comparisons.
+`ignoreCase: true` reflects Clap's case-insensitive matching for advertised possible values. Clap also applies this setting when the argument is the compared target of `required_if_eq`, `required_if_eq_any`, or `required_if_eq_all`, represented here by `requiredIfAny` / `requiredIfAll` on another argument. Consumers MUST NOT generalize this setting to other relationship predicates unless Clap defines that behavior.
 
 ## Argument groups
 
@@ -366,9 +371,9 @@ A group document has the following semantic shape:
 
 `name` is the stable group identifier used by relationship references. `members` contains canonical argument names.
 
-`required: true` means at least one group member must be present. Absence is equivalent to `false`.
+`required: true` means Clap's base required setting is enabled for the group. As with argument requiredness, a reflected conflict can make that requirement inapplicable for a particular invocation. Absence is equivalent to `false`.
 
-`multiple: true` means more than one member may be present. Absence is equivalent to `false`, so a group with multiple members is mutually exclusive by default. Combined with `required: true`, `multiple: false` means exactly one member must be present.
+`multiple: true` means more than one member may be present. Absence is equivalent to `false`, so a group with multiple members is mutually exclusive by default. When the group requirement applies, combining `required: true` with `multiple: false` means exactly one member must be present.
 
 `requires` and `conflictsWith` apply when the group is present and may refer to either arguments or other groups. A group that would otherwise impose no constraint is still emitted when another reflected relationship targets it.
 
@@ -415,7 +420,7 @@ Given the executable name separately and one complete command document, a consum
 6. Respect `delimiter`, `terminator`, `repeatable`, `conflictsWith`, `overrides`, `requires`, conditional requiredness, `ignoreCase`, and `exclusive` when they are present.
 7. Satisfy every applicable argument-group cardinality, requirement, and conflict rule at each command level.
 8. Append positional values at each command level according to their explicit `position`, respecting `allowMissingPositionals`. If any positional has `requiresDoubleDash: true`, insert `--` before that positional as required by that command level. Once a `trailingVarArg` positional begins consuming values, treat the remaining tokens as its values; when `dontDelimitTrailingValues` is true, do not split those trailing values by configured delimiters.
-9. When `values` is present, prefer one of the advertised values. Values must also satisfy the parser represented by `type` and any application-specific validation.
+9. When `values` is present, prefer one of the advertised values, but do not treat that list as exhaustive validation. Every supplied lexical value must still satisfy Clap's configured parser.
 10. When relying on defaults, distinguish omission (`default`) from selecting an option without an explicit value (`defaultMissing`) and apply ordered `defaultIf` rules before the unconditional default.
 
 The schema does not prescribe shell quoting or escaping. The caller is responsible for passing the resulting argument vector safely to the process. Agents and tools SHOULD prefer direct argv/process APIs over constructing a shell command string.
@@ -424,7 +429,7 @@ The schema does not prescribe shell quoting or escaping. The caller is responsib
 
 `clap_schema` 0.2 describes semantics that can be obtained reliably from Clap's public built-command reflection plus the registered Rust output type.
 
-The core contract includes canonical paths and option spellings, positional order, unconditional and conditional requiredness, requirement and override relationships, argument-group rules, value arity, unconditional/missing/conditional defaults, canonical possible values, delimiters, value terminators, repeatability, conflicts, exclusive arguments, required `=` syntax, required `--` syntax, trailing variadic capture, case-insensitive value matching, missing-positional behavior, trailing-value delimiting, parent/subcommand routing semantics, and typed successful-output JSON Schema.
+The core contract includes canonical paths and option spellings, positional order, base and conditional requiredness, requirement and override relationships, argument-group rules, value arity, unconditional/missing/conditional defaults, advertised possible values, delimiters, value terminators, repeatability, conflicts, exclusive arguments, required `=` syntax, required `--` syntax, trailing variadic capture, case-insensitive value matching, missing-positional behavior, trailing-value delimiting, parent/subcommand routing semantics, and typed successful-output JSON Schema.
 
 Input values remain lexical command-line values. `clap_schema` does not infer Rust result types from Clap's erased value parser, and Clap remains authoritative for parser-specific validation.
 

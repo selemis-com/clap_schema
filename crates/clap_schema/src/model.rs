@@ -468,7 +468,7 @@ pub struct ArgumentInfo {
     /// Human-readable semantic description reflected from Clap help metadata.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Whether Clap marks this argument as unconditionally required.
+    /// Whether Clap's base required setting is enabled for this argument.
     #[serde(default, skip_serializing_if = "is_false")]
     pub required: bool,
     /// Value contract. Absent for flags that consume no value.
@@ -539,7 +539,9 @@ pub struct ArgumentValue {
     pub min_values: usize,
     /// Maximum number of values consumed by one occurrence, or `null` when unbounded.
     pub max_values: Option<usize>,
-    /// Canonical finite values accepted by the configured Clap value parser.
+    /// Canonical possible values advertised by the configured Clap value parser.
+    ///
+    /// This reflection metadata is not necessarily exhaustive validation.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub values: Vec<String>,
     /// Default spelling used when the argument is omitted.
@@ -566,7 +568,7 @@ pub struct ArgumentValue {
     /// Whether negative-number tokens are accepted without being treated as options.
     #[serde(default, skip_serializing_if = "is_false")]
     pub allow_negative_numbers: bool,
-    /// Whether parser value matching is case-insensitive where Clap supports it.
+    /// Whether Clap enables case-insensitive possible-value and required-if-equality matching.
     #[serde(default, skip_serializing_if = "is_false")]
     pub ignore_case: bool,
 }
@@ -593,9 +595,9 @@ pub enum ArgumentTarget {
 #[serde(tag = "kind", rename_all = "camelCase")]
 #[non_exhaustive]
 pub enum ArgumentPredicate {
-    /// The argument is present on the command line.
+    /// The argument is present for Clap predicate evaluation from a non-default value source.
     Present,
-    /// The argument has the stated lexical value.
+    /// The argument has the stated lexical value from a non-default value source.
     Equals {
         /// Lexical value compared by Clap.
         value: String,
@@ -622,7 +624,8 @@ pub struct ArgumentValueCondition {
     pub target: ArgumentTarget,
     /// Lexical value that must match.
     ///
-    /// For a group target, this is the stable ID of a selected group member.
+    /// For a group target, this is the stable ID of a selected group member. Values originating
+    /// only from a default do not satisfy this condition.
     pub equals: String,
 }
 
@@ -633,7 +636,7 @@ pub struct ArgumentValueCondition {
 pub struct ConditionalDefault {
     /// Argument whose state controls this default.
     pub argument: String,
-    /// Predicate applied to `argument`.
+    /// Predicate applied to `argument` using Clap's non-default value-source semantics.
     pub when: ArgumentPredicate,
     /// Lexical default to apply, or `null` to suppress the unconditional default.
     pub value: Option<Value>,
@@ -648,7 +651,7 @@ pub struct ArgumentGroupInfo {
     pub name: String,
     /// Canonical names of arguments in this group.
     pub members: Vec<String>,
-    /// Whether at least one member of this group is required.
+    /// Whether Clap's base required setting is enabled for this group.
     #[serde(default, skip_serializing_if = "is_false")]
     pub required: bool,
     /// Whether more than one member of this group may be used together.
