@@ -229,9 +229,10 @@ struct WhoamiArgs {}
 struct StatusArgs {}
 
 #[schema_handler(StatusArgs)]
-fn status(_command: StatusArgs) -> Result<(), TestError> {
+const fn status(_command: StatusArgs) -> Result<(), TestError> {
     Ok(())
 }
+
 #[derive(Debug, Clone, ValueEnum)]
 #[value(rename_all = "kebab-case")]
 enum SortOrder {

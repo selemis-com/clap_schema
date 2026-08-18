@@ -9,8 +9,8 @@ use serde_json::Value;
 use crate::{
     model::{
         ArgumentGroupInfo, ArgumentInfo, ArgumentPredicate, ArgumentRequirement, ArgumentSyntax,
-        ArgumentTarget, ArgumentValue, ArgumentValueCondition, CliContract,
-        CommandSyntax, ConditionalDefault, DiscoveryNode, ExecutableData, SubcommandRouting,
+        ArgumentTarget, ArgumentValue, ArgumentValueCondition, CliContract, CommandSyntax,
+        ConditionalDefault, DiscoveryNode, ExecutableData, SubcommandRouting,
     },
     schema::{
         ExtendedSchemaFactory, SchemaFactory, compose_extended_schemas, extended_schema_factory,
@@ -338,13 +338,9 @@ fn build_discovery_node(
     for child in command.get_subcommands() {
         let mut child_path = path.clone();
         child_path.push(child.get_name().to_owned());
-        if let Some(child) = build_discovery_node(
-            child,
-            child_path,
-            registrations,
-            application_extension,
-            false,
-        ) {
+        if let Some(child) =
+            build_discovery_node(child, child_path, registrations, application_extension, false)
+        {
             children.push(child);
         }
     }
@@ -615,11 +611,7 @@ fn reflected_argument_conflicts(command: &Command, argument: &Arg) -> Vec<String
 
 /// Reflects override targets declared on this argument without synthesizing reverse edges.
 fn reflected_argument_overrides(command: &Command, argument: &Arg) -> Vec<ArgumentTarget> {
-    argument
-        .get_overrides()
-        .iter()
-        .filter_map(|id| argument_target(command, id))
-        .collect()
+    argument.get_overrides().iter().filter_map(|id| argument_target(command, id)).collect()
 }
 
 /// Resolves an ID used by a Clap relationship to an argument or group reference.

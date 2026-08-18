@@ -577,13 +577,9 @@ mod tests {
     #[test]
     fn clap_help_visibility_does_not_hide_machine_contract_entries() -> clap_schema::Result<()> {
         let contract = ContractBuilder::new(
-            Command::new("fixture")
-                .arg(Arg::new("secret").long("secret").hide(true))
-                .subcommand(
-                    Command::new("internal")
-                        .hide(true)
-                        .arg(Arg::new("token").long("token").hide(true)),
-                ),
+            Command::new("fixture").arg(Arg::new("secret").long("secret").hide(true)).subcommand(
+                Command::new("internal").hide(true).arg(Arg::new("token").long("token").hide(true)),
+            ),
         )
         .command::<CreateCommand>(std::iter::empty::<&str>())
         .command::<FetchArgs>(["internal"])
