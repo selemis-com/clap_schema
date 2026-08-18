@@ -1,6 +1,4 @@
 //! Representative handler forms and their inferred successful outputs.
-#![expect(dead_code, reason = "test handlers are reflected rather than executed")]
-
 #[cfg(test)]
 mod tests {
     use clap::{Args, Parser, Subcommand};
@@ -50,6 +48,7 @@ mod tests {
     );
 
     #[derive(JsonSchema)]
+    #[expect(dead_code, reason = "test data type is reflected into JSON Schema")]
     struct Output {
         value: String,
     }
@@ -60,31 +59,37 @@ mod tests {
     type HandlerResult = Result<Output, HandlerError>;
 
     #[schema_handler(FreeSyncArgs)]
+    #[expect(dead_code, reason = "test handler is reflected rather than executed")]
     fn free_sync(_command: FreeSyncArgs) -> HandlerResult {
         Err(HandlerError)
     }
 
     #[schema_handler(FreeConstArgs)]
+    #[expect(dead_code, reason = "test handler is reflected rather than executed")]
     const fn free_const(_command: FreeConstArgs) -> HandlerResult {
         Err(HandlerError)
     }
 
     #[schema_handler(FreeAsyncArgs)]
+    #[expect(dead_code, reason = "test handler is reflected rather than executed")]
     async fn free_async(_command: FreeAsyncArgs) -> HandlerResult {
         Err(HandlerError)
     }
 
     #[schema_handler(FreeBorrowedArgs)]
+    #[expect(dead_code, reason = "test handler is reflected rather than executed")]
     fn free_borrowed(_command: &FreeBorrowedArgs) -> HandlerResult {
         Err(HandlerError)
     }
 
     #[schema_handler(NoInputArgs)]
+    #[expect(dead_code, reason = "test handler is reflected rather than executed")]
     fn no_input() -> HandlerResult {
         Err(HandlerError)
     }
 
     #[schema_handler(FreeFormArgs)]
+    #[expect(dead_code, reason = "test handler is reflected rather than executed")]
     fn free_form(_context: &str, _verbose: bool, _value: u64) -> HandlerResult {
         Err(HandlerError)
     }
@@ -97,6 +102,7 @@ mod tests {
 
     #[schema_handler(ConditionalArgs)]
     #[cfg(not(any()))]
+    #[expect(dead_code, reason = "test handler is reflected rather than executed")]
     fn conditional_enabled(_command: ConditionalArgs) -> HandlerResult {
         Err(HandlerError)
     }
@@ -109,12 +115,14 @@ mod tests {
 
     #[schema_handler(ConditionalAttrArgs)]
     #[cfg_attr(all(), cfg(all()))]
+    #[expect(dead_code, reason = "test handler is reflected rather than executed")]
     fn conditional_attr_enabled(_command: ConditionalAttrArgs) -> HandlerResult {
         Err(HandlerError)
     }
 
     #[schema_handler(run)]
     impl ImplMethodArgs {
+        #[expect(dead_code, reason = "test handler is reflected rather than executed")]
         async fn run(self, _context: &str) -> HandlerResult {
             Err(HandlerError)
         }
@@ -131,6 +139,7 @@ mod tests {
     #[schema_handler(run)]
     impl ConditionalImplArgs {
         #[cfg(not(any()))]
+        #[expect(dead_code, reason = "test handler is reflected rather than executed")]
         fn run(self) -> HandlerResult {
             Err(HandlerError)
         }

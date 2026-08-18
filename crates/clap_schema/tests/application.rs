@@ -1,349 +1,350 @@
 //! End-to-end contract behavior over one realistic nested CLI.
-#![expect(dead_code, reason = "test data types are reflected rather than executed")]
-
-use clap::{Args, Parser, Subcommand, ValueEnum};
-use clap_schema::{CliSchema, CommandSchema, schema_handler};
-use schemars::JsonSchema;
-
-#[derive(Debug, JsonSchema)]
-struct ApplicationMetadata {
-    /// Whether invoking a command can mutate application state.
-    mutates: bool,
-    /// Application-defined retry classification.
-    retry: RetryClass,
-}
-
-#[derive(Debug, JsonSchema)]
-enum RetryClass {
-    Never,
-    Safe,
-}
-
-#[derive(Debug, JsonSchema)]
-struct PaginationMetadata {
-    /// Input field that receives the cursor from a previous page.
-    cursor_argument: String,
-    /// Output field containing the cursor for the next page.
-    cursor_output_field: String,
-}
-
-#[derive(Debug, JsonSchema)]
-struct DestructiveMetadata {
-    /// Whether the application requires explicit confirmation before execution.
-    confirmation_required: bool,
-}
-
-#[derive(Debug, JsonSchema)]
-struct AuthorizationMetadata {
-    /// Application-defined authorization classification.
-    minimum_role: String,
-}
-
-#[derive(Debug, JsonSchema)]
-struct AccessMetadata {
-    /// Whether the parent command can inspect access directly.
-    inspectable: bool,
-}
-
-#[derive(Debug, Parser, CliSchema)]
-#[schema(extend = ApplicationMetadata)]
-#[command(name = "kivalish", about = "Example collaborative-object CLI")]
-struct Cli {
-    /// Override the configured service root URL.
-    #[arg(long, global = true, default_value = "https://example.test")]
-    url: String,
-
-    /// Emit machine-readable JSON output.
-    #[arg(short = 'j', long, global = true)]
-    json: bool,
-
-    #[command(subcommand)]
-    command: Commands,
-}
-
-#[derive(Debug, Subcommand, CommandSchema)]
-enum Commands {
-    /// Manage objects and their access grants.
-    Objects(ObjectsArgs),
-
-    /// Search visible objects.
-    Search(SearchArgs),
-
-    #[command(flatten)]
-    Utilities(UtilityCommands),
-
-    /// Internal maintenance commands.
-    #[command(subcommand, hide = true)]
-    Admin(AdminCommands),
-}
-
-/// Nested object commands.
-#[derive(Debug, Args, CommandSchema)]
-struct ObjectsArgs {
-    /// Selects the object operation.
-    #[command(subcommand)]
-    command: ObjectCommands,
-}
-
-#[derive(Debug, Subcommand, CommandSchema)]
-enum ObjectCommands {
-    /// Return one object.
-    #[command(visible_alias = "show")]
-    Get(GetObjectArgs),
-
-    /// List objects visible in a workspace.
-    #[schema(extend = PaginationMetadata)]
-    List(ListObjectsArgs),
-
-    /// Permanently remove one object.
-    #[schema(extend = DestructiveMetadata)]
-    Delete(DeleteObjectArgs),
-
-    /// Inspect or modify direct object grants.
-    #[schema(extend = AccessMetadata)]
-    Access(AccessArgs),
-}
-
-#[derive(Debug, Subcommand, CommandSchema)]
-enum AccessCommands {
-    /// Grant a user or linked group a role on an object.
-    #[command(visible_alias = "add")]
-    #[schema(extend = AuthorizationMetadata)]
-    Grant(GrantAccessArgs),
-
-    /// Revoke one direct object grant.
-    Revoke(RevokeAccessArgs),
-}
-
-#[derive(Debug, Subcommand, CommandSchema)]
-enum UtilityCommands {
-    /// Show the identity associated with the current credentials.
-    Whoami(WhoamiArgs),
-}
-
-#[derive(Debug, Subcommand, CommandSchema)]
-enum AdminCommands {
-    /// Read internal service status.
-    Status(StatusArgs),
-}
-
-#[derive(Debug, Args)]
-struct SearchArgs {
-    /// Query text.
-    #[arg(long)]
-    query: String,
-
-    /// Maximum number of matches.
-    #[arg(long, default_value = "25")]
-    limit: u16,
-}
-#[derive(Debug, Args)]
-struct GetObjectArgs {
-    #[command(flatten)]
-    key: ObjectKeyArgs,
-}
-#[derive(Debug, Args)]
-struct DeleteObjectArgs {
-    #[command(flatten)]
-    key: ObjectKeyArgs,
-}
-#[derive(Debug, Args)]
-struct ObjectKeyArgs {
-    /// Workspace containing the object.
-    workspace_id: String,
-
-    /// Object identifier within the workspace.
-    object_id: String,
-
-    /// Return a historical object version when supplied.
-    #[arg(long)]
-    version_id: Option<String>,
-}
-
-#[derive(Debug, Args)]
-struct ListObjectsArgs {
-    /// Workspace whose objects should be listed.
-    workspace_id: String,
-
-    /// Maximum number of objects to return.
-    #[arg(long, default_value = "50")]
-    limit: u16,
-
-    /// Sort order for the result page.
-    #[arg(long, visible_alias = "sort", value_enum, default_value = "newest")]
-    order: SortOrder,
-
-    /// Include archived objects.
-    #[arg(long)]
-    archived: bool,
-
-    /// Internal token that must not appear in discovery.
-    #[arg(long, hide = true)]
-    internal_token: Option<String>,
-}
-#[derive(Debug, Args, CommandSchema)]
-struct AccessArgs {
-    /// Workspace containing the object.
-    workspace_id: String,
-
-    /// Object whose grants should be inspected or modified.
-    object_id: String,
-
-    #[command(subcommand)]
-    command: Option<AccessCommands>,
-}
-#[derive(Debug, Args)]
-struct GrantArgs {
-    /// Workspace containing the object.
-    workspace_id: String,
-
-    /// Object receiving the direct grant.
-    object_id: String,
-
-    /// User principal. Exactly one principal selector is required by Clap.
-    #[arg(long, required_unless_present = "group_id", conflicts_with = "group_id")]
-    user_id: Option<String>,
-
-    /// Linked-group principal. Exactly one principal selector is required by Clap.
-    #[arg(long, required_unless_present = "user_id", conflicts_with = "user_id")]
-    group_id: Option<String>,
-
-    /// Role assigned to the principal.
-    #[arg(long, value_enum)]
-    role: AccessRole,
-}
-
-#[derive(Debug, Args)]
-struct GrantAccessArgs {
-    #[command(flatten)]
-    grant: GrantArgs,
-}
-#[derive(Debug, Args)]
-struct RevokeAccessArgs {
-    #[command(flatten)]
-    grant: GrantArgs,
-}
-#[derive(Debug, Args)]
-struct WhoamiArgs {}
-#[derive(Debug, Args)]
-struct StatusArgs {}
-
-#[schema_handler(StatusArgs)]
-const fn status(_command: StatusArgs) -> Result<(), TestError> {
-    Ok(())
-}
-
-#[derive(Debug, Clone, ValueEnum)]
-#[value(rename_all = "kebab-case")]
-enum SortOrder {
-    Newest,
-    Oldest,
-}
-
-#[derive(Debug, Clone, JsonSchema, ValueEnum)]
-#[value(rename_all = "kebab-case")]
-#[serde(rename_all = "kebab-case")]
-enum AccessRole {
-    Viewer,
-    Editor,
-}
-
-#[derive(Debug, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-enum ObjectKind {
-    Document,
-    Note,
-}
-
-#[derive(Debug, JsonSchema)]
-struct ObjectRecord {
-    id: String,
-    workspace_id: String,
-    title: String,
-    kind: ObjectKind,
-    tags: Vec<String>,
-    metadata: Option<serde_json::Value>,
-}
-
-#[derive(Debug, JsonSchema)]
-struct Page<T> {
-    items: Vec<T>,
-    next_cursor: Option<String>,
-}
-
-#[derive(Debug, JsonSchema)]
-#[serde(tag = "type", rename_all = "snake_case")]
-enum Principal {
-    User { user_id: String },
-    Group { group_id: String },
-}
-
-#[derive(Debug, JsonSchema)]
-struct ObjectGrant {
-    id: String,
-    object_id: String,
-    principal: Principal,
-    role: AccessRole,
-}
-
-#[derive(Debug, JsonSchema)]
-struct AccessSummary {
-    object_id: String,
-    direct_grants: u64,
-}
-
-#[derive(Debug, JsonSchema)]
-struct Identity {
-    user_id: String,
-    display_name: String,
-}
-
-#[derive(Debug)]
-struct TestError;
-
-#[schema_handler(GetObjectArgs)]
-async fn get_object(_command: GetObjectArgs) -> Result<ObjectRecord, TestError> {
-    Err(TestError)
-}
-
-#[schema_handler(ListObjectsArgs)]
-async fn list_objects(_command: ListObjectsArgs) -> Result<Page<ObjectRecord>, TestError> {
-    Err(TestError)
-}
-
-#[schema_handler(DeleteObjectArgs)]
-async fn delete_object(_command: DeleteObjectArgs) -> Result<(), TestError> {
-    Err(TestError)
-}
-
-#[schema_handler(AccessArgs)]
-async fn inspect_access(_command: AccessArgs) -> Result<AccessSummary, TestError> {
-    Err(TestError)
-}
-
-#[schema_handler(GrantAccessArgs)]
-async fn grant_access(_command: GrantAccessArgs) -> Result<ObjectGrant, TestError> {
-    Err(TestError)
-}
-
-#[schema_handler(RevokeAccessArgs)]
-async fn revoke_access(_command: RevokeAccessArgs) -> Result<(), TestError> {
-    Err(TestError)
-}
-
-#[schema_handler(SearchArgs)]
-async fn search(_command: SearchArgs) -> Result<Page<ObjectRecord>, TestError> {
-    Err(TestError)
-}
-
-#[schema_handler(WhoamiArgs)]
-async fn whoami(_command: WhoamiArgs) -> Result<Identity, TestError> {
-    Err(TestError)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use clap::{Args, Parser, Subcommand, ValueEnum};
+    use clap_schema::{CliSchema, CommandSchema, schema_handler};
+    use schemars::JsonSchema;
+
+    #[derive(Debug, JsonSchema)]
+    #[expect(dead_code, reason = "test data type is reflected into JSON Schema")]
+    struct ApplicationMetadata {
+        /// Whether invoking a command can mutate application state.
+        mutates: bool,
+        /// Application-defined retry classification.
+        retry: RetryClass,
+    }
+
+    #[derive(Debug, JsonSchema)]
+    #[expect(dead_code, reason = "test data type is reflected into JSON Schema")]
+    enum RetryClass {
+        Never,
+        Safe,
+    }
+
+    #[derive(Debug, JsonSchema)]
+    #[expect(dead_code, reason = "test data type is reflected into JSON Schema")]
+    struct PaginationMetadata {
+        /// Input field that receives the cursor from a previous page.
+        cursor_argument: String,
+    }
+
+    #[derive(Debug, JsonSchema)]
+    #[expect(dead_code, reason = "test data type is reflected into JSON Schema")]
+    struct DestructiveMetadata {
+        /// Whether the application requires explicit confirmation before execution.
+        confirmation_required: bool,
+    }
+
+    #[derive(Debug, JsonSchema)]
+    #[expect(dead_code, reason = "test data type is reflected into JSON Schema")]
+    struct AccessMetadata {
+        /// Whether the parent command can inspect access directly.
+        inspectable: bool,
+    }
+
+    #[derive(Debug, JsonSchema)]
+    #[expect(dead_code, reason = "test data type is reflected into JSON Schema")]
+    struct AuthorizationMetadata {
+        /// Application-defined authorization classification.
+        minimum_role: String,
+    }
+
+    #[derive(Debug, Parser, CliSchema)]
+    #[schema(extend = ApplicationMetadata)]
+    #[command(name = "kivalish", about = "Example collaborative-object CLI")]
+    struct Cli {
+        /// Override the configured service root URL.
+        #[arg(long, global = true, default_value = "https://example.test")]
+        url: String,
+
+        /// Emit machine-readable JSON output.
+        #[arg(short = 'j', long, global = true)]
+        json: bool,
+
+        #[command(subcommand)]
+        command: Commands,
+    }
+
+    #[derive(Debug, Subcommand, CommandSchema)]
+    enum Commands {
+        /// Manage objects and their access grants.
+        Objects(ObjectsArgs),
+
+        /// Search visible objects.
+        Search(SearchArgs),
+
+        #[command(flatten)]
+        Utilities(UtilityCommands),
+
+        /// Internal maintenance commands.
+        #[command(subcommand, hide = true)]
+        Admin(AdminCommands),
+    }
+
+    /// Nested object commands.
+    #[derive(Debug, Args, CommandSchema)]
+    struct ObjectsArgs {
+        /// Selects the object operation.
+        #[command(subcommand)]
+        command: ObjectCommands,
+    }
+
+    #[derive(Debug, Subcommand, CommandSchema)]
+    enum ObjectCommands {
+        /// Return one object.
+        #[command(visible_alias = "show")]
+        Get(GetObjectArgs),
+
+        /// List objects visible in a workspace.
+        #[schema(extend = PaginationMetadata)]
+        List(ListObjectsArgs),
+
+        /// Permanently remove one object.
+        #[schema(extend = DestructiveMetadata)]
+        Delete(DeleteObjectArgs),
+
+        /// Inspect or modify direct object grants.
+        #[schema(extend = AccessMetadata)]
+        Access(AccessArgs),
+    }
+
+    #[derive(Debug, Args)]
+    struct ObjectKeyArgs {
+        /// Workspace containing the object.
+        workspace_id: String,
+
+        /// Object identifier within the workspace.
+        object_id: String,
+
+        /// Return a historical object version when supplied.
+        #[arg(long)]
+        version_id: Option<String>,
+    }
+
+    #[derive(Debug, Args)]
+    struct GetObjectArgs {
+        #[command(flatten)]
+        key: ObjectKeyArgs,
+    }
+
+    #[derive(Debug, Args)]
+    struct ListObjectsArgs {
+        /// Workspace whose objects should be listed.
+        workspace_id: String,
+
+        /// Maximum number of objects to return.
+        #[arg(long, default_value = "50")]
+        limit: u16,
+
+        /// Sort order for the result page.
+        #[arg(long, visible_alias = "sort", value_enum, default_value = "newest")]
+        order: SortOrder,
+
+        /// Include archived objects.
+        #[arg(long)]
+        archived: bool,
+
+        /// Internal token hidden from human-facing help.
+        #[arg(long, hide = true)]
+        internal_token: Option<String>,
+    }
+
+    #[derive(Debug, Clone, ValueEnum)]
+    #[value(rename_all = "kebab-case")]
+    enum SortOrder {
+        Newest,
+        Oldest,
+    }
+
+    #[derive(Debug, Args)]
+    struct DeleteObjectArgs {
+        #[command(flatten)]
+        key: ObjectKeyArgs,
+    }
+
+    #[derive(Debug, Args, CommandSchema)]
+    struct AccessArgs {
+        /// Workspace containing the object.
+        workspace_id: String,
+
+        /// Object whose grants should be inspected or modified.
+        object_id: String,
+
+        #[command(subcommand)]
+        command: Option<AccessCommands>,
+    }
+
+    #[derive(Debug, Subcommand, CommandSchema)]
+    enum AccessCommands {
+        /// Grant a user or linked group a role on an object.
+        #[command(visible_alias = "add")]
+        #[schema(extend = AuthorizationMetadata)]
+        Grant(GrantAccessArgs),
+
+        /// Revoke one direct object grant.
+        Revoke(RevokeAccessArgs),
+    }
+
+    #[derive(Debug, Args)]
+    struct GrantArgs {
+        /// User principal. Exactly one principal selector is required by Clap.
+        #[arg(long, required_unless_present = "group_id", conflicts_with = "group_id")]
+        user_id: Option<String>,
+
+        /// Linked-group principal. Exactly one principal selector is required by Clap.
+        #[arg(long, required_unless_present = "user_id", conflicts_with = "user_id")]
+        group_id: Option<String>,
+
+        /// Role assigned to the principal.
+        #[arg(long, value_enum)]
+        role: AccessRole,
+    }
+
+    #[derive(Debug, Clone, JsonSchema, ValueEnum)]
+    #[value(rename_all = "kebab-case")]
+    #[serde(rename_all = "kebab-case")]
+    enum AccessRole {
+        Viewer,
+        Editor,
+    }
+
+    #[derive(Debug, Args)]
+    struct GrantAccessArgs {
+        #[command(flatten)]
+        grant: GrantArgs,
+    }
+
+    #[derive(Debug, Args)]
+    struct RevokeAccessArgs {}
+
+    #[derive(Debug, Args)]
+    struct SearchArgs {
+        /// Query text.
+        #[arg(long)]
+        query: String,
+
+        /// Maximum number of matches.
+        #[arg(long, default_value = "25")]
+        limit: u16,
+    }
+
+    #[derive(Debug, Subcommand, CommandSchema)]
+    enum UtilityCommands {
+        /// Show the identity associated with the current credentials.
+        Whoami(WhoamiArgs),
+    }
+
+    #[derive(Debug, Args)]
+    struct WhoamiArgs {}
+
+    #[derive(Debug, Subcommand, CommandSchema)]
+    enum AdminCommands {
+        /// Read internal service status.
+        Status(StatusArgs),
+    }
+
+    #[derive(Debug, Args)]
+    struct StatusArgs {}
+
+    #[derive(Debug, JsonSchema)]
+    #[serde(rename_all = "snake_case")]
+    #[expect(dead_code, reason = "test data type is reflected into JSON Schema")]
+    enum ObjectKind {
+        Document,
+        Note,
+    }
+
+    #[derive(Debug, JsonSchema)]
+    #[expect(dead_code, reason = "test data type is reflected into JSON Schema")]
+    struct ObjectRecord {
+        kind: ObjectKind,
+        metadata: Option<serde_json::Value>,
+    }
+
+    #[derive(Debug, JsonSchema)]
+    #[expect(dead_code, reason = "test data type is reflected into JSON Schema")]
+    struct Page<T> {
+        items: Vec<T>,
+        next_cursor: Option<String>,
+    }
+
+    #[derive(Debug, JsonSchema)]
+    #[serde(tag = "type", rename_all = "snake_case")]
+    #[expect(dead_code, reason = "test data type is reflected into JSON Schema")]
+    enum Principal {
+        User { user_id: String },
+        Group { group_id: String },
+    }
+
+    #[derive(Debug, JsonSchema)]
+    #[expect(dead_code, reason = "test data type is reflected into JSON Schema")]
+    struct ObjectGrant {
+        principal: Principal,
+        role: AccessRole,
+    }
+
+    #[derive(Debug, JsonSchema)]
+    #[expect(dead_code, reason = "test data type is reflected into JSON Schema")]
+    struct AccessSummary {
+        direct_grants: u64,
+    }
+
+    #[derive(Debug)]
+    struct TestError;
+
+    #[schema_handler(GetObjectArgs)]
+    #[expect(dead_code, reason = "test handler is reflected rather than executed")]
+    async fn get_object(_command: GetObjectArgs) -> Result<ObjectRecord, TestError> {
+        Err(TestError)
+    }
+
+    #[schema_handler(ListObjectsArgs)]
+    #[expect(dead_code, reason = "test handler is reflected rather than executed")]
+    async fn list_objects(_command: ListObjectsArgs) -> Result<Page<ObjectRecord>, TestError> {
+        Err(TestError)
+    }
+
+    #[schema_handler(DeleteObjectArgs)]
+    #[expect(dead_code, reason = "test handler is reflected rather than executed")]
+    async fn delete_object(_command: DeleteObjectArgs) -> Result<(), TestError> {
+        Err(TestError)
+    }
+
+    #[schema_handler(AccessArgs)]
+    #[expect(dead_code, reason = "test handler is reflected rather than executed")]
+    async fn inspect_access(_command: AccessArgs) -> Result<AccessSummary, TestError> {
+        Err(TestError)
+    }
+
+    #[schema_handler(GrantAccessArgs)]
+    #[expect(dead_code, reason = "test handler is reflected rather than executed")]
+    async fn grant_access(_command: GrantAccessArgs) -> Result<ObjectGrant, TestError> {
+        Err(TestError)
+    }
+
+    #[schema_handler(RevokeAccessArgs)]
+    #[expect(dead_code, reason = "test handler is reflected rather than executed")]
+    async fn revoke_access(_command: RevokeAccessArgs) -> Result<(), TestError> {
+        Err(TestError)
+    }
+
+    #[schema_handler(SearchArgs)]
+    #[expect(dead_code, reason = "test handler is reflected rather than executed")]
+    async fn search(_command: SearchArgs) -> Result<(), TestError> {
+        Err(TestError)
+    }
+
+    #[schema_handler(WhoamiArgs)]
+    #[expect(dead_code, reason = "test handler is reflected rather than executed")]
+    async fn whoami(_command: WhoamiArgs) -> Result<(), TestError> {
+        Err(TestError)
+    }
+
+    #[schema_handler(StatusArgs)]
+    #[expect(dead_code, reason = "test handler is reflected rather than executed")]
+    const fn status(_command: StatusArgs) -> Result<(), TestError> {
+        Ok(())
+    }
 
     #[test]
     fn complex_topology_preserves_canonical_paths() -> clap_schema::Result<()> {
