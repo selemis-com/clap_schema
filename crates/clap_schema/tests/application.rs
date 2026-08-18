@@ -121,7 +121,7 @@ enum UtilityCommands {
     Whoami(WhoamiArgs),
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Subcommand, CommandSchema)]
 enum AdminCommands {
     /// Read internal service status.
     Status(StatusArgs),
@@ -227,6 +227,11 @@ struct RevokeAccessArgs {
 struct WhoamiArgs {}
 #[derive(Debug, Args)]
 struct StatusArgs {}
+
+#[schema_handler(StatusArgs)]
+fn status(_command: StatusArgs) -> Result<(), TestError> {
+    Ok(())
+}
 #[derive(Debug, Clone, ValueEnum)]
 #[value(rename_all = "kebab-case")]
 enum SortOrder {
@@ -340,7 +345,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn complex_topology_preserves_canonical_visible_paths() -> clap_schema::Result<()> {
+    fn complex_topology_preserves_canonical_paths() -> clap_schema::Result<()> {
         fn collect_paths(document: &clap_schema::SchemaDocument, paths: &mut Vec<Vec<String>>) {
             for child in &document.subcommands {
                 let clap_schema::SchemaSubcommand::Resolved(child) = child else {
@@ -358,6 +363,8 @@ mod tests {
         assert_eq!(
             paths,
             [
+                &["admin"][..],
+                &["admin", "status"][..],
                 &["objects"][..],
                 &["objects", "access"][..],
                 &["objects", "access", "grant"][..],
@@ -373,7 +380,10 @@ mod tests {
             .collect::<Vec<_>>()
         );
 
-        assert!(contract.command_for::<StatusArgs>().is_none());
+        assert_eq!(
+            contract.command_for::<StatusArgs>().expect("hidden status command").path,
+            ["admin", "status"]
+        );
 
         let aliased = contract.command(&["objects", "show"])?;
         assert_eq!(aliased.path, vec!["objects".to_owned(), "get".to_owned()]);
@@ -486,7 +496,7 @@ mod tests {
         let order_value = order.value.as_ref().expect("order value contract");
         assert_eq!(order_value.default, Some(serde_json::Value::String("newest".to_owned())));
         assert_eq!(order_value.values, vec!["newest".to_owned(), "oldest".to_owned()]);
-        assert!(!list.options.iter().any(|argument| argument.name == "--internal-token"));
+        assert!(list.options.iter().any(|argument| argument.name == "--internal-token"));
 
         let grant = contract.command_for::<GrantAccessArgs>().expect("grant command");
         let user_id = grant

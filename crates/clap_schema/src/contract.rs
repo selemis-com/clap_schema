@@ -25,7 +25,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
-    /// A requested or registered command path does not exist in the visible Clap tree.
+    /// A requested or registered command path does not exist in the Clap tree.
     #[error("unknown clap command path: {path}", path = format_path(.path))]
     UnknownCommand {
         /// Requested command path.
@@ -311,27 +311,24 @@ fn canonical_command<'a>(root: &'a Command, path: &[String]) -> Option<&'a Comma
     Some(command)
 }
 
-/// Reconciles registered executable commands with Clap while building the visible discovery
-/// topology.
+/// Reconciles registered executable commands with Clap while building the discovery topology.
 fn discovery_tree(
     root: &Command,
     registrations: &mut Vec<PendingCommandRegistration>,
     application_extension: Option<ExtendedSchemaFactory>,
 ) -> DiscoveryNode {
-    build_discovery_node(root, Vec::new(), registrations, application_extension, false, true)
+    build_discovery_node(root, Vec::new(), registrations, application_extension, true)
         .expect("the root discovery node is always retained")
 }
 
-/// Recursively validates registrations and reflects schema-visible commands in one traversal.
+/// Recursively validates registrations and reflects contract commands in one traversal.
 fn build_discovery_node(
     command: &Command,
     path: Vec<String>,
     registrations: &mut Vec<PendingCommandRegistration>,
     application_extension: Option<ExtendedSchemaFactory>,
-    ancestor_hidden: bool,
     root: bool,
 ) -> Option<DiscoveryNode> {
-    let hidden = ancestor_hidden || command.is_hide_set();
     let pending = registrations
         .iter()
         .position(|registration| registration.path == path)
@@ -346,7 +343,6 @@ fn build_discovery_node(
             child_path,
             registrations,
             application_extension,
-            hidden,
             false,
         ) {
             children.push(child);
@@ -354,27 +350,19 @@ fn build_discovery_node(
     }
     children.sort_by(|left, right| left.name.cmp(&right.name));
 
-    if !root && hidden {
-        return None;
-    }
-
-    let executable = if hidden {
-        None
-    } else {
-        pending.map(|registration| {
-            let extended_schema = registration.extended.map(|extension| {
-                application_extension.map_or_else(
-                    || extension.root(),
-                    |application| compose_extended_schemas(application, extension),
-                )
-            });
-            ExecutableData {
-                id: registration.id,
-                output: registration.output.map(|factory| factory()),
-                extended_schema,
-            }
-        })
-    };
+    let executable = pending.map(|registration| {
+        let extended_schema = registration.extended.map(|extension| {
+            application_extension.map_or_else(
+                || extension.root(),
+                |application| compose_extended_schemas(application, extension),
+            )
+        });
+        ExecutableData {
+            id: registration.id,
+            output: registration.output.map(|factory| factory()),
+            extended_schema,
+        }
+    });
     if !root && executable.is_none() && children.is_empty() {
         return None;
     }
@@ -404,7 +392,7 @@ fn build_discovery_node(
     })
 }
 
-/// Reflects visible positional arguments directly from one built Clap command.
+/// Reflects positional arguments directly from one built Clap command.
 fn reflected_positionals(command: &Command) -> Vec<ArgumentInfo> {
     command
         .get_positionals()
@@ -413,7 +401,7 @@ fn reflected_positionals(command: &Command) -> Vec<ArgumentInfo> {
         .collect()
 }
 
-/// Reflects visible non-positional options directly from one built Clap command.
+/// Reflects non-positional options directly from one built Clap command.
 fn reflected_options(command: &Command) -> Vec<ArgumentInfo> {
     command
         .get_arguments()
@@ -423,11 +411,12 @@ fn reflected_options(command: &Command) -> Vec<ArgumentInfo> {
         .collect()
 }
 
-/// Returns whether an argument belongs in agent-facing discovery context.
+/// Returns whether an argument is part of the application command contract.
+///
+/// Clap presentation settings such as `hide` do not change parser behavior and therefore do not
+/// remove an argument from the machine-readable contract. Auto-generated help and version actions
+/// remain excluded because they are Clap control surface rather than application arguments.
 fn reflected_argument(argument: &Arg) -> bool {
-    if argument.is_hide_set() {
-        return false;
-    }
     !matches!(
         argument.get_action(),
         ArgAction::Help | ArgAction::HelpShort | ArgAction::HelpLong | ArgAction::Version
@@ -634,7 +623,7 @@ fn argument_predicate(predicate: &ClapArgPredicate) -> Option<ArgumentPredicate>
     }
 }
 
-/// Resolves a reflected ID to its canonical argument name when the argument is agent-visible.
+/// Resolves a reflected ID to its canonical argument name.
 fn reflected_argument_name(command: &Command, id: &Id) -> Option<String> {
     command
         .get_arguments()

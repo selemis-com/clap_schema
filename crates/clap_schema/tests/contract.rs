@@ -565,6 +565,29 @@ mod tests {
     }
 
     #[test]
+    fn clap_help_visibility_does_not_hide_machine_contract_entries() -> clap_schema::Result<()> {
+        let contract = ContractBuilder::new(
+            Command::new("fixture")
+                .arg(Arg::new("secret").long("secret").hide(true))
+                .subcommand(
+                    Command::new("internal")
+                        .hide(true)
+                        .arg(Arg::new("token").long("token").hide(true)),
+                ),
+        )
+        .command::<CreateCommand>(std::iter::empty::<&str>())
+        .command::<FetchArgs>(["internal"])
+        .build()?;
+
+        let root = contract.command(&[])?;
+        assert!(root.options.iter().any(|argument| argument.name == "--secret"));
+
+        let internal = contract.command(&["internal"])?;
+        assert!(internal.options.iter().any(|argument| argument.name == "--token"));
+        Ok(())
+    }
+
+    #[test]
     fn builder_rejects_invalid_and_duplicate_declarations() {
         let unknown = ContractBuilder::new(Command::new("fixture"))
             .command::<CreateCommand>(["missing"])

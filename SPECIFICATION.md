@@ -86,13 +86,13 @@ A command can be both invocable and have optional subcommands. Absence of `invoc
 
 ### `arguments`
 
-`arguments` contains visible positional arguments.
+`arguments` contains positional arguments accepted by the reflected Clap command.
 
 The array is ordered by invocation position. Each positional also carries an explicit one-based `position`; consumers **MUST** supply positionals in ascending `position` order.
 
 ### `options`
 
-`options` contains visible non-positional arguments. Each option is emitted with exactly one canonical spelling. A long spelling such as `--limit` is preferred when available; otherwise the canonical short spelling such as `-v` is used.
+`options` contains non-positional arguments accepted by the reflected Clap command. Each option is emitted with exactly one canonical spelling. A long spelling such as `--limit` is preferred when available; otherwise the canonical short spelling such as `-v` is used.
 
 Alternative short names and aliases are intentionally not part of the core contract.
 
@@ -464,9 +464,9 @@ Examples of application concerns that belong outside the core contract include:
 
 The core contract does not require an application to adopt any of these behaviors.
 
-## Hidden commands and arguments
+## Presentation visibility
 
-Clap-hidden commands and arguments are not part of discovery. A consumer MUST NOT infer hidden paths or options from omissions.
+Clap presentation settings such as hidden commands, hidden arguments, hidden defaults, and hidden possible values do not remove parser behavior from the machine-readable contract. `clap_schema` reflects the command interface accepted by Clap rather than reproducing human help visibility.
 
 ## Compatibility
 

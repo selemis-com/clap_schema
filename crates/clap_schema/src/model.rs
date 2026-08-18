@@ -149,8 +149,8 @@ impl CliContract {
     /// # Errors
     ///
     /// Returns [`crate::Error::UnknownCommand`] when the path is not present in
-    /// the schema-visible command tree. Clap-hidden commands are intentionally
-    /// indistinguishable from unknown paths.
+    /// the schema-visible command tree. Clap presentation visibility does not affect whether a
+    /// registered command is present in the machine-readable contract.
     pub fn command(&self, path: &[&str]) -> crate::Result<CommandInfo> {
         let node = self.discovery.resolve(path)?;
         Ok(self.command_info(node))
