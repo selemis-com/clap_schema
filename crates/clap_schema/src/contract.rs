@@ -351,6 +351,8 @@ fn build_discovery_node(
         arguments: reflected_positionals(command),
         options: reflected_options(command),
         groups: reflected_groups(command),
+        allow_missing_positionals: command.is_allow_missing_positional_set(),
+        dont_delimit_trailing_values: command.is_dont_delimit_trailing_values_set(),
         executable,
         children,
     })
@@ -456,6 +458,7 @@ fn argument_info(command: &Command, argument: &Arg) -> ArgumentInfo {
                 && !argument.is_positional()
                 && argument.is_require_equals_set(),
             requires_double_dash: argument.is_positional() && argument.is_last_set(),
+            trailing_var_arg: argument.is_positional() && argument.is_trailing_var_arg_set(),
         },
         exclusive: argument.is_exclusive_set(),
     }
@@ -491,6 +494,7 @@ fn argument_value(command: &Command, argument: &Arg) -> ArgumentValue {
         terminator: argument.get_value_terminator().map(ToString::to_string),
         allow_hyphen_values: argument.is_allow_hyphen_values_set(),
         allow_negative_numbers: argument.is_allow_negative_numbers_set(),
+        ignore_case: argument.is_ignore_case_set(),
     }
 }
 

@@ -165,6 +165,8 @@ impl CliContract {
             arguments: node.arguments.clone(),
             options: node.options.clone(),
             groups: node.groups.clone(),
+            allow_missing_positionals: node.allow_missing_positionals,
+            dont_delimit_trailing_values: node.dont_delimit_trailing_values,
             invocable: node.executable.is_some(),
             output: node.executable.as_ref().and_then(|executable| executable.output.clone()),
         }
@@ -301,6 +303,12 @@ pub struct CommandInfo {
     /// Argument groups that affect invocation validity.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub groups: Vec<ArgumentGroupInfo>,
+    /// Whether missing positional values may be skipped when later positionals are supplied.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub allow_missing_positionals: bool,
+    /// Whether trailing values bypass configured value delimiters.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub dont_delimit_trailing_values: bool,
     /// Whether this exact command path can be invoked as an operation.
     #[serde(default, skip_serializing_if = "is_false")]
     pub invocable: bool,
@@ -416,6 +424,9 @@ pub struct ArgumentSyntax {
     /// Whether this positional must follow the `--` option terminator.
     #[serde(default, skip_serializing_if = "is_false")]
     pub requires_double_dash: bool,
+    /// Whether this positional captures all remaining tokens as values.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub trailing_var_arg: bool,
 }
 
 /// Value contract for one positional argument or option occurrence.
@@ -457,6 +468,9 @@ pub struct ArgumentValue {
     /// Whether negative-number tokens are accepted without being treated as options.
     #[serde(default, skip_serializing_if = "is_false")]
     pub allow_negative_numbers: bool,
+    /// Whether parser value matching is case-insensitive where Clap supports it.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub ignore_case: bool,
 }
 
 /// Reference to an argument or argument group in one command contract.
@@ -582,6 +596,10 @@ pub(crate) struct DiscoveryNode {
     pub(crate) options: Vec<ArgumentInfo>,
     /// Argument groups reflected directly from Clap.
     pub(crate) groups: Vec<ArgumentGroupInfo>,
+    /// Whether missing positional values may be skipped.
+    pub(crate) allow_missing_positionals: bool,
+    /// Whether trailing values bypass configured value delimiters.
+    pub(crate) dont_delimit_trailing_values: bool,
     /// Executable-command data when this visible command can produce a machine output.
     pub(crate) executable: Option<ExecutableData>,
     /// Schema-visible child commands.

@@ -84,6 +84,14 @@ Alternative short names and aliases are intentionally not part of the core contr
 
 See [Argument groups](#argument-groups).
 
+### `allowMissingPositionals`
+
+`allowMissingPositionals: true` means a positional may be omitted while a later positional is supplied when Clap can disambiguate the remaining values. Consumers MUST preserve explicit positional `position` values rather than compacting later values into earlier slots.
+
+### `dontDelimitTrailingValues`
+
+`dontDelimitTrailingValues: true` means values parsed after `--`, or captured by a trailing variadic positional, are not split by configured value delimiters.
+
 ### `output`
 
 `output`, when present, is a JSON Schema Draft 2020-12 schema describing the typed successful result registered for the command.
@@ -227,6 +235,10 @@ For a positional, `requiresDoubleDash: true` means the positional must occur aft
 -- <value>
 ```
 
+### `trailingVarArg`
+
+For a positional, `trailingVarArg: true` means that once this positional begins consuming values, the remaining command-line tokens are treated as values for it rather than being parsed as options or subcommands.
+
 ### `exclusive`
 
 `exclusive: true` means the argument must be used without any other arguments for the selected command.
@@ -316,6 +328,10 @@ Hidden defaults are not emitted.
 
 `allowNegativeNumbers: true` means negative-number tokens may be consumed as values without being interpreted as options.
 
+### `ignoreCase`
+
+`ignoreCase: true` means Clap performs supported value comparisons case-insensitively. This applies to advertised possible-value matching and to Clap relationships whose equality predicates use that argument. Consumers MUST NOT assume lexical case is significant for those comparisons.
+
 ## Argument groups
 
 A group document has the following semantic shape:
@@ -379,9 +395,9 @@ Given the executable name separately and one complete command document, a consum
 3. Append selected options using their exact `name`.
 4. For a selected option with `value`, supply a number of values within `minValues..=maxValues`. When `maxValues` is `null`, there is no finite upper bound.
 5. If `requireEquals` is true, attach the first option value with `=`.
-6. Respect `delimiter`, `terminator`, `repeatable`, `conflictsWith`, `overrides`, `requires`, conditional requiredness, and `exclusive` when they are present.
+6. Respect `delimiter`, `terminator`, `repeatable`, `conflictsWith`, `overrides`, `requires`, conditional requiredness, `ignoreCase`, and `exclusive` when they are present.
 7. Satisfy every applicable argument-group cardinality, requirement, and conflict rule.
-8. Append positional values in ascending `position` order. If any positional has `requiresDoubleDash: true`, insert `--` before that positional as required by the command contract.
+8. Append positional values according to their explicit `position`, respecting `allowMissingPositionals`. If any positional has `requiresDoubleDash: true`, insert `--` before that positional as required by the command contract. Once a `trailingVarArg` positional begins consuming values, treat the remaining tokens as its values; when `dontDelimitTrailingValues` is true, do not split those trailing values by configured delimiters.
 9. When `values` is present, prefer one of the advertised values. Values must also satisfy the parser represented by `type` and any application-specific validation.
 10. When relying on defaults, distinguish omission (`default`) from selecting an option without an explicit value (`defaultMissing`) and apply ordered `defaultIf` rules before the unconditional default.
 
@@ -391,7 +407,7 @@ The schema does not prescribe shell quoting or escaping. The caller is responsib
 
 `clap_schema` 0.2 describes semantics that can be obtained reliably from Clap's public built-command reflection plus the registered Rust output type.
 
-The core contract includes canonical paths and option spellings, positional order, unconditional and conditional requiredness, requirement and override relationships, argument-group rules, value arity, visible unconditional/missing/conditional defaults, advertised finite values, delimiters, value terminators, repeatability, conflicts, exclusive arguments, required `=` syntax, required `--` syntax, and typed successful-output JSON Schema.
+The core contract includes canonical paths and option spellings, positional order, unconditional and conditional requiredness, requirement and override relationships, argument-group rules, value arity, visible unconditional/missing/conditional defaults, advertised finite values, delimiters, value terminators, repeatability, conflicts, exclusive arguments, required `=` syntax, required `--` syntax, trailing variadic capture, case-insensitive value matching, missing-positional behavior, trailing-value delimiting, and typed successful-output JSON Schema.
 
 The remaining important boundary is arbitrary value-parser validation. Clap exposes the erased parser's result `TypeId` and advertised possible values, but a custom parser can enforce constraints that are not reflectable as structured data. `type: "string"` in particular can therefore represent an application-defined parser rather than an unconstrained string.
 

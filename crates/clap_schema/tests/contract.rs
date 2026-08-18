@@ -196,6 +196,7 @@ mod tests {
         let contract = ContractBuilder::new(
             Command::new("fixture").subcommand(
                 Command::new("create")
+                    .dont_delimit_trailing_values(true)
                     .arg(
                         Arg::new("count")
                             .long("count")
@@ -210,7 +211,8 @@ mod tests {
                             .num_args(1..)
                             .value_delimiter(',')
                             .value_terminator(";")
-                            .require_equals(true),
+                            .require_equals(true)
+                            .ignore_case(true),
                     )
                     .arg(Arg::new("alone").long("alone").action(ArgAction::SetTrue).exclusive(true))
                     .arg(Arg::new("raw").last(true).num_args(1..).allow_hyphen_values(true)),
@@ -220,6 +222,8 @@ mod tests {
         .build()?;
 
         let command = contract.command(&["create"])?;
+        assert!(command.dont_delimit_trailing_values);
+
         let count = command
             .options
             .iter()
@@ -242,6 +246,7 @@ mod tests {
         assert_eq!(define_value.max_values, None);
         assert_eq!(define_value.delimiter, Some(','));
         assert_eq!(define_value.terminator.as_deref(), Some(";"));
+        assert!(define_value.ignore_case);
 
         let alone = command
             .options
@@ -253,6 +258,32 @@ mod tests {
         let raw = command.arguments.iter().find(|argument| argument.name == "raw").expect("raw");
         assert!(raw.syntax.requires_double_dash);
         assert!(raw.value.as_ref().is_some_and(|value| value.allow_hyphen_values));
+
+        let positionals_contract = ContractBuilder::new(
+            Command::new("fixture").subcommand(
+                Command::new("positionals")
+                    .allow_missing_positional(true)
+                    .arg(Arg::new("optional").index(1))
+                    .arg(Arg::new("required").index(2).required(true)),
+            ),
+        )
+        .command::<CreateCommand>(["positionals"])
+        .build()?;
+
+        let positionals = positionals_contract.command(&["positionals"])?;
+        assert!(positionals.allow_missing_positionals);
+
+        let trailing_contract =
+            ContractBuilder::new(Command::new("fixture").subcommand(Command::new("forward").arg(
+                Arg::new("args").num_args(1..).trailing_var_arg(true).allow_hyphen_values(true),
+            )))
+            .command::<CreateCommand>(["forward"])
+            .build()?;
+
+        let forward = trailing_contract.command(&["forward"])?;
+        let args = forward.arguments.iter().find(|argument| argument.name == "args").expect("args");
+        assert!(args.syntax.trailing_var_arg);
+        assert!(args.value.as_ref().is_some_and(|value| value.allow_hyphen_values));
         Ok(())
     }
 
