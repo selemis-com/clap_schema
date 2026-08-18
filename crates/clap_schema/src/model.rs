@@ -366,7 +366,7 @@ pub struct CommandInfo {
     /// Visible non-positional options using one canonical spelling each.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub options: Vec<ArgumentInfo>,
-    /// Argument groups reflected from Clap.
+    /// Argument groups that affect invocation validity.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub groups: Vec<ArgumentGroupInfo>,
     /// Command-level tokenization syntax reflected from Clap.
@@ -477,15 +477,15 @@ pub struct ArgumentInfo {
     /// Whether the same argument may be supplied repeatedly.
     #[serde(default, skip_serializing_if = "is_false")]
     pub repeatable: bool,
-    /// Canonical invocation names Clap reports as conflicts for this argument.
+    /// Canonical invocation names in argument-level conflict relationships with this argument.
     ///
-    /// `clap_schema` does not synthesize reverse relationships. Conflicts owned by an argument
-    /// group remain represented by that group.
+    /// Argument-level conflicts are normalized symmetrically. Conflicts owned by an argument group
+    /// remain represented by that group.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub conflicts_with: Vec<String>,
-    /// Arguments or groups this argument declares as override targets.
+    /// Arguments or groups mutually overridable with this argument.
     ///
-    /// `clap_schema` does not synthesize reverse relationships.
+    /// Concrete argument relationships are normalized symmetrically.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub overrides: Vec<ArgumentTarget>,
     /// Arguments or groups required when this argument matches the stated predicate.
@@ -639,7 +639,7 @@ pub struct ConditionalDefault {
     pub value: Option<Value>,
 }
 
-/// Reflected contract for one Clap argument group.
+/// Invocation-validity contract for one Clap argument group.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]

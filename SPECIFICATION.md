@@ -98,7 +98,7 @@ Alternative short names and aliases are intentionally not part of the core contr
 
 ### `groups`
 
-`groups`, when present, reflects Clap argument groups directly. Group references used by argument relationships resolve against this array. Groups are not filtered based on whether `clap_schema` considers them constraining; harmless groups may therefore be present.
+`groups`, when present, describes Clap argument groups that contain reflected arguments and materially affect invocation validity. Group references used by argument relationships resolve against this array. Unconstraining groups that are neither required, mutually exclusive, related to another target, nor referenced by a relationship are omitted.
 
 See [Argument groups](#argument-groups).
 
@@ -184,13 +184,13 @@ A canonical consumer SHOULD repeat an argument only when `repeatable` is true.
 
 ### `conflictsWith`
 
-`conflictsWith` contains canonical argument names Clap reports as conflicts for this argument. `clap_schema` reflects the relationship at the argument where Clap exposes it and does not scan the rest of the command to synthesize reverse edges.
+`conflictsWith` contains canonical argument names in argument-level conflict relationships with this argument. These relationships are normalized symmetrically, matching Clap's two-way conflict semantics.
 
-A consumer SHOULD avoid constructing an invocation containing an argument together with a listed conflict. Conflicts owned by an argument group remain represented by that group's `conflictsWith` rule and are not duplicated onto every member argument. Clap remains authoritative for the final validity of the invocation.
+A consumer MUST NOT construct an invocation containing an argument together with a listed conflict. Conflicts owned by an argument group remain represented by that group's `conflictsWith` rule and are not duplicated onto every member argument.
 
 ### `overrides`
 
-`overrides` contains argument or group targets configured on this argument:
+`overrides` contains argument or group targets configured as mutually overridable with this argument:
 
 ```json
 {
@@ -201,9 +201,9 @@ A consumer SHOULD avoid constructing an invocation containing an argument togeth
 }
 ```
 
-Relationships are emitted in their declared direction. Group targets are preserved as group references rather than expanded into inferred member-level overrides.
+Concrete argument-to-argument relationships are normalized symmetrically, matching Clap's last-one-wins behavior. Group targets are preserved as group references rather than expanded into inferred member-level overrides.
 
-Consumers SHOULD avoid supplying an argument together with one of its listed override targets unless the overriding behavior is intentional. Clap remains authoritative for the resulting parser behavior.
+Consumers SHOULD avoid supplying mutually overridable targets together unless the overriding behavior is intentional.
 
 ### `requires`
 
@@ -370,7 +370,7 @@ A group document has the following semantic shape:
 
 `multiple: true` means more than one member may be present. Absence is equivalent to `false`, so a group with multiple members is mutually exclusive by default. Combined with `required: true`, `multiple: false` means exactly one member must be present.
 
-`requires` and `conflictsWith` apply when the group is present and may refer to either arguments or other groups. Groups are reflected whether or not they impose an additional constraint.
+`requires` and `conflictsWith` apply when the group is present and may refer to either arguments or other groups. A group that would otherwise impose no constraint is still emitted when another reflected relationship targets it.
 
 ## Shallow subcommand summaries
 

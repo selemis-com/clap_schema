@@ -424,7 +424,7 @@ mod tests {
             .find(|argument| argument.name == "--config")
             .expect("config option");
 
-        assert_eq!(config.overrides.len(), 2);
+        assert_eq!(config.overrides.len(), 3);
         assert!(matches!(
             &config.overrides[0],
             clap_schema::ArgumentTarget::Argument { name } if name == "--legacy"
@@ -432,6 +432,10 @@ mod tests {
         assert!(matches!(
             &config.overrides[1],
             clap_schema::ArgumentTarget::Group { name } if name == "selector"
+        ));
+        assert!(matches!(
+            &config.overrides[2],
+            clap_schema::ArgumentTarget::Argument { name } if name == "--replacement"
         ));
         assert_eq!(config.requires.len(), 2);
         assert!(config.requires.iter().any(|requirement| matches!(
@@ -486,13 +490,7 @@ mod tests {
 
         assert!(command.groups.iter().any(|group| group.name == "selector"));
         assert!(command.groups.iter().any(|group| group.name == "implicit_like"));
-        let metadata =
-            command.groups.iter().find(|group| group.name == "metadata").expect("metadata group");
-        assert_eq!(metadata.members, ["--label"]);
-        assert!(!metadata.required);
-        assert!(metadata.multiple);
-        assert!(metadata.requires.is_empty());
-        assert!(metadata.conflicts_with.is_empty());
+        assert!(command.groups.iter().all(|group| group.name != "metadata"));
 
         let legacy = command
             .options
@@ -501,16 +499,10 @@ mod tests {
             .expect("legacy option");
         let auth =
             command.options.iter().find(|argument| argument.name == "--auth").expect("auth option");
-        assert!(!legacy.conflicts_with.contains(&"--auth".to_owned()));
+        assert!(legacy.conflicts_with.contains(&"--auth".to_owned()));
         assert!(auth.conflicts_with.contains(&"--legacy".to_owned()));
-        assert!(legacy.overrides.is_empty());
-        let replacement = command
-            .options
-            .iter()
-            .find(|argument| argument.name == "--replacement")
-            .expect("replacement option");
         assert!(matches!(
-            &replacement.overrides[0],
+            &legacy.overrides[0],
             clap_schema::ArgumentTarget::Argument { name } if name == "--config"
         ));
 

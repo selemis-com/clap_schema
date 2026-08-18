@@ -597,21 +597,64 @@ fn reflected_argument_name(command: &Command, id: &Id) -> Option<String> {
         .map(canonical_argument_name)
 }
 
-/// Reflects conflict targets returned by Clap for this argument without synthesizing reverse edges.
+/// Reflects argument-level conflicts as the mutual relationship Clap enforces at runtime.
+///
+/// Group-owned conflicts remain represented by [`ArgumentGroupInfo`] rather than being duplicated
+/// onto every member argument.
 fn reflected_argument_conflicts(command: &Command, argument: &Arg) -> Vec<String> {
-    command
-        .get_arg_conflicts_with(argument)
-        .into_iter()
-        .filter(|candidate| {
-            candidate.get_id() != argument.get_id() && reflected_argument(candidate)
-        })
-        .map(canonical_argument_name)
-        .collect()
+    let mut conflicts = Vec::new();
+
+    let mut push = |candidate: &Arg| {
+        if candidate.get_id() == argument.get_id() || !reflected_argument(candidate) {
+            return;
+        }
+        let name = canonical_argument_name(candidate);
+        if !conflicts.contains(&name) {
+            conflicts.push(name);
+        }
+    };
+
+    for conflict in command.get_arg_conflicts_with(argument) {
+        push(conflict);
+    }
+
+    for candidate in command.get_arguments() {
+        if command
+            .get_arg_conflicts_with(candidate)
+            .into_iter()
+            .any(|conflict| conflict.get_id() == argument.get_id())
+        {
+            push(candidate);
+        }
+    }
+
+    conflicts
 }
 
-/// Reflects override targets declared on this argument without synthesizing reverse edges.
+/// Reflects configured override targets and the reverse side of concrete argument overrides.
+///
+/// Clap treats argument-to-argument overrides as mutual. Group targets are preserved structurally
+/// without inferring member-level override relationships.
 fn reflected_argument_overrides(command: &Command, argument: &Arg) -> Vec<ArgumentTarget> {
-    argument.get_overrides().iter().filter_map(|id| argument_target(command, id)).collect()
+    let mut overrides = argument
+        .get_overrides()
+        .iter()
+        .filter_map(|id| argument_target(command, id))
+        .collect::<Vec<_>>();
+
+    for candidate in command.get_arguments().filter(|candidate| reflected_argument(candidate)) {
+        if candidate.get_id() == argument.get_id() {
+            continue;
+        }
+        if candidate.get_overrides().iter().any(|id| id == argument.get_id()) {
+            let target = ArgumentTarget::Argument { name: canonical_argument_name(candidate) };
+            if !overrides.contains(&target) {
+                overrides.push(target);
+            }
+        }
+    }
+
+    overrides
 }
 
 /// Resolves an ID used by a Clap relationship to an argument or group reference.
@@ -625,15 +668,27 @@ fn argument_target(command: &Command, id: &Id) -> Option<ArgumentTarget> {
         .map(|group| ArgumentTarget::Group { name: group.get_id().to_string() })
 }
 
-/// Reflects Clap argument groups without trying to classify whether each group is constraining.
+/// Reflects argument groups that materially affect the machine-readable invocation contract.
 fn reflected_groups(command: &Command) -> Vec<ArgumentGroupInfo> {
+    let group_ids = command
+        .get_groups()
+        .filter(|group| {
+            group.get_args().any(|member| reflected_argument_name(command, member).is_some())
+        })
+        .map(|group| group.get_id().to_string())
+        .collect::<HashSet<_>>();
+    let referenced_groups = referenced_group_ids(command, &group_ids);
+
     command
         .get_groups()
-        .map(|group| {
+        .filter_map(|group| {
             let members = group
                 .get_args()
                 .filter_map(|id| reflected_argument_name(command, id))
                 .collect::<Vec<_>>();
+            if members.is_empty() {
+                return None;
+            }
 
             // `ArgGroup::is_multiple` currently takes `&mut self`; clone only to reflect this
             // read-only property until clap-rs/clap#6411 lands.
@@ -647,17 +702,66 @@ fn reflected_groups(command: &Command) -> Vec<ArgumentGroupInfo> {
                 .get_conflicts()
                 .filter_map(|id| argument_target(command, id))
                 .collect::<Vec<_>>();
+            let name = group.get_id().to_string();
+            let required = group.is_required_set();
 
-            ArgumentGroupInfo {
-                name: group.get_id().to_string(),
-                members,
-                required: group.is_required_set(),
-                multiple,
-                requires,
-                conflicts_with,
+            // Clap derive implicitly creates `multiple = true` groups for `Args` structs. Keep a
+            // group only when it changes invocation validity or another reflected relationship
+            // targets it.
+            let constrains_cardinality = required || (!multiple && members.len() > 1);
+            if !constrains_cardinality
+                && requires.is_empty()
+                && conflicts_with.is_empty()
+                && !referenced_groups.contains(&name)
+            {
+                return None;
             }
+
+            Some(ArgumentGroupInfo { name, members, required, multiple, requires, conflicts_with })
         })
         .collect()
+}
+
+/// Finds reflected groups targeted by argument or group relationships.
+fn referenced_group_ids(command: &Command, group_ids: &HashSet<String>) -> HashSet<String> {
+    let mut referenced = HashSet::new();
+    let mut record = |id: &Id| {
+        let name = id.to_string();
+        if group_ids.contains(&name) {
+            referenced.insert(name);
+        }
+    };
+
+    for argument in command.get_arguments().filter(|argument| reflected_argument(argument)) {
+        for id in argument.get_overrides() {
+            record(id);
+        }
+        for (_, id) in argument.get_requires() {
+            record(id);
+        }
+        for (id, _) in argument.get_required_if_eq_any() {
+            record(id);
+        }
+        for (id, _) in argument.get_required_if_eq_all() {
+            record(id);
+        }
+        for id in argument.get_required_unless_present_any() {
+            record(id);
+        }
+        for id in argument.get_required_unless_present_all() {
+            record(id);
+        }
+    }
+    for group in command.get_groups() {
+        for id in group.get_requires() {
+            record(id);
+        }
+        for id in group.get_conflicts() {
+            record(id);
+        }
+    }
+
+    referenced
 }
 
 /// Formats a canonical command path for diagnostics.
