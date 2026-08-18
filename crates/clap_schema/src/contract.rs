@@ -10,7 +10,7 @@ use crate::{
     model::{
         ArgumentGroupInfo, ArgumentInfo, ArgumentPredicate, ArgumentRequirement, ArgumentSyntax,
         ArgumentTarget, ArgumentValue, ArgumentValueCondition, ArgumentValueType, CliContract,
-        ConditionalDefault, DiscoveryNode, ExecutableData,
+        CommandSyntax, ConditionalDefault, DiscoveryNode, ExecutableData, SubcommandRouting,
     },
     schema::{
         ExtendedSchemaFactory, SchemaFactory, compose_extended_schemas, extended_schema_factory,
@@ -351,8 +351,15 @@ fn build_discovery_node(
         arguments: reflected_positionals(command),
         options: reflected_options(command),
         groups: reflected_groups(command),
-        allow_missing_positionals: command.is_allow_missing_positional_set(),
-        dont_delimit_trailing_values: command.is_dont_delimit_trailing_values_set(),
+        syntax: CommandSyntax {
+            allow_missing_positionals: command.is_allow_missing_positional_set(),
+            dont_delimit_trailing_values: command.is_dont_delimit_trailing_values_set(),
+        },
+        subcommand_routing: SubcommandRouting {
+            args_conflict_with_subcommands: command.is_args_conflicts_with_subcommands_set(),
+            subcommand_precedence_over_arg: command.is_subcommand_precedence_over_arg_set(),
+            subcommand_negates_requirements: command.is_subcommand_negates_reqs_set(),
+        },
         executable,
         children,
     })

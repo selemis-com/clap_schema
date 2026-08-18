@@ -165,8 +165,8 @@ impl CliContract {
             arguments: node.arguments.clone(),
             options: node.options.clone(),
             groups: node.groups.clone(),
-            allow_missing_positionals: node.allow_missing_positionals,
-            dont_delimit_trailing_values: node.dont_delimit_trailing_values,
+            syntax: node.syntax,
+            subcommand_routing: node.subcommand_routing,
             invocable: node.executable.is_some(),
             output: node.executable.as_ref().and_then(|executable| executable.output.clone()),
         }
@@ -303,18 +303,53 @@ pub struct CommandInfo {
     /// Argument groups that affect invocation validity.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub groups: Vec<ArgumentGroupInfo>,
-    /// Whether missing positional values may be skipped when later positionals are supplied.
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub allow_missing_positionals: bool,
-    /// Whether trailing values bypass configured value delimiters.
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub dont_delimit_trailing_values: bool,
+    /// Command-level tokenization syntax reflected from Clap.
+    #[serde(flatten)]
+    pub syntax: CommandSyntax,
+    /// Parent/subcommand routing semantics reflected from Clap.
+    #[serde(flatten)]
+    pub subcommand_routing: SubcommandRouting,
     /// Whether this exact command path can be invoked as an operation.
     #[serde(default, skip_serializing_if = "is_false")]
     pub invocable: bool,
     /// Successful output schema when the command returns a non-unit value.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output: Option<Value>,
+}
+
+/// Command-level tokenization syntax required to construct argv correctly.
+///
+/// This is flattened into [`CommandInfo`] on the wire so these properties remain adjacent to the
+/// command they constrain while keeping the Rust model focused by concern.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct CommandSyntax {
+    /// Whether missing positional values may be skipped when later positionals are supplied.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub allow_missing_positionals: bool,
+    /// Whether trailing values bypass configured value delimiters.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub dont_delimit_trailing_values: bool,
+}
+
+/// Routing semantics between one command's arguments and its child subcommands.
+///
+/// This is flattened into [`CommandInfo`] on the wire so each reflected Clap setting remains an
+/// independent command property while the Rust model keeps the routing concern grouped.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct SubcommandRouting {
+    /// Whether arguments on this command conflict with selecting a child subcommand.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub args_conflict_with_subcommands: bool,
+    /// Whether a recognized subcommand takes precedence over an argument still consuming values.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub subcommand_precedence_over_arg: bool,
+    /// Whether selecting a child subcommand waives this command's required arguments.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub subcommand_negates_requirements: bool,
 }
 
 /// Compact schema-discovery reference to one direct child command.
@@ -596,10 +631,10 @@ pub(crate) struct DiscoveryNode {
     pub(crate) options: Vec<ArgumentInfo>,
     /// Argument groups reflected directly from Clap.
     pub(crate) groups: Vec<ArgumentGroupInfo>,
-    /// Whether missing positional values may be skipped.
-    pub(crate) allow_missing_positionals: bool,
-    /// Whether trailing values bypass configured value delimiters.
-    pub(crate) dont_delimit_trailing_values: bool,
+    /// Command-level tokenization syntax reflected from Clap.
+    pub(crate) syntax: CommandSyntax,
+    /// Parent/subcommand routing semantics reflected from Clap.
+    pub(crate) subcommand_routing: SubcommandRouting,
     /// Executable-command data when this visible command can produce a machine output.
     pub(crate) executable: Option<ExecutableData>,
     /// Schema-visible child commands.

@@ -297,8 +297,8 @@ pub use contract::{ContractBuilder, Error, Result};
 pub use model::{
     ArgumentGroupInfo, ArgumentInfo, ArgumentPredicate, ArgumentRequirement, ArgumentSyntax,
     ArgumentTarget, ArgumentValue, ArgumentValueCondition, ArgumentValueType, CliContract,
-    CommandInfo, ConditionalDefault, SchemaCommandSummary, SchemaDocument, SchemaRequest,
-    SchemaSubcommand,
+    CommandInfo, CommandSyntax, ConditionalDefault, SchemaCommandSummary, SchemaDocument,
+    SchemaRequest, SchemaSubcommand, SubcommandRouting,
 };
 
 /// Trait implemented by a machine-contract-aware root Clap parser.

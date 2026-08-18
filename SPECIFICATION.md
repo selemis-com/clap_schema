@@ -92,6 +92,18 @@ See [Argument groups](#argument-groups).
 
 `dontDelimitTrailingValues: true` means values parsed after `--`, or captured by a trailing variadic positional, are not split by configured value delimiters.
 
+### `argsConflictWithSubcommands`
+
+`argsConflictWithSubcommands: true` means arguments belonging to the selected command cannot be combined with selecting one of its child subcommands. Consumers choosing a child MUST NOT also construct parent-command arguments at that same command level.
+
+### `subcommandPrecedenceOverArg`
+
+`subcommandPrecedenceOverArg: true` means a recognized child command token terminates greedy value consumption by an argument and is parsed as the subcommand instead.
+
+### `subcommandNegatesRequirements`
+
+`subcommandNegatesRequirements: true` means selecting a valid child subcommand waives otherwise-required arguments on the selected parent command. The requirements still apply when the parent is invoked without a child.
+
 ### `output`
 
 `output`, when present, is a JSON Schema Draft 2020-12 schema describing the typed successful result registered for the command.
@@ -391,7 +403,7 @@ A summary contains:
 Given the executable name separately and one complete command document, a consumer can construct a canonical invocation as follows:
 
 1. Start with the executable name.
-2. Append every token in `path`, in array order.
+2. Append every token in `path`, in array order. At each command boundary, respect `argsConflictWithSubcommands`, `subcommandPrecedenceOverArg`, and `subcommandNegatesRequirements` when deciding whether parent arguments and the next child token may coexist and how that child token is parsed.
 3. Append selected options using their exact `name`.
 4. For a selected option with `value`, supply a number of values within `minValues..=maxValues`. When `maxValues` is `null`, there is no finite upper bound.
 5. If `requireEquals` is true, attach the first option value with `=`.
@@ -407,7 +419,7 @@ The schema does not prescribe shell quoting or escaping. The caller is responsib
 
 `clap_schema` 0.2 describes semantics that can be obtained reliably from Clap's public built-command reflection plus the registered Rust output type.
 
-The core contract includes canonical paths and option spellings, positional order, unconditional and conditional requiredness, requirement and override relationships, argument-group rules, value arity, visible unconditional/missing/conditional defaults, advertised finite values, delimiters, value terminators, repeatability, conflicts, exclusive arguments, required `=` syntax, required `--` syntax, trailing variadic capture, case-insensitive value matching, missing-positional behavior, trailing-value delimiting, and typed successful-output JSON Schema.
+The core contract includes canonical paths and option spellings, positional order, unconditional and conditional requiredness, requirement and override relationships, argument-group rules, value arity, visible unconditional/missing/conditional defaults, advertised finite values, delimiters, value terminators, repeatability, conflicts, exclusive arguments, required `=` syntax, required `--` syntax, trailing variadic capture, case-insensitive value matching, missing-positional behavior, trailing-value delimiting, parent/subcommand routing semantics, and typed successful-output JSON Schema.
 
 The remaining important boundary is arbitrary value-parser validation. Clap exposes the erased parser's result `TypeId` and advertised possible values, but a custom parser can enforce constraints that are not reflectable as structured data. `type: "string"` in particular can therefore represent an application-defined parser rather than an unconstrained string.
 

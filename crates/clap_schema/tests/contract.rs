@@ -222,7 +222,10 @@ mod tests {
         .build()?;
 
         let command = contract.command(&["create"])?;
-        assert!(command.dont_delimit_trailing_values);
+        assert!(command.syntax.dont_delimit_trailing_values);
+        let serialized_command = serde_json::to_value(&command).expect("serialize command");
+        assert_eq!(serialized_command["dontDelimitTrailingValues"], true);
+        assert!(serialized_command.get("syntax").is_none());
 
         let count = command
             .options
@@ -271,7 +274,7 @@ mod tests {
         .build()?;
 
         let positionals = positionals_contract.command(&["positionals"])?;
-        assert!(positionals.allow_missing_positionals);
+        assert!(positionals.syntax.allow_missing_positionals);
 
         let trailing_contract =
             ContractBuilder::new(Command::new("fixture").subcommand(Command::new("forward").arg(
@@ -284,6 +287,28 @@ mod tests {
         let args = forward.arguments.iter().find(|argument| argument.name == "args").expect("args");
         assert!(args.syntax.trailing_var_arg);
         assert!(args.value.as_ref().is_some_and(|value| value.allow_hyphen_values));
+
+        let routing_contract = ContractBuilder::new(
+            Command::new("fixture")
+                .args_conflicts_with_subcommands(true)
+                .subcommand_precedence_over_arg(true)
+                .subcommand_negates_reqs(true)
+                .arg(Arg::new("config").long("config").required(true))
+                .arg(Arg::new("values").long("values").num_args(1..))
+                .subcommand(Command::new("run")),
+        )
+        .command::<CreateCommand>(["run"])
+        .build()?;
+
+        let root = routing_contract.command(&[])?;
+        assert!(root.subcommand_routing.args_conflict_with_subcommands);
+        assert!(root.subcommand_routing.subcommand_precedence_over_arg);
+        assert!(root.subcommand_routing.subcommand_negates_requirements);
+        let serialized_root = serde_json::to_value(&root).expect("serialize root");
+        assert_eq!(serialized_root["argsConflictWithSubcommands"], true);
+        assert_eq!(serialized_root["subcommandPrecedenceOverArg"], true);
+        assert_eq!(serialized_root["subcommandNegatesRequirements"], true);
+        assert!(serialized_root.get("subcommandRouting").is_none());
         Ok(())
     }
 
