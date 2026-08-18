@@ -366,7 +366,7 @@ pub struct CommandInfo {
     /// Visible non-positional options using one canonical spelling each.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub options: Vec<ArgumentInfo>,
-    /// Argument groups that affect invocation validity.
+    /// Argument groups reflected from Clap.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub groups: Vec<ArgumentGroupInfo>,
     /// Command-level tokenization syntax reflected from Clap.
@@ -642,14 +642,14 @@ pub struct ConditionalDefault {
     pub value: Option<Value>,
 }
 
-/// Invocation-validity contract for one Clap argument group.
+/// Reflected contract for one Clap argument group.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct ArgumentGroupInfo {
     /// Stable group identifier used by relationship references.
     pub name: String,
-    /// Canonical names of visible arguments in this group.
+    /// Canonical names of arguments in this group.
     pub members: Vec<String>,
     /// Whether at least one member of this group is required.
     #[serde(default, skip_serializing_if = "is_false")]

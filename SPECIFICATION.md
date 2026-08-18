@@ -98,7 +98,7 @@ Alternative short names and aliases are intentionally not part of the core contr
 
 ### `groups`
 
-`groups`, when present, describes Clap argument groups that contain visible arguments and materially affect invocation validity. Group references used by argument relationships resolve against this array. Unconstraining groups that are neither required, mutually exclusive, related to another target, nor referenced by a relationship are omitted.
+`groups`, when present, reflects Clap argument groups directly. Group references used by argument relationships resolve against this array. Groups are not filtered based on whether `clap_schema` considers them constraining; harmless groups may therefore be present.
 
 See [Argument groups](#argument-groups).
 
@@ -377,13 +377,13 @@ A group document has the following semantic shape:
 }
 ```
 
-`name` is the stable group identifier used by relationship references. `members` contains canonical visible argument names.
+`name` is the stable group identifier used by relationship references. `members` contains canonical argument names.
 
 `required: true` means at least one group member must be present. Absence is equivalent to `false`.
 
-`multiple: true` means more than one member may be present. Absence is equivalent to `false`, so a group with multiple visible members is mutually exclusive by default. Combined with `required: true`, `multiple: false` means exactly one member must be present.
+`multiple: true` means more than one member may be present. Absence is equivalent to `false`, so a group with multiple members is mutually exclusive by default. Combined with `required: true`, `multiple: false` means exactly one member must be present.
 
-`requires` and `conflictsWith` apply when the group is present and may refer to either arguments or other groups. A group that would otherwise impose no constraint is still emitted when another reflected relationship targets it.
+`requires` and `conflictsWith` apply when the group is present and may refer to either arguments or other groups. Groups are reflected whether or not they impose an additional constraint.
 
 ## Shallow subcommand summaries
 

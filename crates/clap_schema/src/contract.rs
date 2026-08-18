@@ -698,34 +698,19 @@ fn argument_target(command: &Command, id: &Id) -> Option<ArgumentTarget> {
     }
     command
         .get_groups()
-        .find(|group| {
-            group.get_id() == id
-                && group.get_args().any(|member| reflected_argument_name(command, member).is_some())
-        })
+        .find(|group| group.get_id() == id)
         .map(|group| ArgumentTarget::Group { name: group.get_id().to_string() })
 }
 
-/// Reflects argument groups that materially affect the agent-visible invocation contract.
+/// Reflects Clap argument groups without trying to classify whether each group is constraining.
 fn reflected_groups(command: &Command) -> Vec<ArgumentGroupInfo> {
-    let group_ids = command
-        .get_groups()
-        .filter(|group| {
-            group.get_args().any(|member| reflected_argument_name(command, member).is_some())
-        })
-        .map(|group| group.get_id().to_string())
-        .collect::<HashSet<_>>();
-    let referenced_groups = referenced_group_ids(command, &group_ids);
-
     command
         .get_groups()
-        .filter_map(|group| {
+        .map(|group| {
             let members = group
                 .get_args()
                 .filter_map(|id| reflected_argument_name(command, id))
                 .collect::<Vec<_>>();
-            if members.is_empty() {
-                return None;
-            }
 
             // `ArgGroup::is_multiple` currently takes `&mut self`; clone only to reflect this
             // read-only property until clap-rs/clap#6411 lands.
@@ -739,65 +724,17 @@ fn reflected_groups(command: &Command) -> Vec<ArgumentGroupInfo> {
                 .get_conflicts()
                 .filter_map(|id| argument_target(command, id))
                 .collect::<Vec<_>>();
-            let name = group.get_id().to_string();
-            let required = group.is_required_set();
 
-            // Clap derive creates unconstraining `multiple = true` groups for flattened `Args`.
-            // Keep groups only when they constrain invocation or are the target of a relation.
-            let constrains_cardinality = required || (!multiple && members.len() > 1);
-            if !constrains_cardinality
-                && requires.is_empty()
-                && conflicts_with.is_empty()
-                && !referenced_groups.contains(&name)
-            {
-                return None;
+            ArgumentGroupInfo {
+                name: group.get_id().to_string(),
+                members,
+                required: group.is_required_set(),
+                multiple,
+                requires,
+                conflicts_with,
             }
-
-            Some(ArgumentGroupInfo { name, members, required, multiple, requires, conflicts_with })
         })
         .collect()
-}
-
-/// Finds visible groups referenced by argument or group relationships.
-fn referenced_group_ids(command: &Command, group_ids: &HashSet<String>) -> HashSet<String> {
-    let mut referenced = HashSet::new();
-    let mut record = |id: &Id| {
-        let name = id.to_string();
-        if group_ids.contains(&name) {
-            referenced.insert(name);
-        }
-    };
-
-    for argument in command.get_arguments().filter(|argument| reflected_argument(argument)) {
-        for id in argument.get_overrides() {
-            record(id);
-        }
-        for (_, id) in argument.get_requires() {
-            record(id);
-        }
-        for (id, _) in argument.get_required_if_eq_any() {
-            record(id);
-        }
-        for (id, _) in argument.get_required_if_eq_all() {
-            record(id);
-        }
-        for id in argument.get_required_unless_present_any() {
-            record(id);
-        }
-        for id in argument.get_required_unless_present_all() {
-            record(id);
-        }
-    }
-    for group in command.get_groups() {
-        for id in group.get_requires() {
-            record(id);
-        }
-        for id in group.get_conflicts() {
-            record(id);
-        }
-    }
-
-    referenced
 }
 
 /// Formats a canonical command path for diagnostics.

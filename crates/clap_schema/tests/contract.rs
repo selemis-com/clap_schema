@@ -385,6 +385,7 @@ mod tests {
                     .arg(Arg::new("host").long("host"))
                     .arg(Arg::new("port").long("port"))
                     .arg(Arg::new("legacy").long("legacy"))
+                    .arg(Arg::new("label").long("label"))
                     .arg(Arg::new("replacement").long("replacement").overrides_with("config"))
                     .arg(
                         Arg::new("config")
@@ -403,6 +404,7 @@ mod tests {
                     )
                     .group(ArgGroup::new("selector").args(["mode", "format"]).multiple(true))
                     .group(ArgGroup::new("implicit_like").args(["source", "host"]).multiple(true))
+                    .group(ArgGroup::new("metadata").arg("label").multiple(true))
                     .group(
                         ArgGroup::new("transport")
                             .args(["stdin", "file"])
@@ -489,6 +491,13 @@ mod tests {
 
         assert!(command.groups.iter().any(|group| group.name == "selector"));
         assert!(command.groups.iter().any(|group| group.name == "implicit_like"));
+        let metadata =
+            command.groups.iter().find(|group| group.name == "metadata").expect("metadata group");
+        assert_eq!(metadata.members, ["--label"]);
+        assert!(!metadata.required);
+        assert!(metadata.multiple);
+        assert!(metadata.requires.is_empty());
+        assert!(metadata.conflicts_with.is_empty());
 
         let legacy = command
             .options
