@@ -631,64 +631,25 @@ fn reflected_argument_name(command: &Command, id: &Id) -> Option<String> {
         .map(canonical_argument_name)
 }
 
-/// Reflects argument-level conflicts as the mutual relationship Clap enforces at runtime.
-///
-/// Group-owned conflicts remain represented by [`ArgumentGroupInfo`] rather than being duplicated
-/// onto every member argument.
+/// Reflects conflict targets returned by Clap for this argument without synthesizing reverse edges.
 fn reflected_argument_conflicts(command: &Command, argument: &Arg) -> Vec<String> {
-    let mut conflicts = Vec::new();
-
-    let mut push = |candidate: &Arg| {
-        if candidate.get_id() == argument.get_id() || !reflected_argument(candidate) {
-            return;
-        }
-        let name = canonical_argument_name(candidate);
-        if !conflicts.contains(&name) {
-            conflicts.push(name);
-        }
-    };
-
-    for conflict in command.get_arg_conflicts_with(argument) {
-        push(conflict);
-    }
-
-    for candidate in command.get_arguments() {
-        if command
-            .get_arg_conflicts_with(candidate)
-            .into_iter()
-            .any(|conflict| conflict.get_id() == argument.get_id())
-        {
-            push(candidate);
-        }
-    }
-
-    conflicts
+    command
+        .get_arg_conflicts_with(argument)
+        .into_iter()
+        .filter(|candidate| {
+            candidate.get_id() != argument.get_id() && reflected_argument(candidate)
+        })
+        .map(canonical_argument_name)
+        .collect()
 }
 
-/// Reflects configured override targets and the reverse side of concrete argument overrides.
-///
-/// Clap treats argument-to-argument overrides as mutual. Group targets are preserved structurally
-/// without inferring member-level override relationships.
+/// Reflects override targets declared on this argument without synthesizing reverse edges.
 fn reflected_argument_overrides(command: &Command, argument: &Arg) -> Vec<ArgumentTarget> {
-    let mut overrides = argument
+    argument
         .get_overrides()
         .iter()
         .filter_map(|id| argument_target(command, id))
-        .collect::<Vec<_>>();
-
-    for candidate in command.get_arguments().filter(|candidate| reflected_argument(candidate)) {
-        if candidate.get_id() == argument.get_id() {
-            continue;
-        }
-        if candidate.get_overrides().iter().any(|id| id == argument.get_id()) {
-            let target = ArgumentTarget::Argument { name: canonical_argument_name(candidate) };
-            if !overrides.contains(&target) {
-                overrides.push(target);
-            }
-        }
-    }
-
-    overrides
+        .collect()
 }
 
 /// Resolves an ID used by a Clap relationship to an argument or group reference.

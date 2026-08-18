@@ -477,15 +477,15 @@ pub struct ArgumentInfo {
     /// Whether the same argument may be supplied repeatedly.
     #[serde(default, skip_serializing_if = "is_false")]
     pub repeatable: bool,
-    /// Canonical invocation names in argument-level conflict relationships with this argument.
+    /// Canonical invocation names Clap reports as conflicts for this argument.
     ///
-    /// Argument-level conflicts are normalized symmetrically. Conflicts owned by an argument group
-    /// remain represented by that group.
+    /// `clap_schema` does not synthesize reverse relationships. Conflicts owned by an argument
+    /// group remain represented by that group.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub conflicts_with: Vec<String>,
-    /// Arguments or groups mutually overridable with this argument.
+    /// Arguments or groups this argument declares as override targets.
     ///
-    /// Concrete argument relationships are normalized symmetrically.
+    /// `clap_schema` does not synthesize reverse relationships.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub overrides: Vec<ArgumentTarget>,
     /// Arguments or groups required when this argument matches the stated predicate.

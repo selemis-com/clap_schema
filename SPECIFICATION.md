@@ -185,13 +185,13 @@ A canonical consumer SHOULD repeat an argument only when `repeatable` is true.
 
 ### `conflictsWith`
 
-`conflictsWith` contains canonical argument names in argument-level conflict relationships with this argument. These relationships are normalized symmetrically, matching Clap's two-way conflict semantics.
+`conflictsWith` contains canonical argument names Clap reports as conflicts for this argument. `clap_schema` reflects the relationship at the argument where Clap exposes it and does not scan the rest of the command to synthesize reverse edges.
 
-A consumer MUST NOT construct an invocation containing an argument together with a listed conflict. Conflicts owned by an argument group remain represented by that group's `conflictsWith` rule and are not duplicated onto every member argument.
+A consumer SHOULD avoid constructing an invocation containing an argument together with a listed conflict. Conflicts owned by an argument group remain represented by that group's `conflictsWith` rule and are not duplicated onto every member argument. Clap remains authoritative for the final validity of the invocation.
 
 ### `overrides`
 
-`overrides` contains argument or group targets configured as mutually overridable with this argument:
+`overrides` contains argument or group targets configured on this argument:
 
 ```json
 {
@@ -202,9 +202,9 @@ A consumer MUST NOT construct an invocation containing an argument together with
 }
 ```
 
-Concrete argument-to-argument relationships are normalized symmetrically, matching Clap's last-one-wins behavior. Group targets are preserved as group references rather than expanded into inferred member-level overrides.
+Relationships are emitted in their declared direction. Group targets are preserved as group references rather than expanded into inferred member-level overrides.
 
-Consumers SHOULD avoid supplying mutually overridable targets together unless the overriding behavior is intentional.
+Consumers SHOULD avoid supplying an argument together with one of its listed override targets unless the overriding behavior is intentional. Clap remains authoritative for the resulting parser behavior.
 
 ### `requires`
 
