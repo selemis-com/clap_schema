@@ -1,3 +1,5 @@
+//! Compile-fail fixture for invalid schema derive shapes and metadata.
+
 use clap_schema::{CliSchema, CommandSchema};
 
 struct Args;

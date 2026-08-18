@@ -1,3 +1,5 @@
+//! Shared builders and assertions for the semantic conformance suite.
+
 use std::convert::Infallible;
 
 use clap::Command;

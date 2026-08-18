@@ -1,3 +1,5 @@
+//! Compile-fail fixture for invalid schema handler declarations.
+
 use clap_schema::schema_handler;
 struct Command;
 

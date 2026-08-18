@@ -1,3 +1,5 @@
+//! Clap fixtures for argument, relationship, group, and boundary conformance tests.
+
 use clap::{
     Arg, ArgAction, ArgGroup, Command,
     builder::{ArgPredicate as ClapArgPredicate, PossibleValue},

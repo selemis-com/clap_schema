@@ -1,3 +1,5 @@
+//! Clap fixtures for command topology, hierarchy, and routing conformance tests.
+
 use clap::{Arg, ArgAction, ArgGroup, Command};
 
 pub(in crate::tests) fn topology() -> Command {

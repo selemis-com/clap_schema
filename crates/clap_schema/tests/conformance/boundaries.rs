@@ -1,3 +1,5 @@
+//! Conformance tests for discovery, parser, framing, and wire-format boundaries.
+
 use clap_schema::ContractBuilder;
 
 use super::fixtures::{

@@ -1,3 +1,5 @@
+//! Conformance tests for argument values, token syntax, and groups.
+
 use clap_schema::{ArgumentPredicate, ArgumentTarget};
 
 use super::fixtures::{

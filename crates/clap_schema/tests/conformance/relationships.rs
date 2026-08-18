@@ -1,3 +1,5 @@
+//! Conformance tests for argument relationships, defaults, and precedence.
+
 use clap_schema::{ArgumentPredicate, ArgumentTarget};
 
 use super::fixtures::{assert_accepts, assert_rejects, build_contract, option, relationships};

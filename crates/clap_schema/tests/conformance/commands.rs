@@ -1,3 +1,5 @@
+//! Conformance tests for command topology, hierarchy, globals, and routing.
+
 use super::fixtures::{
     assert_accepts, assert_rejects, build_contract, conflicts_with_subcommands, hierarchy,
     missing_positionals, negates_requirements, precedence, topology, trailing_values,
