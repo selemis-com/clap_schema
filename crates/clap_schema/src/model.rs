@@ -156,11 +156,12 @@ impl CliContract {
         Ok(self.command_info(node))
     }
 
-    /// Builds a shallow public view of one internal discovery node.
+    /// Builds a complete public view of one internal discovery node.
     fn command_info(&self, node: &DiscoveryNode) -> CommandInfo {
         CommandInfo {
             name: node.name.clone(),
             path: node.path.clone(),
+            ancestors: self.ancestor_contexts(node),
             description: node.description.clone(),
             arguments: node.arguments.clone(),
             options: node.options.clone(),
@@ -170,6 +171,23 @@ impl CliContract {
             invocable: node.executable.is_some(),
             output: node.executable.as_ref().and_then(|executable| executable.output.clone()),
         }
+    }
+
+    /// Returns invocation-relevant command levels above `node`, from root to immediate parent.
+    fn ancestor_contexts(&self, node: &DiscoveryNode) -> Vec<CommandContext> {
+        let mut current = &self.discovery;
+        let mut ancestors = Vec::with_capacity(node.path.len());
+
+        for segment in &node.path {
+            ancestors.push(CommandContext::from_node(current));
+            current = current
+                .children
+                .iter()
+                .find(|child| child.name == *segment)
+                .expect("canonical discovery paths resolve through their ancestors");
+        }
+
+        ancestors
     }
 
     /// Builds one schema-discovery document at the requested child-resolution depth.
@@ -282,6 +300,51 @@ pub(crate) struct ExecutableData {
     pub(crate) extended_schema: Option<Value>,
 }
 
+/// Invocation-relevant semantics owned by one ancestor command level.
+///
+/// Ancestor contexts preserve where parent arguments and routing rules apply when constructing a
+/// nested command invocation. They are ordered from the root command to the selected command's
+/// immediate parent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct CommandContext {
+    /// Canonical command name for this level.
+    pub name: String,
+    /// Canonical path to this command level, excluding the executable name.
+    pub path: Vec<String>,
+    /// Visible positional arguments owned by this command level.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub arguments: Vec<ArgumentInfo>,
+    /// Visible non-positional options owned by this command level.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<ArgumentInfo>,
+    /// Argument groups owned by this command level.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<ArgumentGroupInfo>,
+    /// Command-level tokenization syntax reflected from Clap.
+    #[serde(flatten)]
+    pub syntax: CommandSyntax,
+    /// Routing semantics between this command level and its selected child.
+    #[serde(flatten)]
+    pub subcommand_routing: SubcommandRouting,
+}
+
+impl CommandContext {
+    /// Projects invocation-relevant context from one discovery node.
+    fn from_node(node: &DiscoveryNode) -> Self {
+        Self {
+            name: node.name.clone(),
+            path: node.path.clone(),
+            arguments: node.arguments.clone(),
+            options: node.options.clone(),
+            groups: node.groups.clone(),
+            syntax: node.syntax,
+            subcommand_routing: node.subcommand_routing,
+        }
+    }
+}
+
 /// Canonical invocation contract for one visible command or command group.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -291,6 +354,9 @@ pub struct CommandInfo {
     pub name: String,
     /// Canonical path excluding the executable name.
     pub path: Vec<String>,
+    /// Invocation-relevant command levels above this command, ordered root-first.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub ancestors: Vec<CommandContext>,
     /// Command description reflected from Clap help metadata.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,

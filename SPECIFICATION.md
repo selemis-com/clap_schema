@@ -40,6 +40,16 @@ A complete command document can contain:
 {
   "name": "get",
   "path": ["objects", "get"],
+  "ancestors": [
+    {
+      "name": "tool",
+      "path": []
+    },
+    {
+      "name": "objects",
+      "path": ["objects"]
+    }
+  ],
   "description": "Get an object",
   "invocable": true,
   "output": {}
@@ -53,6 +63,14 @@ A complete command document can contain:
 ### `path`
 
 `path` is the ordered canonical command path excluding the executable name. Consumers **MUST** preserve this order when constructing an invocation.
+
+### `ancestors`
+
+`ancestors`, when present, contains the invocation-relevant command levels above the selected command, ordered from the root command to the immediate parent. Root command documents omit this field.
+
+Each ancestor uses the same `arguments`, `options`, `groups`, command-syntax, and subcommand-routing properties defined for the selected command. Its `path` identifies the command boundary that owns those semantics. Ancestor contexts do not carry `invocable`, `output`, or child topology because they describe how to reach the selected command rather than a separately selected operation.
+
+Consumers constructing a nested invocation **MUST** apply ancestor requirements and routing rules at the command level where they are declared. In particular, selecting a child does not implicitly discard a parent's required arguments unless that ancestor has `subcommandNegatesRequirements: true`.
 
 ### `description`
 
@@ -403,13 +421,13 @@ A summary contains:
 Given the executable name separately and one complete command document, a consumer can construct a canonical invocation as follows:
 
 1. Start with the executable name.
-2. Append every token in `path`, in array order. At each command boundary, respect `argsConflictWithSubcommands`, `subcommandPrecedenceOverArg`, and `subcommandNegatesRequirements` when deciding whether parent arguments and the next child token may coexist and how that child token is parsed.
-3. Append selected options using their exact `name`.
+2. Walk `ancestors` from root to immediate parent. At each ancestor level, construct that level's selected options and positional values according to its local argument, group, and syntax properties, then append the next canonical token from the selected command's `path`. Respect that ancestor's `argsConflictWithSubcommands`, `subcommandPrecedenceOverArg`, and `subcommandNegatesRequirements` while crossing the command boundary.
+3. After the final path token, construct the selected command's own options and positional values from the top-level command properties.
 4. For a selected option with `value`, supply a number of values within `minValues..=maxValues`. When `maxValues` is `null`, there is no finite upper bound.
 5. If `requireEquals` is true, attach the first option value with `=`.
 6. Respect `delimiter`, `terminator`, `repeatable`, `conflictsWith`, `overrides`, `requires`, conditional requiredness, `ignoreCase`, and `exclusive` when they are present.
-7. Satisfy every applicable argument-group cardinality, requirement, and conflict rule.
-8. Append positional values according to their explicit `position`, respecting `allowMissingPositionals`. If any positional has `requiresDoubleDash: true`, insert `--` before that positional as required by the command contract. Once a `trailingVarArg` positional begins consuming values, treat the remaining tokens as its values; when `dontDelimitTrailingValues` is true, do not split those trailing values by configured delimiters.
+7. Satisfy every applicable argument-group cardinality, requirement, and conflict rule at each command level.
+8. Append positional values at each command level according to their explicit `position`, respecting `allowMissingPositionals`. If any positional has `requiresDoubleDash: true`, insert `--` before that positional as required by that command level. Once a `trailingVarArg` positional begins consuming values, treat the remaining tokens as its values; when `dontDelimitTrailingValues` is true, do not split those trailing values by configured delimiters.
 9. When `values` is present, prefer one of the advertised values. Values must also satisfy the parser represented by `type` and any application-specific validation.
 10. When relying on defaults, distinguish omission (`default`) from selecting an option without an explicit value (`defaultMissing`) and apply ordered `defaultIf` rules before the unconditional default.
 

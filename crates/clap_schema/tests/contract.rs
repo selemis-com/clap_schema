@@ -194,7 +194,7 @@ mod tests {
     }
 
     #[test]
-    fn builder_reflects_invocation_syntax_that_changes_tokenization() -> clap_schema::Result<()> {
+    fn builder_reflects_invocation_semantics() -> clap_schema::Result<()> {
         let contract = ContractBuilder::new(
             Command::new("fixture").subcommand(
                 Command::new("create")
@@ -328,6 +328,41 @@ mod tests {
         assert_eq!(serialized_root["subcommandPrecedenceOverArg"], true);
         assert_eq!(serialized_root["subcommandNegatesRequirements"], true);
         assert!(serialized_root.get("subcommandRouting").is_none());
+        assert!(serialized_root.get("ancestors").is_none());
+
+        let nested_command = || {
+            Command::new("fixture")
+                .arg(Arg::new("config").long("config").required(true))
+                .subcommand(
+                    Command::new("objects")
+                        .arg(Arg::new("workspace").long("workspace").required(true))
+                        .subcommand(Command::new("get").arg(Arg::new("id").required(true))),
+                )
+        };
+        assert!(
+            nested_command().try_get_matches_from(["fixture", "objects", "get", "123"]).is_err()
+        );
+
+        let nested_contract = ContractBuilder::new(nested_command())
+            .command::<CreateCommand>(["objects", "get"])
+            .build()?;
+        let get = nested_contract.command(&["objects", "get"])?;
+        assert_eq!(get.ancestors.len(), 2);
+        assert_eq!(get.ancestors[0].path, Vec::<String>::new());
+        assert!(get.ancestors[0]
+            .options
+            .iter()
+            .any(|argument| argument.name == "--config" && argument.required));
+        assert_eq!(get.ancestors[1].path, ["objects"]);
+        assert!(get.ancestors[1]
+            .options
+            .iter()
+            .any(|argument| argument.name == "--workspace" && argument.required));
+        assert!(get.arguments.iter().any(|argument| argument.name == "id" && argument.required));
+
+        let serialized_get = serde_json::to_value(&get).expect("serialize nested command");
+        assert_eq!(serialized_get["ancestors"][0]["options"][0]["name"], "--config");
+        assert_eq!(serialized_get["ancestors"][1]["options"][0]["name"], "--workspace");
         Ok(())
     }
 

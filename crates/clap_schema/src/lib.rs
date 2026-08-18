@@ -297,7 +297,8 @@ pub use contract::{ContractBuilder, Error, Result};
 pub use model::{
     ArgumentGroupInfo, ArgumentInfo, ArgumentPredicate, ArgumentRequirement, ArgumentSyntax,
     ArgumentTarget, ArgumentValue, ArgumentValueCondition, ArgumentValueType, CliContract,
-    CommandInfo, CommandSyntax, ConditionalDefault, SchemaCommandSummary, SchemaDocument,
+    CommandContext, CommandInfo, CommandSyntax, ConditionalDefault, SchemaCommandSummary,
+    SchemaDocument,
     SchemaRequest, SchemaSubcommand, SubcommandRouting,
 };
 
