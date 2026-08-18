@@ -24,7 +24,7 @@ mod tests {
         let document = schema_json(&["schema"]);
         assert_eq!(document["name"], "agentctl");
         assert!(document.get("usage").is_none());
-        assert!(document.get("has_subcommands").is_none());
+        assert!(document.get("hasSubcommands").is_none());
         let children = document["subcommands"].as_array().expect("root children");
         assert_eq!(children.len(), 2);
         assert!(children.iter().all(|child| child.get("path").is_some()));
@@ -50,8 +50,8 @@ mod tests {
         assert_eq!(document["path"], serde_json::json!(["get"]));
         assert_eq!(document["invocable"], true);
         assert_eq!(document["arguments"][0]["position"], 1);
-        assert_eq!(document["arguments"][0]["value"]["min_values"], 1);
-        assert_eq!(document["arguments"][0]["value"]["max_values"], 1);
+        assert_eq!(document["arguments"][0]["value"]["minValues"], 1);
+        assert_eq!(document["arguments"][0]["value"]["maxValues"], 1);
         assert!(document.get("usage").is_none());
         assert!(document["output"].is_object());
     }

@@ -44,8 +44,8 @@ deployctl deploy --environment production api
       "required": true,
       "value": {
         "type": "string",
-        "min_values": 1,
-        "max_values": 1
+        "minValues": 1,
+        "maxValues": 1
       }
     }
   ],
@@ -56,8 +56,8 @@ deployctl deploy --environment production api
       "required": true,
       "value": {
         "type": "string",
-        "min_values": 1,
-        "max_values": 1,
+        "minValues": 1,
+        "maxValues": 1,
         "values": [
           "staging",
           "production"

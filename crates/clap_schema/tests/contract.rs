@@ -405,6 +405,22 @@ mod tests {
         ));
         assert!(!legacy.conflicts_with.contains(&"--stdin".to_owned()));
         assert!(!legacy.conflicts_with.contains(&"--file".to_owned()));
+
+        let serialized = serde_json::to_value(&command).expect("serialize command contract");
+        let serialized_config = serialized["options"]
+            .as_array()
+            .and_then(|options| options.iter().find(|argument| argument["name"] == "--config"))
+            .expect("serialized config option");
+        assert!(serialized_config.get("requiredIfAny").is_some());
+        assert!(serialized_config.get("required_if_any").is_none());
+        assert!(serialized_config["value"].get("defaultMissing").is_some());
+        assert!(serialized_config["value"].get("default_missing").is_none());
+        let serialized_transport = serialized["groups"]
+            .as_array()
+            .and_then(|groups| groups.iter().find(|group| group["name"] == "transport"))
+            .expect("serialized transport group");
+        assert!(serialized_transport.get("conflictsWith").is_some());
+        assert!(serialized_transport.get("conflicts_with").is_none());
         Ok(())
     }
 

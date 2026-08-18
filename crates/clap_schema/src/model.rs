@@ -247,6 +247,7 @@ impl SchemaRequest {
 /// another fully resolved `SchemaDocument`. The wire shape is therefore stable while `--full`
 /// changes only the amount of child detail returned.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct SchemaDocument {
     /// Complete contract for the selected command itself.
@@ -281,6 +282,7 @@ pub(crate) struct ExecutableData {
 
 /// Canonical invocation contract for one visible command or command group.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct CommandInfo {
     /// Canonical command name.
@@ -309,6 +311,7 @@ pub struct CommandInfo {
 
 /// Compact schema-discovery reference to one direct child command.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct SchemaCommandSummary {
     /// Canonical command path excluding the executable name.
@@ -342,6 +345,7 @@ impl SchemaCommandSummary {
 /// `position`. Options use one canonical spelling in `name`, preferring `--long` over `-s` when
 /// both are available. Human-facing aliases and value placeholders are intentionally omitted.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct ArgumentInfo {
     /// Canonical invocation name.
@@ -403,6 +407,7 @@ pub struct ArgumentInfo {
 /// This is flattened into [`ArgumentInfo`] on the wire so these properties remain adjacent to the
 /// argument they constrain while keeping the Rust model focused by concern.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct ArgumentSyntax {
     /// Whether a value-taking option requires `=<value>` syntax.
@@ -415,6 +420,7 @@ pub struct ArgumentSyntax {
 
 /// Value contract for one positional argument or option occurrence.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct ArgumentValue {
     /// Scalar value type recognized from Clap's configured value parser.
@@ -455,7 +461,7 @@ pub struct ArgumentValue {
 
 /// Reference to an argument or argument group in one command contract.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "camelCase")]
 #[non_exhaustive]
 pub enum ArgumentTarget {
     /// One concrete argument, named by its canonical invocation name.
@@ -472,7 +478,7 @@ pub enum ArgumentTarget {
 
 /// Predicate applied to an argument when evaluating a relationship.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "camelCase")]
 #[non_exhaustive]
 pub enum ArgumentPredicate {
     /// The argument is present on the command line.
@@ -486,6 +492,7 @@ pub enum ArgumentPredicate {
 
 /// Requirement introduced by selecting an argument.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct ArgumentRequirement {
     /// Predicate applied to the argument that owns this requirement.
@@ -496,6 +503,7 @@ pub struct ArgumentRequirement {
 
 /// Equality condition on another argument or argument group.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct ArgumentValueCondition {
     /// Argument or group to inspect.
@@ -508,6 +516,7 @@ pub struct ArgumentValueCondition {
 
 /// Conditional default evaluated in declaration order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct ConditionalDefault {
     /// Argument whose state controls this default.
@@ -520,6 +529,7 @@ pub struct ConditionalDefault {
 
 /// Invocation-validity contract for one Clap argument group.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct ArgumentGroupInfo {
     /// Stable group identifier used by relationship references.
