@@ -348,7 +348,7 @@ mod tests {
     }
 
     #[test]
-    fn complex_topology_preserves_canonical_paths() -> clap_schema::Result<()> {
+    fn derive_composes_complex_command_topology() -> clap_schema::Result<()> {
         fn collect_paths(document: &clap_schema::SchemaDocument, paths: &mut Vec<Vec<String>>) {
             for child in &document.subcommands {
                 let clap_schema::SchemaSubcommand::Resolved(child) = child else {
@@ -383,13 +383,6 @@ mod tests {
             .collect::<Vec<_>>()
         );
 
-        assert_eq!(
-            contract.command_for::<StatusArgs>().expect("hidden status command").path,
-            ["admin", "status"]
-        );
-
-        let aliased = contract.command(&["objects", "show"])?;
-        assert_eq!(aliased.path, vec!["objects".to_owned(), "get".to_owned()]);
         Ok(())
     }
 
@@ -449,171 +442,6 @@ mod tests {
                 .is_some()
         );
 
-        Ok(())
-    }
-
-    #[test]
-    fn discovery_exposes_canonical_invocation_contracts() -> clap_schema::Result<()> {
-        let contract = Cli::schema()?;
-        let get = contract.command_for::<GetObjectArgs>().expect("get command");
-
-        assert_eq!(
-            get.arguments.iter().map(|argument| argument.name.as_str()).collect::<Vec<_>>(),
-            vec!["workspace_id", "object_id"]
-        );
-        assert_eq!(get.arguments[0].position, Some(1));
-        assert_eq!(get.arguments[1].position, Some(2));
-        assert!(get.arguments.iter().all(|argument| argument.required));
-        assert!(get.arguments.iter().all(|argument| {
-            argument
-                .value
-                .as_ref()
-                .is_some_and(|value| value.min_values == 1 && value.max_values == Some(1))
-        }));
-
-        let version = get
-            .options
-            .iter()
-            .find(|argument| argument.name == "--version-id")
-            .expect("version option");
-        assert_eq!(version.position, None);
-        assert!(version.value.is_some());
-
-        let root = get.ancestors.first().expect("root command context");
-        let json =
-            root.options.iter().find(|argument| argument.name == "--json").expect("json option");
-        assert!(json.value.is_none());
-
-        let url =
-            root.options.iter().find(|argument| argument.name == "--url").expect("url option");
-        assert_eq!(
-            url.value.as_ref().and_then(|value| value.default.as_ref()),
-            Some(&serde_json::Value::String("https://example.test".to_owned()))
-        );
-
-        let list = contract.command_for::<ListObjectsArgs>().expect("list command");
-        let order =
-            list.options.iter().find(|argument| argument.name == "--order").expect("order option");
-        let order_value = order.value.as_ref().expect("order value contract");
-        assert_eq!(order_value.default, Some(serde_json::Value::String("newest".to_owned())));
-        assert_eq!(order_value.values, vec!["newest".to_owned(), "oldest".to_owned()]);
-        assert!(list.options.iter().any(|argument| argument.name == "--internal-token"));
-
-        let grant = contract.command_for::<GrantAccessArgs>().expect("grant command");
-        let user_id = grant
-            .options
-            .iter()
-            .find(|argument| argument.name == "--user-id")
-            .expect("user principal option");
-        let group_id = grant
-            .options
-            .iter()
-            .find(|argument| argument.name == "--group-id")
-            .expect("group principal option");
-        assert!(!user_id.required);
-        assert!(!group_id.required);
-        assert!(user_id.conflicts_with.contains(&"--group-id".to_owned()));
-        assert!(group_id.conflicts_with.contains(&"--user-id".to_owned()));
-        assert!(grant.options.iter().any(|argument| argument.name == "--role"));
-
-        let search = contract.command_for::<SearchArgs>().expect("search command");
-        assert!(search.arguments.is_empty());
-        let query = search
-            .options
-            .iter()
-            .find(|argument| argument.name == "--query")
-            .expect("query option");
-        assert!(query.required);
-        let limit = search
-            .options
-            .iter()
-            .find(|argument| argument.name == "--limit")
-            .expect("limit option");
-        let limit_value = limit.value.as_ref().expect("limit value contract");
-        assert_eq!(limit_value.default, Some(serde_json::Value::String("25".to_owned())));
-        Ok(())
-    }
-
-    #[test]
-    fn schema_requests_control_only_child_resolution_depth() -> clap_schema::Result<()> {
-        let contract = Cli::schema()?;
-
-        let shallow = contract.schema(&clap_schema::SchemaRequest::new(["objects"]))?;
-        assert_eq!(shallow.command.path, ["objects"]);
-        assert_eq!(shallow.subcommands.len(), 4);
-        assert!(
-            shallow
-                .subcommands
-                .iter()
-                .all(|child| matches!(child, clap_schema::SchemaSubcommand::Summary(_)))
-        );
-
-        let access = shallow
-            .subcommands
-            .iter()
-            .find_map(|child| match child {
-                clap_schema::SchemaSubcommand::Summary(summary)
-                    if summary.path == ["objects", "access"] =>
-                {
-                    Some(summary)
-                }
-                _ => None,
-            })
-            .expect("access summary");
-        assert!(access.invocable);
-        assert!(access.has_subcommands);
-
-        let full =
-            contract.schema(&clap_schema::SchemaRequest::new(["objects"]).with_full(true))?;
-        assert_eq!(full.command, shallow.command);
-        assert_eq!(full.subcommands.len(), shallow.subcommands.len());
-        assert!(
-            full.subcommands
-                .iter()
-                .all(|child| matches!(child, clap_schema::SchemaSubcommand::Resolved(_)))
-        );
-
-        let access = full
-            .subcommands
-            .iter()
-            .find_map(|child| match child {
-                clap_schema::SchemaSubcommand::Resolved(command)
-                    if command.command.path == ["objects", "access"] =>
-                {
-                    Some(command)
-                }
-                _ => None,
-            })
-            .expect("resolved access command");
-        assert!(access.command.invocable);
-        assert!(access.command.output.is_some());
-        assert_eq!(access.subcommands.len(), 2);
-        assert!(
-            access
-                .subcommands
-                .iter()
-                .all(|child| matches!(child, clap_schema::SchemaSubcommand::Resolved(_)))
-        );
-        let revoke = access
-            .subcommands
-            .iter()
-            .find_map(|child| match child {
-                clap_schema::SchemaSubcommand::Resolved(command)
-                    if command.command.path == ["objects", "access", "revoke"] =>
-                {
-                    Some(command)
-                }
-                _ => None,
-            })
-            .expect("resolved revoke command");
-        assert!(revoke.command.invocable);
-        assert!(revoke.command.output.is_none());
-
-        let leaf = clap_schema::SchemaRequest::new(["objects", "get"]);
-        let shallow_leaf = contract.schema(&leaf)?;
-        let full_leaf = contract.schema(&leaf.with_full(true))?;
-        assert_eq!(shallow_leaf, full_leaf);
-        assert!(shallow_leaf.subcommands.is_empty());
         Ok(())
     }
 

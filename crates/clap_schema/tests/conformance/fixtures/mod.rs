@@ -11,8 +11,10 @@ mod arguments;
 mod commands;
 
 pub(super) use arguments::{
-    groups, multicall, no_binary_name, parser_specific_validation, presentation_visibility,
-    relationships, values_and_tokens, wire_shape,
+    argument_shape, conditional_defaults, conditional_requiredness, groups, multicall,
+    no_binary_name, parser_control_flow, parser_specific_validation, presentation_visibility,
+    relationships, required_conflict_precedence, required_unless_group_targets, token_syntax,
+    value_semantics, wire_shape,
 };
 pub(super) use commands::{
     conflicts_with_subcommands, hierarchy, missing_positionals, negates_requirements, precedence,
@@ -33,6 +35,14 @@ pub(super) fn build_contract(root: Command, path: &[&str]) -> CliContract {
         .command::<Operation>(path.iter().copied())
         .build()
         .expect("conformance contract")
+}
+
+pub(super) fn build_contracts(root: Command, paths: &[&[&str]]) -> CliContract {
+    let mut builder = ContractBuilder::new(root);
+    for path in paths {
+        builder = builder.command::<Operation>(path.iter().copied());
+    }
+    builder.build().expect("conformance contract")
 }
 
 pub(super) fn assert_accepts(command: &Command, argv: &[&str]) {

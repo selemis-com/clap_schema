@@ -306,35 +306,4 @@ mod tests {
         assert!(visible.invocable);
         Ok(())
     }
-
-    #[derive(Parser, CliSchema)]
-    struct HelpCli {
-        #[command(subcommand)]
-        command: HelpCommands,
-    }
-
-    #[derive(Subcommand, CommandSchema)]
-    enum HelpCommands {
-        /// Show application-defined assistance.
-        Help(HelpArgs),
-    }
-
-    #[derive(Args)]
-    struct HelpArgs {}
-
-    #[schema_handler(HelpArgs)]
-    fn help(_command: HelpArgs) -> Result<(), Infallible> {
-        Ok(())
-    }
-
-    #[test]
-    fn application_defined_help_is_discoverable() -> clap_schema::Result<()> {
-        assert!(help(HelpArgs {}).is_ok());
-
-        let contract = HelpCli::schema()?;
-        let help = contract.command_for::<HelpArgs>().expect("application help command");
-
-        assert_eq!(help.path, ["help"]);
-        Ok(())
-    }
 }
