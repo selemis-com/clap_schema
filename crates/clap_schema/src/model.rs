@@ -12,7 +12,7 @@ use serde_json::Value;
 /// produce the canonical serializable discovery representation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliContract {
-    /// Visible command topology with executable data attached to executable nodes.
+    /// Discoverable command topology with executable data attached to executable nodes.
     pub(crate) discovery: DiscoveryNode,
     /// Optional application-defined schema extension.
     pub(crate) extended_schema: Option<Value>,
@@ -25,7 +25,7 @@ impl CliContract {
     /// obtain the canonical command path from Clap itself, so renaming a command with
     /// `#[command(name = "...")]` does not require updating Rust-side schema queries that already
     /// name the command type. Returns `None` when the command is not discoverable or the same
-    /// command type is intentionally registered at more than one visible path; use
+    /// command type is intentionally registered at more than one discoverable path; use
     /// [`Self::command`] for those ambiguous paths or when the path comes from user or agent input.
     #[must_use]
     pub fn command_for<T>(&self) -> Option<CommandInfo>
@@ -108,11 +108,11 @@ impl CliContract {
         Ok(self.extended_schema_for_node(node))
     }
 
-    /// Returns the effective extended schema for a visible Rust command identity type.
+    /// Returns the effective extended schema for a discoverable Rust command identity type.
     ///
     /// This avoids repeating a canonical command path in application code that already names the
     /// command type. Returns `None` when the command is not discoverable, is registered at
-    /// multiple visible paths, or has no applicable extended schema. Use
+    /// multiple discoverable paths, or has no applicable extended schema. Use
     /// [`Self::extended_schema_for`] when the path comes from user or agent input.
     #[must_use]
     pub fn extended_schema_for_command<T>(&self) -> Option<&Value>
@@ -364,7 +364,7 @@ fn owned_arguments(
         .collect()
 }
 
-/// Records the global arguments visible at one command level for descendant de-duplication.
+/// Records the global arguments reflected at one command level for descendant de-duplication.
 fn remember_globals(node: &DiscoveryNode, globals: &mut HashSet<String>) {
     globals.extend(
         node.arguments
@@ -633,9 +633,7 @@ pub enum ArgumentTarget {
 
 /// Predicate reflected from Clap for relationship and conditional-default rules.
 ///
-/// Value-source handling depends on the Clap feature evaluating the predicate. Relationship
-/// predicates ignore values sourced only from defaults, while conditional defaults may evaluate
-/// against defaulted target values.
+/// Values originating only from defaults do not satisfy these predicates.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 #[non_exhaustive]
@@ -721,9 +719,9 @@ pub(crate) struct DiscoveryNode {
     pub(crate) aliases: Vec<String>,
     /// Command description reflected from Clap help metadata.
     pub(crate) description: Option<String>,
-    /// Visible positional arguments reflected directly from Clap.
+    /// Discoverable positional arguments reflected directly from Clap.
     pub(crate) arguments: Vec<ArgumentInfo>,
-    /// Visible non-positional options reflected directly from Clap.
+    /// Discoverable non-positional options reflected directly from Clap.
     pub(crate) options: Vec<ArgumentInfo>,
     /// Argument groups reflected directly from Clap.
     pub(crate) groups: Vec<ArgumentGroupInfo>,

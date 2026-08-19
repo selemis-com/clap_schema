@@ -340,7 +340,7 @@ Clap's `hide_default_value` setting affects human help only and does not suppres
 
 ### `defaultIf`
 
-`defaultIf` is an ordered array of conditional-default rules. Each rule identifies an argument or argument-group `target`, a presence or equality predicate, and a lexical default. Unlike relationship predicates, Clap's conditional-default evaluation may match a target value supplied by that target's own default. For a group target, an equality predicate compares against the stable ID of the selected group member. Rules are evaluated in declaration order; the first matching rule wins. A JSON `null` value represents a matching rule that suppresses the unconditional default.
+`defaultIf` is an ordered array of conditional-default rules. Each rule identifies an argument or argument-group `target`, a presence or equality predicate, and a lexical default. Predicate evaluation retains Clap's value-source semantics: values originating only from a default do not satisfy the predicate. For a group target, an equality predicate compares against the stable ID of the selected group member. Rules are evaluated in declaration order; the first matching rule wins. A JSON `null` value represents a matching rule that suppresses the unconditional default.
 
 ### `delimiter`
 
@@ -441,9 +441,11 @@ The core contract includes canonical paths and option spellings, global argument
 
 Input values remain lexical command-line values. `clap_schema` does not infer Rust result types from Clap's erased value parser, and Clap remains authoritative for parser-specific validation.
 
+Parser configuration that is not exposed through Clap's built-command reflection is not inferred. This includes `args_override_self`; consumers should use the canonical argument occurrence semantics represented by the contract rather than treating every argv form accepted by Clap as discoverable.
+
 Only UTF-8 lexical relationship and default values can be represented directly by this JSON contract. A rule whose lexical predicate cannot be represented as UTF-8 is omitted rather than converted lossily. Consumers MUST interpret omission as “not stated by this contract”, not as proof that no application-specific constraint exists.
 
-The contract uses the normal process-style argv framing where the executable name is separate from the command path. `ContractBuilder::build` rejects Clap's `no_binary_name` and `multicall` modes because they change the meaning of the beginning of argv. Runtime external-subcommand capture and parser control flow such as `arg_required_else_help` remain Clap-authoritative outside the structured contract.
+The contract uses normal process-style argv framing at the root parser entrypoint, where the executable name is separate from the command path. `ContractBuilder::build` rejects root `no_binary_name` and `multicall` modes because they change the meaning of the beginning of argv. Equivalent settings on nested commands remain valid because they do not change root process framing. Runtime external-subcommand capture and parser control flow such as `arg_required_else_help` remain Clap-authoritative outside the structured contract.
 
 This boundary is intentional: `clap_schema` does not guess parser behavior or make private Clap implementation details part of its wire protocol.
 

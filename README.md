@@ -98,9 +98,9 @@ model. The `output` field is the JSON Schema of the successful Rust result.
 
 This gives agents a canonical process-style invocation contract without making rendered Clap help
 part of the wire format. Clap remains authoritative for parser-specific validation that cannot be
-reflected structurally, while Rust types remain authoritative for typed successful results. Clap's
-`no_binary_name` and `multicall` argv framing modes are rejected because they do not fit that process
-model.
+reflected structurally, while Rust types remain authoritative for typed successful results. Root
+`no_binary_name` and `multicall` argv framing modes are rejected because they change process-style
+framing at the parser entrypoint; equivalent settings on nested commands do not.
 
 The full wire contract and compatibility rules are documented in [`SPECIFICATION.md`](SPECIFICATION.md).
 
