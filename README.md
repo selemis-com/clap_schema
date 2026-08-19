@@ -36,34 +36,34 @@ deployctl deploy --environment production api
     "deploy"
   ],
   "description": "Deploy a service",
-  "usage": "deployctl deploy --environment <ENVIRONMENT> <SERVICE>",
   "arguments": [
     {
-      "id": "service",
-      "index": 1,
-      "value_names": [
-        "SERVICE"
-      ],
-      "help": "Service to deploy",
-      "required": true
+      "name": "service",
+      "position": 1,
+      "description": "Service to deploy",
+      "required": true,
+      "value": {
+        "minValues": 1,
+        "maxValues": 1
+      }
     }
   ],
   "options": [
     {
-      "id": "environment",
-      "long": "environment",
-      "value_names": [
-        "ENVIRONMENT"
-      ],
-      "help": "Target environment",
+      "name": "--environment",
+      "description": "Target environment",
       "required": true,
-      "possible_values": [
-        "staging",
-        "production"
-      ]
+      "value": {
+        "minValues": 1,
+        "maxValues": 1,
+        "values": [
+          "staging",
+          "production"
+        ]
+      }
     }
   ],
-  "executable": true,
+  "invocable": true,
   "output": {
     "description": "Result of deploying a service.",
     "properties": {
@@ -90,9 +90,18 @@ deployctl deploy --environment production api
 }
 ```
 
-The command path, usage, arguments, options, help, and possible values come from Clap. The `output` field is the JSON Schema of the successful Rust result.
+The command path and canonical invocation contract come from Clap. Global argument scope, positional
+order, canonical option spellings, value arity, lexical defaults and possible values, conflicts,
+argument-group cardinality, repeatability, delimiters, value terminators, required `=` syntax,
+required `--` syntax, and exclusivity are reflected from the built command model. The `output` field is the JSON Schema of the successful Rust result.
 
-This gives agents and other tooling a structured description of what a command accepts and what it returns, while Clap remains the source of truth for the CLI itself.
+This gives agents a canonical process-style invocation contract without making rendered Clap help
+part of the wire format. Clap remains authoritative for parser-specific validation that cannot be
+reflected structurally, while Rust types remain authoritative for typed successful results. Root
+`no_binary_name` and `multicall` argv framing modes are rejected because they change process-style
+framing at the parser entrypoint; equivalent settings on nested commands do not.
+
+The full wire contract and compatibility rules are documented in [`SPECIFICATION.md`](SPECIFICATION.md).
 
 ## Installation
 
@@ -281,7 +290,7 @@ When Rust code already knows which command it wants to inspect, lower-level look
 
 Paths accept Clap aliases, while returned paths are always canonical.
 
-Generated contracts include common positional and option metadata such as names, help, defaults, requiredness, and possible values. They do not replace Clap's argument parser: Clap remains authoritative for custom parsers, conditional requirements, conflicts, groups, and other invocation rules.
+Generated contracts include canonical invocation metadata such as names, global argument scope and canonical ownership, positional order, value arity, lexical defaults and possible values, repeatability, conflicts, argument-group cardinality, and token-level syntax requirements. They do not replace Clap's argument parser: Clap remains authoritative for parser-specific validation that cannot be reflected structurally.
 
 ## Application-defined extensions
 
@@ -336,7 +345,7 @@ This returns:
 
 If you use Clap's builder API instead of derive macros, build the contract with `ContractBuilder`.
 
-Register commands with `ContractBuilder::command::<T>(path)`. Because builder-style Clap has no Rust subcommand payload relationship to inspect, each command path is registered explicitly and validated against the Clap tree. The command's output still comes from its schema handler declaration.
+Register commands with `ContractBuilder::command::<T>(path)`. Because builder-style Clap has no Rust subcommand payload relationship to inspect, each command path is registered explicitly and validated against the Clap tree. Registrations must identify a path that can terminate as an operation; Clap commands with `subcommand_required(true)` cannot be registered as executable commands. The command's output still comes from its schema handler declaration.
 
 Use `command_with_extension::<T, E>(path)` when a builder-registered command also has application-defined extension metadata. See the `builder_api` example.
 

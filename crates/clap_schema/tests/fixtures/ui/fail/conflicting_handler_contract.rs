@@ -1,3 +1,5 @@
+//! Compile-fail fixture for conflicting handler contract implementations.
+
 use clap::Args;
 use clap_schema::schema_handler;
 

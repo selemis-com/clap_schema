@@ -1,3 +1,5 @@
+//! Compile-fail fixture for invalid schema derive shapes and metadata.
+
 use clap_schema::{CliSchema, CommandSchema};
 
 struct Args;
@@ -34,13 +36,6 @@ enum InvalidSkippedMetadata {
     #[command(skip)]
     #[schema(extend = First)]
     Run,
-}
-
-#[derive(CommandSchema)]
-enum InvalidHiddenMetadata {
-    #[command(hide = true)]
-    #[schema(extend = First)]
-    Run(Args),
 }
 
 #[derive(CommandSchema)]

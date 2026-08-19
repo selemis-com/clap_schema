@@ -12,8 +12,8 @@ use proc_macro_crate::{FoundCrate, crate_name};
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::{
-    Attribute, Data, DeriveInput, Expr, Fields, GenericArgument, Ident, ImplItem, Item, ItemFn,
-    ItemImpl, Lit, Meta, PathArguments, ReturnType, Token, Type, parse_macro_input,
+    Attribute, Data, DeriveInput, Fields, GenericArgument, Ident, ImplItem, Item, ItemFn, ItemImpl,
+    Meta, PathArguments, ReturnType, Token, Type, parse_macro_input,
 };
 
 /// Derives the root `clap_schema::CliSchema` implementation.
@@ -48,7 +48,7 @@ pub fn derive_cli_schema(input: TokenStream) -> TokenStream {
 /// payload. A required subcommand field makes the parent a group; an `Option<Subcommands>` field
 /// makes the parent executable as well.
 /// Executable commands may declare `extend = Type` to supplement the root application extension
-/// schema. Extensions can only be attached to executable commands; group-only, flattened, hidden,
+/// schema. Extensions can only be attached to executable commands; group-only, flattened,
 /// Clap-skipped, and external subcommands do not carry a command-specific extension schema. The
 /// application owns all concrete extension values.
 #[proc_macro_derive(CommandSchema, attributes(schema, command))]
@@ -290,7 +290,7 @@ fn contains_impl_trait(ty: &Type) -> bool {
 /// Expands a `CliSchema` derive into root executable-command registration.
 fn expand_cli_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
     let crate_path = clap_schema_path();
-    let RootSchema { extended } = parse_root_schema(&input.attrs)?;
+    let extended = parse_root_schema(&input.attrs)?;
     let commands = find_subcommand_field(&input, "CliSchema")?;
 
     let name = input.ident;
@@ -395,57 +395,11 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
         let payload = single_payload_type(&variant.fields);
 
         if command.disposition != CommandDisposition::Normal {
-            if !schema.is_empty() {
+            if schema.is_some() {
                 return Err(syn::Error::new_spanned(
                     variant.ident,
                     "schema extensions cannot be attached to a clap-skipped or external subcommand variant",
                 ));
-            }
-            continue;
-        }
-
-        if command.hidden {
-            if !schema.is_empty() {
-                return Err(syn::Error::new_spanned(
-                    variant.ident,
-                    "schema extensions cannot be attached to a clap-hidden subcommand variant",
-                ));
-            }
-
-            if command.nesting == CommandNesting::Flatten {
-                let child = payload.ok_or_else(|| {
-                    syn::Error::new_spanned(
-                        &variant.ident,
-                        "flattened subcommands require a single tuple payload",
-                    )
-                })?;
-                steps.push(quote! {
-                    {
-                        let __count =
-                            <#child as #crate_path::__private::clap::Subcommand>::augment_subcommands(
-                                #crate_path::__private::clap::Command::new("__clap_schema_probe")
-                            )
-                            .get_subcommands()
-                            .count();
-                        for _ in 0..__count {
-                            if __clap_schema_commands.next().is_none() {
-                                return Err(#crate_path::Error::DerivedCommandMismatch {
-                                    type_name: ::core::any::type_name::<Self>(),
-                                });
-                            }
-                        }
-                    }
-                });
-            } else {
-                steps.push(quote! {
-                    {
-                        if __clap_schema_commands.next().is_none() {
-                            return Err(#crate_path::Error::DerivedCommandMismatch {
-                                type_name: ::core::any::type_name::<Self>(),
-                            });
-                        }
-                    }
-                });
             }
             continue;
         }
@@ -457,7 +411,7 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
                     "flattened subcommands require a single tuple payload",
                 )
             })?;
-            if schema.has_registration_options() {
+            if schema.is_some() {
                 return Err(syn::Error::new_spanned(
                     variant.ident,
                     "flattened subcommands cannot declare command schema extensions",
@@ -502,7 +456,7 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
                     "nested subcommands require a single tuple payload",
                 )
             })?;
-            if schema.has_registration_options() {
+            if schema.is_some() {
                 return Err(syn::Error::new_spanned(
                     variant.ident,
                     "#[command(subcommand)] groups cannot declare command schema extensions",
@@ -528,7 +482,7 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
                 "contract-visible executable commands require a single tuple Args payload with a schema handler contract",
             )
         })?;
-        let register_payload = schema.extended.as_ref().map_or_else(
+        let register_payload = schema.as_ref().map_or_else(
             || {
                 quote! {{
                     use #crate_path::__private::RegisterPayload as _;
@@ -585,30 +539,23 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
     })
 }
 
-/// Parsed root schema extensions.
-#[derive(Default)]
-struct RootSchema {
-    /// Optional application-defined extension schema type.
-    extended: Option<Type>,
-}
-
-/// Parses root `#[schema(...)]` extensions.
-fn parse_root_schema(attrs: &[Attribute]) -> syn::Result<RootSchema> {
-    let mut result = RootSchema::default();
+/// Parses the optional root `#[schema(extend = ...)]` type.
+fn parse_root_schema(attrs: &[Attribute]) -> syn::Result<Option<Type>> {
+    let mut extended = None;
     for attr in attrs.iter().filter(|attr| attr.path().is_ident("schema")) {
         attr.parse_nested_meta(|meta| {
             if meta.path.is_ident("extend") {
-                if result.extended.is_some() {
+                if extended.is_some() {
                     return Err(meta.error("duplicate root extension type"));
                 }
-                result.extended = Some(meta.value()?.parse()?);
+                extended = Some(meta.value()?.parse()?);
             } else {
                 return Err(meta.error("unsupported #[schema(...)] root option"));
             }
             Ok(())
         })?;
     }
-    Ok(result)
+    Ok(extended)
 }
 
 /// One `#[command(subcommand)]` field reflected from a Clap struct.
@@ -680,8 +627,6 @@ struct CommandBehavior {
     nesting: CommandNesting,
     /// Whether the variant is represented.
     disposition: CommandDisposition,
-    /// Whether Clap hides this command from normal discovery.
-    hidden: bool,
 }
 
 /// Parses Clap attributes that affect command-tree registration.
@@ -690,7 +635,6 @@ fn parse_command_behavior(attrs: &[Attribute]) -> syn::Result<CommandBehavior> {
     let mut flatten = false;
     let mut skip = false;
     let mut external = false;
-    let mut hidden = false;
 
     for attr in attrs.iter().filter(|attr| attr.path().is_ident("command")) {
         let Meta::List(list) = &attr.meta else {
@@ -704,13 +648,6 @@ fn parse_command_behavior(attrs: &[Attribute]) -> syn::Result<CommandBehavior> {
                 Meta::Path(path) if path.is_ident("flatten") => flatten = true,
                 Meta::Path(path) if path.is_ident("skip") => skip = true,
                 Meta::Path(path) if path.is_ident("external_subcommand") => external = true,
-                Meta::NameValue(meta) if meta.path.is_ident("hide") => {
-                    if let Expr::Lit(expr) = meta.value
-                        && let Lit::Bool(value) = expr.lit
-                    {
-                        hidden = value.value;
-                    }
-                }
                 _ => {}
             }
         }
@@ -739,45 +676,26 @@ fn parse_command_behavior(attrs: &[Attribute]) -> syn::Result<CommandBehavior> {
         }
     };
 
-    Ok(CommandBehavior { nesting, disposition, hidden })
+    Ok(CommandBehavior { nesting, disposition })
 }
 
-/// Parsed contract extensions for one subcommand variant.
-#[derive(Default)]
-struct VariantSchema {
-    /// Optional command-specific application extension schema type.
-    extended: Option<Type>,
-}
-
-impl VariantSchema {
-    /// Returns whether no schema extension was supplied.
-    const fn is_empty(&self) -> bool {
-        self.extended.is_none()
-    }
-
-    /// Returns whether extensions affect command or child registration.
-    const fn has_registration_options(&self) -> bool {
-        self.extended.is_some()
-    }
-}
-
-/// Parses command extensions attached to one subcommand variant.
-fn parse_variant_schema(attrs: &[Attribute]) -> syn::Result<VariantSchema> {
-    let mut result = VariantSchema::default();
+/// Parses the optional command-specific `#[schema(extend = ...)]` type.
+fn parse_variant_schema(attrs: &[Attribute]) -> syn::Result<Option<Type>> {
+    let mut extended = None;
     for attr in attrs.iter().filter(|attr| attr.path().is_ident("schema")) {
         attr.parse_nested_meta(|meta| {
             if meta.path.is_ident("extend") {
-                if result.extended.is_some() {
+                if extended.is_some() {
                     return Err(meta.error("duplicate extension type"));
                 }
-                result.extended = Some(meta.value()?.parse()?);
+                extended = Some(meta.value()?.parse()?);
             } else {
                 return Err(meta.error("unsupported #[schema(...)] command option"));
             }
             Ok(())
         })?;
     }
-    Ok(result)
+    Ok(extended)
 }
 
 /// Returns whether a Clap `#[command(...)]` attribute contains a flag.

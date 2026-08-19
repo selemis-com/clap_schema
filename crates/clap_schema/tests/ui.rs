@@ -39,7 +39,6 @@ mod tests {
             "CliSchema supports at most one #[command(subcommand)] field",
             "CommandSchema on an Args struct requires one #[command(subcommand)] field",
             "schema extensions cannot be attached to a clap-skipped or external subcommand variant",
-            "schema extensions cannot be attached to a clap-hidden subcommand variant",
             "flattened subcommands require a single tuple payload",
             "flattened subcommands cannot declare command schema extensions",
             "nested subcommands require a single tuple payload",

@@ -1094,8 +1094,8 @@ limitations under the License.
 Apache License 2.0
 
 #### Used by
-- [clap_schema]( https://github.com/selemis-com/clap_schema ) 0.1.0
-- [clap_schema_derive]( https://github.com/selemis-com/clap_schema ) 0.1.0
+- [clap_schema]( https://github.com/selemis-com/clap_schema ) 0.2.0
+- [clap_schema_derive]( https://github.com/selemis-com/clap_schema ) 0.2.0
 - [dyn-clone]( https://github.com/dtolnay/dyn-clone ) 1.0.20
 - [itoa]( https://github.com/dtolnay/itoa ) 1.0.18
 - [libc]( https://github.com/rust-lang/libc ) 0.2.189

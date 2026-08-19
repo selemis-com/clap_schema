@@ -1,9 +1,8 @@
-//! Checked successful-output contracts and read-only command discovery for [`clap`] applications.
+//! Checked invocation and successful-output contracts for [`clap`] applications.
 //!
-//! Clap remains authoritative for how a binary is invoked. `clap_schema` binds each
-//! contract-visible executable command to the JSON shape produced by its real handler and can
-//! project a compact agent-facing view of the same built Clap command tree without
-//! defining a second input grammar.
+//! Clap remains authoritative for parsing. `clap_schema` reflects a canonical agent-facing
+//! invocation contract from the built command tree and binds each contract-visible invocable
+//! command to the JSON shape produced by its real handler.
 //!
 //! Every contract-visible executable command is identified by the Rust payload type already present
 //! on its Clap variant. A canonical `#[schema_handler(...)]` contract associates that type with the
@@ -51,7 +50,7 @@
 //! let create = contract.command_for::<CreateArgs>().expect("create command is registered");
 //! let output = create.output.as_ref().expect("create output");
 //! assert_eq!(output.get("type").and_then(serde_json::Value::as_str), Some("object"));
-//! assert!(create.options.iter().any(|argument| argument.long.as_deref() == Some("name")));
+//! assert!(create.options.iter().any(|argument| argument.name == "--name"));
 //! let root = contract.schema(&clap_schema::SchemaRequest::default())?;
 //! assert_eq!(root.subcommands.len(), 1);
 //! # Ok::<(), clap_schema::Error>(())
@@ -112,7 +111,7 @@
 //! let contract = Cli::schema()?;
 //! let stash = contract.command_for::<StashArgs>().expect("stash command is registered");
 //! let list = contract.command_for::<ListArgs>().expect("list command is registered");
-//! assert!(stash.has_subcommands);
+//! assert!(stash.invocable);
 //! assert_eq!(list.path.len(), 2);
 //! # Ok::<(), clap_schema::Error>(())
 //! ```
@@ -197,6 +196,7 @@
 //! }
 //!
 //! #[derive(Debug, JsonSchema)]
+//! #[schemars(rename_all = "camelCase")]
 //! struct PaginationMetadata {
 //!     cursor_argument: String,
 //! }
@@ -221,6 +221,7 @@
 //! }
 //!
 //! #[derive(Debug, JsonSchema)]
+//! #[schemars(rename_all = "camelCase")]
 //! struct Page {
 //!     next_cursor: Option<String>,
 //! }
@@ -261,19 +262,17 @@
 //!
 //! # Scope
 //!
-//! The wire model does not define a second input schema or parser. For
-//! applications that expose schema discovery, [`CliContract::schema`] resolves a [`SchemaRequest`]
-//! into one selected command whose children are either shallow summaries or recursively resolved
-//! contracts. [`CliContract::command`] and [`CliContract::command_for`] remain available as exact
-//! lookup helpers when an application already knows which command it wants. Discovery reflects
-//! canonical paths, aliases, descriptions, visibility, usage, and a compact visible-argument
-//! summary directly from Clap's built command tree. Applications may separately expose an
-//! app-defined extension schema without making metadata values part of this crate. The argument
-//! summary is intentionally limited to identifiers, visible names and aliases, positional indexes,
-//! value names, help, unconditional requiredness, visible defaults, and visible finite possible
-//! values. Clap-generated help remains authoritative for custom parsers and argument
-//! relationships. A present output schema means the command's successful value has a
-//! machine-readable JSON Schema. Runtime serialization remains the application's responsibility.
+//! The wire model describes a canonical process-style invocation contract without serializing
+//! Clap's own help representation. Global argument scope, positional order, canonical option
+//! spellings, value arity, lexical defaults and possible values, delimiters, terminators,
+//! conflicts, repeatability, exclusivity, required equals syntax, and required option-terminator
+//! syntax are reflected from Clap's built command tree. Human-facing aliases, short alternatives,
+//! value placeholders, and rendered usage strings are intentionally omitted. Input values remain
+//! lexical rather than inferring Rust parser result types. Clap remains authoritative for
+//! parser-specific validation, and argv framing modes outside the process model are rejected. A
+//! present output schema means the command's successful value has a machine-readable JSON Schema;
+//! absence means no typed successful-output contract is declared. See `SPECIFICATION.md` for the
+//! complete wire contract and reflection boundary.
 
 #![doc(
     html_logo_url = "https://raw.githubusercontent.com/selemis-com/clap_schema/master/.github/assets/logo.jpg",
@@ -298,8 +297,9 @@ pub mod __private;
 pub use clap_schema_derive::{CliSchema, CommandSchema, schema_handler};
 pub use contract::{ContractBuilder, Error, Result};
 pub use model::{
-    ArgumentInfo, CliContract, CommandInfo, SchemaCommandSummary, SchemaDocument, SchemaRequest,
-    SchemaSubcommand,
+    ArgumentGroupInfo, ArgumentInfo, ArgumentSyntax, ArgumentValue, CliContract, CommandContext,
+    CommandInfo, CommandSyntax, SchemaCommandSummary, SchemaDocument, SchemaRequest,
+    SchemaSubcommand, SubcommandRouting,
 };
 
 /// Trait implemented by a machine-contract-aware root Clap parser.

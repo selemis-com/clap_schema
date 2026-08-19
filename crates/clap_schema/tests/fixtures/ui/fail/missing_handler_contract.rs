@@ -1,3 +1,5 @@
+//! Compile-fail fixture for a command without a handler contract.
+
 use clap::{Args, Parser, Subcommand};
 use clap_schema::{CliSchema, CommandSchema};
 

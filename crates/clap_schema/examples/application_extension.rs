@@ -44,6 +44,7 @@ struct CommandMetadata {
 
 /// Command-specific metadata added to paginated commands.
 #[derive(Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 struct PaginationMetadata {
     /// Option that accepts the cursor returned by the previous page.
     cursor_argument: String,
@@ -53,7 +54,7 @@ struct PaginationMetadata {
 
 /// Application-defined command effect.
 #[derive(Debug, Serialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "camelCase")]
 enum Effect {
     /// Reads state without modifying it.
     Read,
@@ -71,7 +72,8 @@ struct ListMetadataValue {
 }
 
 /// Successful page returned by the list handler.
-#[derive(Debug, JsonSchema)]
+#[derive(Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 struct ResourcePage {
     /// Cursor for the next page, when another page exists.
     next_cursor: Option<String>,

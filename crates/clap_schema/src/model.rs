@@ -1,6 +1,6 @@
 //! In-memory command contracts and serializable discovery views.
 
-use std::any::TypeId;
+use std::{any::TypeId, collections::HashSet};
 
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -12,20 +12,20 @@ use serde_json::Value;
 /// produce the canonical serializable discovery representation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliContract {
-    /// Visible command topology with executable data attached to executable nodes.
+    /// Discoverable command topology with executable data attached to executable nodes.
     pub(crate) discovery: DiscoveryNode,
     /// Optional application-defined schema extension.
     pub(crate) extended_schema: Option<Value>,
 }
 
 impl CliContract {
-    /// Finds the visible command bound to a Rust command identity type.
+    /// Finds the discoverable command bound to a Rust command identity type.
     ///
     /// This is the non-brittle counterpart to a static string path lookup. The derive macros
     /// obtain the canonical command path from Clap itself, so renaming a command with
     /// `#[command(name = "...")]` does not require updating Rust-side schema queries that already
-    /// name the command type. Returns `None` when the command is not schema-visible or the same
-    /// command type is intentionally registered at more than one visible path; use
+    /// name the command type. Returns `None` when the command is not discoverable or the same
+    /// command type is intentionally registered at more than one discoverable path; use
     /// [`Self::command`] for those ambiguous paths or when the path comes from user or agent input.
     #[must_use]
     pub fn command_for<T>(&self) -> Option<CommandInfo>
@@ -47,9 +47,9 @@ impl CliContract {
         self.extended_schema.as_ref()
     }
 
-    /// Returns the effective extended schema for one visible command.
+    /// Returns the effective extended schema for one discoverable command.
     ///
-    /// The application-wide extended schema applies throughout the schema-visible discovery tree.
+    /// The application-wide extended schema applies throughout the discovery tree.
     /// When the selected executable command declares an additional extension schema, both
     /// layers are composed with JSON Schema `allOf`; `clap_schema` never shallow-merges schema
     /// objects. A command group therefore sees only the application-wide schema, while an
@@ -72,11 +72,13 @@ impl CliContract {
     /// }
     ///
     /// #[derive(JsonSchema)]
+    /// #[schemars(rename_all = "camelCase")]
     /// struct PaginationMetadata {
     ///     cursor_argument: String,
     /// }
     ///
     /// #[derive(JsonSchema)]
+    /// #[schemars(rename_all = "camelCase")]
     /// struct Page {
     ///     next_cursor: Option<String>,
     /// }
@@ -100,7 +102,7 @@ impl CliContract {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::Error::UnknownCommand`] when `path` is not schema-visible. When static
+    /// Returns [`crate::Error::UnknownCommand`] when `path` is not discoverable. When static
     /// Rust code already names the command type, prefer [`Self::extended_schema_for_command`]
     /// to avoid repeating its canonical command path.
     pub fn extended_schema_for(&self, path: &[&str]) -> crate::Result<Option<&Value>> {
@@ -108,11 +110,11 @@ impl CliContract {
         Ok(self.extended_schema_for_node(node))
     }
 
-    /// Returns the effective extended schema for a visible Rust command identity type.
+    /// Returns the effective extended schema for a discoverable Rust command identity type.
     ///
     /// This avoids repeating a canonical command path in application code that already names the
-    /// command type. Returns `None` when the command is not schema-visible, is registered at
-    /// multiple visible paths, or has no applicable extended schema. Use
+    /// command type. Returns `None` when the command is not discoverable, is registered at
+    /// multiple discoverable paths, or has no applicable extended schema. Use
     /// [`Self::extended_schema_for`] when the path comes from user or agent input.
     #[must_use]
     pub fn extended_schema_for_command<T>(&self) -> Option<&Value>
@@ -126,21 +128,21 @@ impl CliContract {
     /// Resolves one schema-discovery request.
     ///
     /// The selected command is always described completely. In shallow mode, direct child
-    /// commands are exposed as compact summaries. When `request.full` is true, every visible child
-    /// is recursively resolved into the same complete command shape. Leaves therefore produce the
-    /// same document in either mode because they have no children to expand.
+    /// commands are exposed as compact summaries. When `request.full` is true, every discoverable
+    /// child is recursively resolved into the same complete command shape. Leaves therefore
+    /// produce the same document in either mode because they have no children to expand.
     ///
     /// # Errors
     ///
     /// Returns [`crate::Error::UnknownCommand`] when the request path is not present in the
-    /// schema-visible command tree.
+    /// discovery tree.
     pub fn schema(&self, request: &SchemaRequest) -> crate::Result<SchemaDocument> {
         let path = request.path.iter().map(String::as_str).collect::<Vec<_>>();
         let node = self.discovery.resolve(&path)?;
         Ok(self.schema_document(node, request.full))
     }
 
-    /// Resolves a visible command or command group by canonical name or Clap alias.
+    /// Resolves a discoverable command or command group by canonical name or Clap alias.
     ///
     /// Returned paths are always canonical and exclude the executable name. When static Rust code
     /// already names a command type, prefer [`Self::command_for`] so a Clap rename cannot
@@ -149,27 +151,52 @@ impl CliContract {
     /// # Errors
     ///
     /// Returns [`crate::Error::UnknownCommand`] when the path is not present in
-    /// the schema-visible command tree. Clap-hidden commands are intentionally
-    /// indistinguishable from unknown paths.
+    /// the discovery tree. Clap presentation visibility does not affect whether a
+    /// registered command is present in the machine-readable contract.
     pub fn command(&self, path: &[&str]) -> crate::Result<CommandInfo> {
         let node = self.discovery.resolve(path)?;
         Ok(self.command_info(node))
     }
 
-    /// Builds a shallow public view of one internal discovery node.
+    /// Builds a complete public view of one internal discovery node.
     fn command_info(&self, node: &DiscoveryNode) -> CommandInfo {
+        let (ancestors, inherited_globals) = self.ancestor_contexts(node);
         CommandInfo {
             name: node.name.clone(),
             path: node.path.clone(),
-            aliases: node.visible_aliases.clone(),
+            ancestors,
             description: node.description.clone(),
-            usage: node.usage.clone(),
-            arguments: node.arguments.clone(),
-            options: node.options.clone(),
-            executable: node.executable.is_some(),
+            arguments: owned_arguments(&node.arguments, &inherited_globals),
+            options: owned_arguments(&node.options, &inherited_globals),
+            groups: node.groups.clone(),
+            syntax: node.syntax,
+            subcommand_routing: node.subcommand_routing,
+            invocable: node.executable.is_some(),
             output: node.executable.as_ref().and_then(|executable| executable.output.clone()),
-            has_subcommands: !node.children.is_empty(),
         }
+    }
+
+    /// Returns invocation-relevant command levels above `node`, from root to immediate parent.
+    ///
+    /// Clap propagates global arguments into descendant command models during build. The contract
+    /// keeps each global at the highest command level where it appears so ancestor-local groups
+    /// retain their original command boundary without duplicating the argument.
+    fn ancestor_contexts(&self, node: &DiscoveryNode) -> (Vec<CommandContext>, HashSet<String>) {
+        let mut current = &self.discovery;
+        let mut ancestors = Vec::with_capacity(node.path.len());
+        let mut inherited_globals = HashSet::new();
+
+        for segment in &node.path {
+            ancestors.push(CommandContext::from_node(current, &inherited_globals));
+            remember_globals(current, &mut inherited_globals);
+            current = current
+                .children
+                .iter()
+                .find(|child| child.name == *segment)
+                .expect("canonical discovery paths resolve through their ancestors");
+        }
+
+        (ancestors, inherited_globals)
     }
 
     /// Builds one schema-discovery document at the requested child-resolution depth.
@@ -183,14 +210,17 @@ impl CliContract {
                     SchemaSubcommand::Resolved(Box::new(self.schema_document(child, true)))
                 } else {
                     let command = self.command_info(child);
-                    SchemaSubcommand::Summary(SchemaCommandSummary::from_command(&command))
+                    SchemaSubcommand::Summary(SchemaCommandSummary::from_command(
+                        &command,
+                        !child.children.is_empty(),
+                    ))
                 }
             })
             .collect();
         SchemaDocument { command, subcommands }
     }
 
-    /// Resolves a Rust command identity only when it names one visible command unambiguously.
+    /// Resolves a Rust command identity only when it names one discoverable command unambiguously.
     fn unique_command_node<T>(&self) -> Option<&DiscoveryNode>
     where
         T: 'static,
@@ -209,14 +239,14 @@ impl CliContract {
 
 /// One schema-discovery request.
 ///
-/// `path` selects a visible command or command group by canonical name or Clap alias. `full`
+/// `path` selects a discoverable command or command group by canonical name or Clap alias. `full`
 /// controls only child resolution depth: the selected command itself is always fully described.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct SchemaRequest {
     /// Command path excluding the executable name. An empty path selects the root command.
     pub path: Vec<String>,
-    /// Whether visible child commands should be recursively resolved.
+    /// Whether discoverable child commands should be recursively resolved.
     pub full: bool,
 }
 
@@ -246,6 +276,7 @@ impl SchemaRequest {
 /// another fully resolved `SchemaDocument`. The wire shape is therefore stable while `--full`
 /// changes only the amount of child detail returned.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct SchemaDocument {
     /// Complete contract for the selected command itself.
@@ -267,7 +298,7 @@ pub enum SchemaSubcommand {
     Resolved(Box<SchemaDocument>),
 }
 
-/// Internal executable-command data attached directly to one schema-visible command node.
+/// Internal executable-command data attached directly to one discoverable command node.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ExecutableData {
     /// Stable in-process Rust command identity.
@@ -278,44 +309,150 @@ pub(crate) struct ExecutableData {
     pub(crate) extended_schema: Option<Value>,
 }
 
-/// Shallow discovery information for one visible command or command group.
+/// Invocation-relevant semantics owned by one ancestor command level.
+///
+/// Ancestor contexts preserve where parent arguments and routing rules apply when constructing a
+/// nested command invocation. They are ordered from the root command to the selected command's
+/// immediate parent.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct CommandContext {
+    /// Canonical command name for this level.
+    pub name: String,
+    /// Canonical path to this command level, excluding the executable name.
+    pub path: Vec<String>,
+    /// Positional arguments canonically owned by this command level.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub arguments: Vec<ArgumentInfo>,
+    /// Options canonically owned by this command level.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<ArgumentInfo>,
+    /// Argument groups owned by this command level.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<ArgumentGroupInfo>,
+    /// Command-level tokenization syntax reflected from Clap.
+    #[serde(flatten)]
+    pub syntax: CommandSyntax,
+    /// Routing semantics between this command level and its selected child.
+    #[serde(flatten)]
+    pub subcommand_routing: SubcommandRouting,
+}
+
+impl CommandContext {
+    /// Projects invocation-relevant context from one discovery node.
+    fn from_node(node: &DiscoveryNode, inherited_globals: &HashSet<String>) -> Self {
+        Self {
+            name: node.name.clone(),
+            path: node.path.clone(),
+            arguments: owned_arguments(&node.arguments, inherited_globals),
+            options: owned_arguments(&node.options, inherited_globals),
+            groups: node.groups.clone(),
+            syntax: node.syntax,
+            subcommand_routing: node.subcommand_routing,
+        }
+    }
+}
+
+/// Removes global arguments already owned by an ancestor command level.
+fn owned_arguments(
+    arguments: &[ArgumentInfo],
+    inherited_globals: &HashSet<String>,
+) -> Vec<ArgumentInfo> {
+    arguments
+        .iter()
+        .filter(|argument| !argument.global || !inherited_globals.contains(&argument.name))
+        .cloned()
+        .collect()
+}
+
+/// Records the global arguments reflected at one command level for descendant de-duplication.
+fn remember_globals(node: &DiscoveryNode, globals: &mut HashSet<String>) {
+    globals.extend(
+        node.arguments
+            .iter()
+            .chain(&node.options)
+            .filter(|argument| argument.global)
+            .map(|argument| argument.name.clone()),
+    );
+}
+
+/// Canonical invocation contract for one discoverable command or command group.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct CommandInfo {
     /// Canonical command name.
     pub name: String,
     /// Canonical path excluding the executable name.
     pub path: Vec<String>,
-    /// Aliases that Clap exposes in generated help.
+    /// Invocation-relevant command levels above this command, ordered root-first.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub aliases: Vec<String>,
+    pub ancestors: Vec<CommandContext>,
     /// Command description reflected from Clap help metadata.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Invocation synopsis rendered by Clap.
-    ///
-    /// This is presentation output, not a structured grammar; Clap may collapse groups of options
-    /// behind placeholders such as `[OPTIONS]`.
-    pub usage: String,
-    /// Visible positional arguments reflected directly from Clap.
+    /// Positional arguments in invocation order.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub arguments: Vec<ArgumentInfo>,
-    /// Visible non-positional options reflected directly from Clap.
+    /// Non-positional options using one canonical spelling each.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub options: Vec<ArgumentInfo>,
-    /// Whether this node is executable.
+    /// Argument groups that affect invocation validity.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<ArgumentGroupInfo>,
+    /// Command-level tokenization syntax reflected from Clap.
+    #[serde(flatten)]
+    pub syntax: CommandSyntax,
+    /// Parent/subcommand routing semantics reflected from Clap.
+    #[serde(flatten)]
+    pub subcommand_routing: SubcommandRouting,
+    /// Whether this exact command path can be invoked as an operation.
     #[serde(default, skip_serializing_if = "is_false")]
-    pub executable: bool,
+    pub invocable: bool,
     /// Successful output schema when the command returns a non-unit value.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output: Option<Value>,
-    /// Whether the node has schema-visible child commands.
+}
+
+/// Command-level tokenization syntax required to construct argv correctly.
+///
+/// This is flattened into [`CommandInfo`] on the wire so these properties remain adjacent to the
+/// command they constrain while keeping the Rust model focused by concern.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct CommandSyntax {
+    /// Whether missing positional values may be skipped when later positionals are supplied.
     #[serde(default, skip_serializing_if = "is_false")]
-    pub has_subcommands: bool,
+    pub allow_missing_positionals: bool,
+    /// Whether trailing values bypass configured value delimiters.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub dont_delimit_trailing_values: bool,
+}
+
+/// Routing semantics between one command's arguments and its child subcommands.
+///
+/// This is flattened into [`CommandInfo`] on the wire so each reflected Clap setting remains an
+/// independent command property while the Rust model keeps the routing concern grouped.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct SubcommandRouting {
+    /// Whether arguments on this command conflict with selecting a child subcommand.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub args_conflict_with_subcommands: bool,
+    /// Whether a recognized subcommand takes precedence over an argument still consuming values.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub subcommand_precedence_over_arg: bool,
+    /// Whether selecting a child subcommand waives this command's required arguments.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub subcommand_negates_requirements: bool,
 }
 
 /// Compact schema-discovery reference to one direct child command.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct SchemaCommandSummary {
     /// Canonical command path excluding the executable name.
@@ -323,68 +460,153 @@ pub struct SchemaCommandSummary {
     /// Command description reflected from Clap help metadata.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Whether this command is executable.
+    /// Whether this exact command path can be invoked as an operation.
     #[serde(default, skip_serializing_if = "is_false")]
-    pub executable: bool,
-    /// Whether this command has schema-visible child commands.
+    pub invocable: bool,
+    /// Whether this command has discoverable child commands.
     #[serde(default, skip_serializing_if = "is_false")]
     pub has_subcommands: bool,
 }
 
 impl SchemaCommandSummary {
-    /// Projects the compact child shape from the canonical command projection.
-    fn from_command(command: &CommandInfo) -> Self {
+    /// Projects the compact child shape from a command and its topology.
+    fn from_command(command: &CommandInfo, has_subcommands: bool) -> Self {
         Self {
             path: command.path.clone(),
             description: command.description.clone(),
-            executable: command.executable,
-            has_subcommands: command.has_subcommands,
+            invocable: command.invocable,
+            has_subcommands,
         }
     }
 }
 
-/// Compact context for one visible Clap argument or option.
+/// Canonical invocation information for one reflected positional argument or option.
 ///
-/// This intentionally exposes only straightforward facts from Clap's built command model.
-/// Complete invocation semantics remain authoritative in Clap and its generated help.
+/// Positionals appear in the `arguments` array in invocation order and also carry their one-based
+/// `position`. Options use one canonical spelling in `name`, preferring `--long` over `-s` when
+/// both are available. Human-facing aliases and value placeholders are intentionally omitted.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "independent boolean properties are part of the serialized invocation contract"
+)]
 pub struct ArgumentInfo {
-    /// Clap argument identifier.
-    pub id: String,
-    /// Positional index when this is a positional argument.
+    /// Canonical invocation name.
+    ///
+    /// Positional arguments use their stable Clap identifier. Options include their leading dash,
+    /// for example `--limit` or `-v`.
+    pub name: String,
+    /// One-based positional order. Absent for options.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub index: Option<usize>,
-    /// Short option name when configured.
+    pub position: Option<usize>,
+    /// Human-readable semantic description reflected from Clap help metadata.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub short: Option<char>,
-    /// Long option name when configured.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub long: Option<String>,
-    /// Short aliases that Clap exposes in generated help.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub short_aliases: Vec<char>,
-    /// Long aliases that Clap exposes in generated help.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub aliases: Vec<String>,
-    /// Value placeholders such as `FILE` or `WORKSPACE_ID`.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub value_names: Vec<String>,
-    /// Human-readable argument help reflected from Clap.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub help: Option<String>,
-    /// Whether Clap marks this argument as unconditionally required.
+    pub description: Option<String>,
+    /// Whether Clap's base required setting is enabled for this argument.
     #[serde(default, skip_serializing_if = "is_false")]
     pub required: bool,
-    /// Visible UTF-8 default values for value-taking arguments.
+    /// Whether Clap propagates this argument to child commands.
+    ///
+    /// In a nested command contract, a propagated global argument is represented at the highest
+    /// command level where it appears and omitted from descendant levels so the same logical
+    /// argument is not duplicated.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub global: bool,
+    /// Value contract. Absent for flags that consume no value.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<ArgumentValue>,
+    /// Whether the same argument may be supplied repeatedly.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub repeatable: bool,
+    /// Canonical invocation names in argument-level conflict relationships with this argument.
+    ///
+    /// Argument-level conflicts are normalized symmetrically.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub default_values: Vec<String>,
-    /// Visible finite values reported by the configured Clap value parser.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub possible_values: Vec<String>,
+    pub conflicts_with: Vec<String>,
+    /// Token-placement syntax required to invoke this argument correctly.
+    #[serde(flatten)]
+    pub syntax: ArgumentSyntax,
+    /// Whether this argument must be used without any other argument.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub exclusive: bool,
 }
 
-/// Internal schema-visible command topology reflected from Clap.
+/// Token-placement syntax required for one argument.
+///
+/// This is flattened into [`ArgumentInfo`] on the wire so these properties remain adjacent to the
+/// argument they constrain while keeping the Rust model focused by concern.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct ArgumentSyntax {
+    /// Whether a value-taking option requires `=<value>` syntax.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub require_equals: bool,
+    /// Whether this positional must follow the `--` option terminator.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub requires_double_dash: bool,
+    /// Whether this positional captures all remaining tokens as values.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub trailing_var_arg: bool,
+}
+
+/// Value contract for one positional argument or option occurrence.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct ArgumentValue {
+    /// Minimum number of values consumed by one occurrence.
+    pub min_values: usize,
+    /// Maximum number of values consumed by one occurrence, or `null` when unbounded.
+    pub max_values: Option<usize>,
+    /// Canonical possible values advertised by the configured Clap value parser.
+    ///
+    /// This reflection metadata is not necessarily exhaustive validation.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub values: Vec<String>,
+    /// Default spelling used when the argument is omitted.
+    ///
+    /// A single default is serialized as a string; multiple defaults are serialized as an array
+    /// of strings because command-line defaults are lexical values before parsing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default: Option<Value>,
+    /// Delimiter Clap uses to split multiple values inside one token.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delimiter: Option<char>,
+    /// Token that terminates parsing of a multi-valued argument.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub terminator: Option<String>,
+    /// Whether value tokens beginning with a hyphen are accepted without disambiguation.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub allow_hyphen_values: bool,
+    /// Whether negative-number tokens are accepted without being treated as options.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub allow_negative_numbers: bool,
+    /// Whether Clap enables case-insensitive value matching.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub ignore_case: bool,
+}
+
+/// Invocation-validity contract for one Clap argument group.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct ArgumentGroupInfo {
+    /// Stable group identifier.
+    pub name: String,
+    /// Canonical names of arguments in this group.
+    pub members: Vec<String>,
+    /// Whether Clap's base required setting is enabled for this group.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub required: bool,
+    /// Whether more than one member of this group may be used together.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub multiple: bool,
+}
+
+/// Internal discoverable command topology reflected from Clap.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct DiscoveryNode {
     /// Canonical command name.
@@ -393,24 +615,27 @@ pub(crate) struct DiscoveryNode {
     pub(crate) path: Vec<String>,
     /// Every Clap alias accepted while resolving a path.
     pub(crate) aliases: Vec<String>,
-    /// Aliases exposed in Clap-generated help.
-    pub(crate) visible_aliases: Vec<String>,
     /// Command description reflected from Clap help metadata.
     pub(crate) description: Option<String>,
-    /// Canonical invocation synopsis rendered by Clap.
-    pub(crate) usage: String,
-    /// Visible positional arguments reflected directly from Clap.
+    /// Discoverable positional arguments reflected directly from Clap.
     pub(crate) arguments: Vec<ArgumentInfo>,
-    /// Visible non-positional options reflected directly from Clap.
+    /// Discoverable non-positional options reflected directly from Clap.
     pub(crate) options: Vec<ArgumentInfo>,
-    /// Executable-command data when this visible command can produce a machine output.
+    /// Argument groups reflected directly from Clap.
+    pub(crate) groups: Vec<ArgumentGroupInfo>,
+    /// Command-level tokenization syntax reflected from Clap.
+    pub(crate) syntax: CommandSyntax,
+    /// Parent/subcommand routing semantics reflected from Clap.
+    pub(crate) subcommand_routing: SubcommandRouting,
+    /// Executable-command data when this discoverable command can produce a machine output.
     pub(crate) executable: Option<ExecutableData>,
-    /// Schema-visible child commands.
+    /// Discoverable child commands.
     pub(crate) children: Vec<Self>,
 }
 
 impl DiscoveryNode {
-    /// Finds one Rust command identity only when it appears at exactly one visible command node.
+    /// Finds one Rust command identity only when it appears at exactly one discoverable command
+    /// node.
     pub(crate) fn unique_command(&self, id: TypeId) -> Option<&Self> {
         fn visit<'a>(
             node: &'a DiscoveryNode,

@@ -34,138 +34,11 @@ mod tests {
         Ok(Created { id: "1".to_owned(), name: "example".to_owned() })
     }
 
-    #[derive(Parser, CliSchema)]
-    struct DiscoveryOnlyRoot {
-        #[command(subcommand)]
-        command: RenamedCommands,
-    }
-
-    #[derive(Parser, CliSchema)]
-    struct RootCli;
-
-    #[schema_handler(RootCli)]
-    fn root(_command: RootCli) -> Result<Created, Infallible> {
-        Ok(Created { id: "1".to_owned(), name: "root".to_owned() })
-    }
-
-    #[derive(Parser, CliSchema)]
-    struct RenamedCli {
-        #[command(subcommand)]
-        command: RenamedCommands,
-    }
-
-    #[derive(Subcommand, CommandSchema)]
-    enum RenamedCommands {
-        #[command(name = "fetch")]
-        Get(FetchArgs),
-    }
-
-    #[derive(Args)]
-    struct FetchArgs {}
-
-    #[schema_handler(FetchArgs)]
-    fn fetch(_command: FetchArgs) -> Result<Created, Infallible> {
-        Ok(Created { id: "1".to_owned(), name: "example".to_owned() })
-    }
-
-    #[derive(Parser, CliSchema)]
-    struct UnregisteredChildrenCli {
-        #[command(subcommand)]
-        command: UnregisteredChildrenCommands,
-    }
-
-    #[derive(Subcommand, CommandSchema)]
-    enum UnregisteredChildrenCommands {
-        Parent(UnregisteredChildrenArgs),
-    }
-
-    #[derive(Args)]
-    struct UnregisteredChildrenArgs {
-        #[command(subcommand)]
-        command: Option<ActualChildren>,
-    }
-
-    #[schema_handler(UnregisteredChildrenArgs)]
-    fn unregistered_children(_command: UnregisteredChildrenArgs) -> Result<(), Infallible> {
-        Ok(())
-    }
-
-    #[derive(Subcommand, CommandSchema)]
-    enum ActualChildren {
-        Actual(ActualChildArgs),
-    }
-
-    #[derive(Args)]
-    struct ActualChildArgs {}
-
-    #[schema_handler(ActualChildArgs)]
-    fn actual_child(_command: ActualChildArgs) -> Result<(), Infallible> {
-        Ok(())
-    }
-
-    #[derive(Parser, CliSchema)]
-    struct DispositionCli {
-        #[command(subcommand)]
-        command: DispositionCommands,
-    }
-
-    #[derive(Subcommand, CommandSchema)]
-    #[expect(
-        dead_code,
-        reason = "variants exist to exercise Clap skip and external-subcommand dispositions"
-    )]
-    enum DispositionCommands {
-        Visible(VisibleArgs),
-        #[command(skip)]
-        Skipped,
-        #[command(external_subcommand)]
-        External(Vec<String>),
-    }
-
-    #[derive(Args)]
-    struct VisibleArgs {}
-
-    #[schema_handler(VisibleArgs)]
-    fn visible(_command: VisibleArgs) -> Result<(), Infallible> {
-        Ok(())
-    }
-
-    #[derive(Parser, CliSchema)]
-    struct HelpCli {
-        #[command(subcommand)]
-        command: HelpCommands,
-    }
-
-    #[derive(Subcommand, CommandSchema)]
-    enum HelpCommands {
-        /// Show application-defined assistance.
-        Help(HelpArgs),
-    }
-
-    #[derive(Args)]
-    struct HelpArgs {}
-
-    #[schema_handler(HelpArgs)]
-    fn help(_command: HelpArgs) -> Result<(), Infallible> {
-        Ok(())
-    }
-
     #[test]
     fn schema_handlers_remain_normal_callable_rust() {
         let created = create(CreateCommand).expect("create handler");
         assert_eq!(created.id, "1");
         assert_eq!(created.name, "example");
-
-        let root_created = root(RootCli).expect("root handler");
-        assert_eq!(root_created.name, "root");
-
-        let fetched = fetch(FetchArgs {}).expect("fetch handler");
-        assert_eq!(fetched.name, "example");
-
-        assert!(unregistered_children(UnregisteredChildrenArgs { command: None }).is_ok());
-        assert!(actual_child(ActualChildArgs {}).is_ok());
-        assert!(visible(VisibleArgs {}).is_ok());
-        assert!(help(HelpArgs {}).is_ok());
     }
 
     #[test]
@@ -192,32 +65,6 @@ mod tests {
     }
 
     #[test]
-    fn derive_root_with_required_subcommand_has_no_output_contract() -> clap_schema::Result<()> {
-        let contract = DiscoveryOnlyRoot::schema()?;
-        let root = contract.schema(&SchemaRequest::default())?;
-        assert!(!root.command.executable);
-        Ok(())
-    }
-
-    #[test]
-    fn derive_supports_an_executable_root() -> clap_schema::Result<()> {
-        let contract = RootCli::schema()?;
-        assert!(contract.command_for::<RootCli>().and_then(|command| command.output).is_some());
-        Ok(())
-    }
-
-    #[test]
-    fn command_type_tracks_claps_canonical_command_name() -> clap_schema::Result<()> {
-        let contract = RenamedCli::schema()?;
-        let command =
-            contract.command_for::<FetchArgs>().expect("fetch command should be registered");
-
-        assert_eq!(command.name, "fetch");
-        assert_eq!(command.path, ["fetch"]);
-        Ok(())
-    }
-
-    #[test]
     fn builder_rejects_invalid_and_duplicate_declarations() {
         let unknown = ContractBuilder::new(Command::new("fixture"))
             .command::<CreateCommand>(["missing"])
@@ -231,6 +78,17 @@ mod tests {
             .build()
             .expect_err("duplicate root command");
         assert_eq!(duplicate.to_string(), "duplicate executable command registration: <root>");
+
+        let requires_subcommand = ContractBuilder::new(
+            Command::new("fixture").subcommand_required(true).subcommand(Command::new("child")),
+        )
+        .command::<CreateCommand>(std::iter::empty::<&str>())
+        .build()
+        .expect_err("root command requires a child subcommand");
+        assert!(matches!(
+            &requires_subcommand,
+            clap_schema::Error::ExecutableCommandRequiresSubcommand { path } if path.is_empty()
+        ));
 
         let duplicate_extension = ContractBuilder::new(Command::new("fixture"))
             .extend::<ApplicationMetadata>()
@@ -290,8 +148,112 @@ mod tests {
         Ok(())
     }
 
+    #[derive(Parser, CliSchema)]
+    struct RootCli;
+
+    #[schema_handler(RootCli)]
+    fn root(_command: RootCli) -> Result<Created, Infallible> {
+        Ok(Created { id: "1".to_owned(), name: "root".to_owned() })
+    }
+
+    #[test]
+    fn derive_supports_an_executable_root() -> clap_schema::Result<()> {
+        let created = root(RootCli).expect("root handler");
+        assert_eq!(created.name, "root");
+
+        let contract = RootCli::schema()?;
+        assert!(contract.command_for::<RootCli>().and_then(|command| command.output).is_some());
+        Ok(())
+    }
+
+    #[derive(Subcommand, CommandSchema)]
+    enum RenamedCommands {
+        #[command(name = "fetch")]
+        Get(FetchArgs),
+    }
+
+    #[derive(Args)]
+    struct FetchArgs {}
+
+    #[schema_handler(FetchArgs)]
+    fn fetch(_command: FetchArgs) -> Result<Created, Infallible> {
+        Ok(Created { id: "1".to_owned(), name: "example".to_owned() })
+    }
+
+    #[derive(Parser, CliSchema)]
+    struct DiscoveryOnlyRoot {
+        #[command(subcommand)]
+        command: RenamedCommands,
+    }
+
+    #[test]
+    fn derive_root_with_required_subcommand_has_no_output_contract() -> clap_schema::Result<()> {
+        let contract = DiscoveryOnlyRoot::schema()?;
+        let root = contract.schema(&SchemaRequest::default())?;
+        assert!(!root.command.invocable);
+        Ok(())
+    }
+
+    #[derive(Parser, CliSchema)]
+    struct RenamedCli {
+        #[command(subcommand)]
+        command: RenamedCommands,
+    }
+
+    #[test]
+    fn command_type_tracks_claps_canonical_command_name() -> clap_schema::Result<()> {
+        let fetched = fetch(FetchArgs {}).expect("fetch handler");
+        assert_eq!(fetched.name, "example");
+
+        let contract = RenamedCli::schema()?;
+        let command =
+            contract.command_for::<FetchArgs>().expect("fetch command should be registered");
+
+        assert_eq!(command.name, "fetch");
+        assert_eq!(command.path, ["fetch"]);
+        Ok(())
+    }
+
+    #[derive(Parser, CliSchema)]
+    struct UnregisteredChildrenCli {
+        #[command(subcommand)]
+        command: UnregisteredChildrenCommands,
+    }
+
+    #[derive(Subcommand, CommandSchema)]
+    enum UnregisteredChildrenCommands {
+        Parent(UnregisteredChildrenArgs),
+    }
+
+    #[derive(Args)]
+    struct UnregisteredChildrenArgs {
+        #[command(subcommand)]
+        command: Option<ActualChildren>,
+    }
+
+    #[schema_handler(UnregisteredChildrenArgs)]
+    fn unregistered_children(_command: UnregisteredChildrenArgs) -> Result<(), Infallible> {
+        Ok(())
+    }
+
+    #[derive(Subcommand, CommandSchema)]
+    enum ActualChildren {
+        Actual(ActualChildArgs),
+    }
+
+    #[derive(Args)]
+    struct ActualChildArgs {}
+
+    #[schema_handler(ActualChildArgs)]
+    fn actual_child(_command: ActualChildArgs) -> Result<(), Infallible> {
+        Ok(())
+    }
+
     #[test]
     fn derive_rejects_unregistered_args_subcommands() {
+        assert!(unregistered_children(UnregisteredChildrenArgs { command: None }).is_ok());
+        assert!(actual_child(ActualChildArgs {}).is_ok());
+
         let error = UnregisteredChildrenCli::schema().expect_err("unregistered nested subcommands");
         assert!(matches!(
             &error,
@@ -299,8 +261,37 @@ mod tests {
         ));
     }
 
+    #[derive(Parser, CliSchema)]
+    struct DispositionCli {
+        #[command(subcommand)]
+        command: DispositionCommands,
+    }
+
+    #[derive(Subcommand, CommandSchema)]
+    #[expect(
+        dead_code,
+        reason = "variants exist to exercise Clap skip and external-subcommand dispositions"
+    )]
+    enum DispositionCommands {
+        Visible(VisibleArgs),
+        #[command(skip)]
+        Skipped,
+        #[command(external_subcommand)]
+        External(Vec<String>),
+    }
+
+    #[derive(Args)]
+    struct VisibleArgs {}
+
+    #[schema_handler(VisibleArgs)]
+    fn visible(_command: VisibleArgs) -> Result<(), Infallible> {
+        Ok(())
+    }
+
     #[test]
     fn clap_skipped_and_external_variants_stay_out_of_the_contract() -> clap_schema::Result<()> {
+        assert!(visible(VisibleArgs {}).is_ok());
+
         let contract = DispositionCli::schema()?;
 
         assert!(contract.command_for::<VisibleArgs>().is_some());
@@ -312,16 +303,7 @@ mod tests {
             _ => panic!("unknown schema subcommand variant"),
         };
         assert_eq!(visible.path, ["visible"]);
-        assert!(visible.executable);
-        Ok(())
-    }
-
-    #[test]
-    fn application_defined_help_is_discoverable() -> clap_schema::Result<()> {
-        let contract = HelpCli::schema()?;
-        let help = contract.command_for::<HelpArgs>().expect("application help command");
-
-        assert_eq!(help.path, ["help"]);
+        assert!(visible.invocable);
         Ok(())
     }
 }
