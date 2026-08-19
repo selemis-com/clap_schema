@@ -290,7 +290,7 @@ fn contains_impl_trait(ty: &Type) -> bool {
 /// Expands a `CliSchema` derive into root executable-command registration.
 fn expand_cli_schema(input: DeriveInput) -> syn::Result<TokenStream2> {
     let crate_path = clap_schema_path();
-    let RootSchema { extended } = parse_root_schema(&input.attrs)?;
+    let extended = parse_root_schema(&input.attrs)?;
     let commands = find_subcommand_field(&input, "CliSchema")?;
 
     let name = input.ident;
@@ -395,7 +395,7 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
         let payload = single_payload_type(&variant.fields);
 
         if command.disposition != CommandDisposition::Normal {
-            if !schema.is_empty() {
+            if schema.is_some() {
                 return Err(syn::Error::new_spanned(
                     variant.ident,
                     "schema extensions cannot be attached to a clap-skipped or external subcommand variant",
@@ -411,7 +411,7 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
                     "flattened subcommands require a single tuple payload",
                 )
             })?;
-            if schema.has_registration_options() {
+            if schema.is_some() {
                 return Err(syn::Error::new_spanned(
                     variant.ident,
                     "flattened subcommands cannot declare command schema extensions",
@@ -456,7 +456,7 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
                     "nested subcommands require a single tuple payload",
                 )
             })?;
-            if schema.has_registration_options() {
+            if schema.is_some() {
                 return Err(syn::Error::new_spanned(
                     variant.ident,
                     "#[command(subcommand)] groups cannot declare command schema extensions",
@@ -482,7 +482,7 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
                 "contract-visible executable commands require a single tuple Args payload with a schema handler contract",
             )
         })?;
-        let register_payload = schema.extended.as_ref().map_or_else(
+        let register_payload = schema.as_ref().map_or_else(
             || {
                 quote! {{
                     use #crate_path::__private::RegisterPayload as _;
@@ -539,30 +539,23 @@ fn expand_command_schema_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
     })
 }
 
-/// Parsed root schema extensions.
-#[derive(Default)]
-struct RootSchema {
-    /// Optional application-defined extension schema type.
-    extended: Option<Type>,
-}
-
-/// Parses root `#[schema(...)]` extensions.
-fn parse_root_schema(attrs: &[Attribute]) -> syn::Result<RootSchema> {
-    let mut result = RootSchema::default();
+/// Parses the optional root `#[schema(extend = ...)]` type.
+fn parse_root_schema(attrs: &[Attribute]) -> syn::Result<Option<Type>> {
+    let mut extended = None;
     for attr in attrs.iter().filter(|attr| attr.path().is_ident("schema")) {
         attr.parse_nested_meta(|meta| {
             if meta.path.is_ident("extend") {
-                if result.extended.is_some() {
+                if extended.is_some() {
                     return Err(meta.error("duplicate root extension type"));
                 }
-                result.extended = Some(meta.value()?.parse()?);
+                extended = Some(meta.value()?.parse()?);
             } else {
                 return Err(meta.error("unsupported #[schema(...)] root option"));
             }
             Ok(())
         })?;
     }
-    Ok(result)
+    Ok(extended)
 }
 
 /// One `#[command(subcommand)]` field reflected from a Clap struct.
@@ -686,42 +679,23 @@ fn parse_command_behavior(attrs: &[Attribute]) -> syn::Result<CommandBehavior> {
     Ok(CommandBehavior { nesting, disposition })
 }
 
-/// Parsed contract extensions for one subcommand variant.
-#[derive(Default)]
-struct VariantSchema {
-    /// Optional command-specific application extension schema type.
-    extended: Option<Type>,
-}
-
-impl VariantSchema {
-    /// Returns whether no schema extension was supplied.
-    const fn is_empty(&self) -> bool {
-        self.extended.is_none()
-    }
-
-    /// Returns whether extensions affect command or child registration.
-    const fn has_registration_options(&self) -> bool {
-        self.extended.is_some()
-    }
-}
-
-/// Parses command extensions attached to one subcommand variant.
-fn parse_variant_schema(attrs: &[Attribute]) -> syn::Result<VariantSchema> {
-    let mut result = VariantSchema::default();
+/// Parses the optional command-specific `#[schema(extend = ...)]` type.
+fn parse_variant_schema(attrs: &[Attribute]) -> syn::Result<Option<Type>> {
+    let mut extended = None;
     for attr in attrs.iter().filter(|attr| attr.path().is_ident("schema")) {
         attr.parse_nested_meta(|meta| {
             if meta.path.is_ident("extend") {
-                if result.extended.is_some() {
+                if extended.is_some() {
                     return Err(meta.error("duplicate extension type"));
                 }
-                result.extended = Some(meta.value()?.parse()?);
+                extended = Some(meta.value()?.parse()?);
             } else {
                 return Err(meta.error("unsupported #[schema(...)] command option"));
             }
             Ok(())
         })?;
     }
-    Ok(result)
+    Ok(extended)
 }
 
 /// Returns whether a Clap `#[command(...)]` attribute contains a flag.

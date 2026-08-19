@@ -257,11 +257,10 @@ impl ContractBuilder {
         root.build();
         reject_unsupported_command_framing(&root)?;
         reject_duplicate_paths(&registrations)?;
-        reject_subcommand_required_registrations(&root, &registrations)?;
 
         let application_extended_schema = extended.map(ExtendedSchemaFactory::root);
         let mut registrations = registrations;
-        let discovery = discovery_tree(&root, &mut registrations, extended);
+        let discovery = discovery_tree(&root, &mut registrations, extended)?;
         if let Some(registration) = registrations.first() {
             return Err(Error::UnknownCommand { path: registration.path.clone() });
         }
@@ -303,41 +302,14 @@ fn reject_duplicate_paths(registrations: &[PendingCommandRegistration]) -> Resul
     Ok(())
 }
 
-/// Rejects executable registrations for command paths that Clap requires to continue into a child.
-fn reject_subcommand_required_registrations(
-    root: &Command,
-    registrations: &[PendingCommandRegistration],
-) -> Result<()> {
-    for registration in registrations {
-        let Some(command) = canonical_command(root, &registration.path) else {
-            continue;
-        };
-        if command.is_subcommand_required_set() {
-            return Err(Error::ExecutableCommandRequiresSubcommand {
-                path: registration.path.clone(),
-            });
-        }
-    }
-    Ok(())
-}
-
-/// Resolves one canonical command path without accepting aliases.
-fn canonical_command<'a>(root: &'a Command, path: &[String]) -> Option<&'a Command> {
-    let mut command = root;
-    for segment in path {
-        command = command.get_subcommands().find(|child| child.get_name() == segment)?;
-    }
-    Some(command)
-}
-
 /// Reconciles registered executable commands with Clap while building the discovery topology.
 fn discovery_tree(
     root: &Command,
     registrations: &mut Vec<PendingCommandRegistration>,
     application_extension: Option<ExtendedSchemaFactory>,
-) -> DiscoveryNode {
-    build_discovery_node(root, Vec::new(), registrations, application_extension, true)
-        .expect("the root discovery node is always retained")
+) -> Result<DiscoveryNode> {
+    Ok(build_discovery_node(root, Vec::new(), registrations, application_extension)?
+        .expect("the root discovery node is always retained"))
 }
 
 /// Recursively validates registrations and reflects contract commands in one traversal.
@@ -346,19 +318,21 @@ fn build_discovery_node(
     path: Vec<String>,
     registrations: &mut Vec<PendingCommandRegistration>,
     application_extension: Option<ExtendedSchemaFactory>,
-    root: bool,
-) -> Option<DiscoveryNode> {
+) -> Result<Option<DiscoveryNode>> {
     let pending = registrations
         .iter()
         .position(|registration| registration.path == path)
         .map(|index| registrations.remove(index));
+    if pending.is_some() && command.is_subcommand_required_set() {
+        return Err(Error::ExecutableCommandRequiresSubcommand { path });
+    }
 
     let mut children = Vec::new();
     for child in command.get_subcommands() {
         let mut child_path = path.clone();
         child_path.push(child.get_name().to_owned());
         if let Some(child) =
-            build_discovery_node(child, child_path, registrations, application_extension, false)
+            build_discovery_node(child, child_path, registrations, application_extension)?
         {
             children.push(child);
         }
@@ -378,11 +352,15 @@ fn build_discovery_node(
             extended_schema,
         }
     });
-    if !root && executable.is_none() && children.is_empty() {
-        return None;
+    if !path.is_empty() && executable.is_none() && children.is_empty() {
+        return Ok(None);
     }
 
-    Some(DiscoveryNode {
+    let arguments = reflected_positionals(command);
+    let options = reflected_options(command);
+    let groups = reflected_groups(command, &arguments, &options);
+
+    Ok(Some(DiscoveryNode {
         name: command.get_name().to_owned(),
         path,
         aliases: command.get_all_aliases().map(ToOwned::to_owned).collect(),
@@ -390,9 +368,9 @@ fn build_discovery_node(
             .get_about()
             .or_else(|| command.get_long_about())
             .map(ToString::to_string),
-        arguments: reflected_positionals(command),
-        options: reflected_options(command),
-        groups: reflected_groups(command),
+        arguments,
+        options,
+        groups,
         syntax: CommandSyntax {
             allow_missing_positionals: command.is_allow_missing_positional_set(),
             dont_delimit_trailing_values: command.is_dont_delimit_trailing_values_set(),
@@ -404,7 +382,7 @@ fn build_discovery_node(
         },
         executable,
         children,
-    })
+    }))
 }
 
 /// Reflects positional arguments directly from one built Clap command.
@@ -545,15 +523,14 @@ fn argument_value(command: &Command, argument: &Arg) -> ArgumentValue {
 
 /// Returns one canonical spelling suitable for constructing an invocation.
 fn canonical_argument_name(argument: &Arg) -> String {
-    if argument.is_positional() {
-        argument.get_id().to_string()
-    } else if let Some(long) = argument.get_long() {
-        format!("--{long}")
-    } else if let Some(short) = argument.get_short() {
-        format!("-{short}")
-    } else {
-        argument.get_id().to_string()
-    }
+    argument.get_long().map_or_else(
+        || {
+            argument
+                .get_short()
+                .map_or_else(|| argument.get_id().to_string(), |short| format!("-{short}"))
+        },
+        |long| format!("--{long}"),
+    )
 }
 
 /// Returns lexical defaults without pretending they are already parsed Rust values.
@@ -689,17 +666,12 @@ fn argument_target(command: &Command, id: &Id) -> Option<ArgumentTarget> {
 }
 
 /// Reflects argument groups that materially affect the machine-readable invocation contract.
-fn reflected_groups(command: &Command) -> Vec<ArgumentGroupInfo> {
-    let group_ids = command
-        .get_groups()
-        .filter(|group| {
-            group.get_args().any(|member| reflected_argument_name(command, member).is_some())
-        })
-        .map(|group| group.get_id().to_string())
-        .collect::<HashSet<_>>();
-    let referenced_groups = referenced_group_ids(command, &group_ids);
-
-    command
+fn reflected_groups(
+    command: &Command,
+    arguments: &[ArgumentInfo],
+    options: &[ArgumentInfo],
+) -> Vec<ArgumentGroupInfo> {
+    let mut groups = command
         .get_groups()
         .filter_map(|group| {
             let members = group
@@ -713,74 +685,71 @@ fn reflected_groups(command: &Command) -> Vec<ArgumentGroupInfo> {
             // `ArgGroup::is_multiple` currently takes `&mut self`; clone only to reflect this
             // read-only property until clap-rs/clap#6411 lands.
             let mut owned_group = group.clone();
-            let multiple = owned_group.is_multiple();
-            let requires = group
-                .get_requires()
-                .filter_map(|id| argument_target(command, id))
-                .collect::<Vec<_>>();
-            let conflicts_with = group
-                .get_conflicts()
-                .filter_map(|id| argument_target(command, id))
-                .collect::<Vec<_>>();
-            let name = group.get_id().to_string();
-            let required = group.is_required_set();
-
-            // Clap derive implicitly creates `multiple = true` groups for `Args` structs. Keep a
-            // group only when it changes invocation validity or another reflected relationship
-            // targets it.
-            let constrains_cardinality = required || (!multiple && members.len() > 1);
-            if !constrains_cardinality
-                && requires.is_empty()
-                && conflicts_with.is_empty()
-                && !referenced_groups.contains(&name)
-            {
-                return None;
-            }
-
-            Some(ArgumentGroupInfo { name, members, required, multiple, requires, conflicts_with })
+            Some(ArgumentGroupInfo {
+                name: group.get_id().to_string(),
+                members,
+                required: group.is_required_set(),
+                multiple: owned_group.is_multiple(),
+                requires: group
+                    .get_requires()
+                    .filter_map(|id| argument_target(command, id))
+                    .collect(),
+                conflicts_with: group
+                    .get_conflicts()
+                    .filter_map(|id| argument_target(command, id))
+                    .collect(),
+            })
         })
-        .collect()
+        .collect::<Vec<_>>();
+    let referenced_groups = reflected_group_references(arguments, options, &groups);
+
+    groups.retain(|group| {
+        // Clap derive implicitly creates `multiple = true` groups for `Args` structs. Keep a group
+        // only when it changes invocation validity or another reflected relationship targets it.
+        let constrains_cardinality = group.required || (!group.multiple && group.members.len() > 1);
+        constrains_cardinality
+            || !group.requires.is_empty()
+            || !group.conflicts_with.is_empty()
+            || referenced_groups.contains(&group.name)
+    });
+    groups
 }
 
-/// Finds reflected groups targeted by argument or group relationships.
-fn referenced_group_ids(command: &Command, group_ids: &HashSet<String>) -> HashSet<String> {
+/// Finds groups targeted by relationships already present in the reflected contract.
+fn reflected_group_references(
+    arguments: &[ArgumentInfo],
+    options: &[ArgumentInfo],
+    groups: &[ArgumentGroupInfo],
+) -> HashSet<String> {
     let mut referenced = HashSet::new();
-    let mut record = |id: &Id| {
-        let name = id.to_string();
-        if group_ids.contains(&name) {
-            referenced.insert(name);
+    let mut record = |target: &ArgumentTarget| {
+        if let ArgumentTarget::Group { name } = target {
+            referenced.insert(name.clone());
         }
     };
 
-    for argument in command.get_arguments().filter(|argument| reflected_argument(argument)) {
-        for id in argument.get_overrides() {
-            record(id);
+    for argument in arguments.iter().chain(options) {
+        for target in &argument.overrides {
+            record(target);
         }
-        for (_, id) in argument.get_requires() {
-            record(id);
+        for requirement in &argument.requires {
+            record(&requirement.target);
         }
-        for (id, _) in argument.get_required_if_eq_any() {
-            record(id);
+        for condition in argument.required_if_any.iter().chain(&argument.required_if_all) {
+            record(&condition.target);
         }
-        for (id, _) in argument.get_required_if_eq_all() {
-            record(id);
+        for target in argument.required_unless_any.iter().chain(&argument.required_unless_all) {
+            record(target);
         }
-        for id in argument.get_required_unless_present_any() {
-            record(id);
-        }
-        for id in argument.get_required_unless_present_all() {
-            record(id);
-        }
-        for (id, _, _) in argument.get_default_values_ifs() {
-            record(id);
+        if let Some(value) = &argument.value {
+            for conditional in &value.default_if {
+                record(&conditional.target);
+            }
         }
     }
-    for group in command.get_groups() {
-        for id in group.get_requires() {
-            record(id);
-        }
-        for id in group.get_conflicts() {
-            record(id);
+    for group in groups {
+        for target in group.requires.iter().chain(&group.conflicts_with) {
+            record(target);
         }
     }
 
