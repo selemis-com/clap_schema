@@ -162,8 +162,7 @@ zero_sized_map_values = "warn"
 
 [workspace.dependencies]
 # Vendor
-# Temporary until clap-rs/clap#6494 is merged and released.
-clap = { git = "https://github.com/zerosnacks/clap", rev = "2883a7f13718bb4c3cf0456cf831176d20a2ae14", version = "4.6.6", default-features = false, features = ["std"] }
+clap = { version = "4.6.6", default-features = false, features = ["std"] }
 proc-macro-crate = "3.5.0"
 proc-macro2 = "1.0.107"
 quote = "1.0.47"

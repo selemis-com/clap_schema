@@ -68,7 +68,7 @@ A complete command document can contain:
 
 `ancestors`, when present, contains the invocation-relevant command levels above the selected command, ordered from the root command to the immediate parent. Root command documents omit this field.
 
-Each ancestor uses the same `arguments`, `options`, `groups`, command-syntax, and subcommand-routing properties defined for the selected command. Its `path` identifies the command boundary that owns those semantics. Global arguments propagated by Clap are represented once at the highest command level where they appear and omitted from descendant levels. This preserves the command boundary of local groups and relationships that reference a global argument while avoiding duplicate copies. Ancestor contexts do not carry `invocable`, `output`, or child topology because they describe how to reach the selected command rather than a separately selected operation.
+Each ancestor uses the same `arguments`, `options`, `groups`, command-syntax, and subcommand-routing properties defined for the selected command. Its `path` identifies the command boundary that owns those semantics. Global arguments propagated by Clap are represented once at the highest command level where they appear and omitted from descendant levels. This preserves the command boundary of local groups that constrain a global argument while avoiding duplicate copies. Ancestor contexts do not carry `invocable`, `output`, or child topology because they describe how to reach the selected command rather than a separately selected operation.
 
 Consumers constructing a nested invocation **MUST** apply ancestor requirements and routing rules at the command level where they are declared. In particular, selecting a child does not implicitly discard a parent's required arguments unless that ancestor has `subcommandNegatesRequirements: true`.
 
@@ -98,7 +98,7 @@ Alternative short names and aliases are intentionally not part of the core contr
 
 ### `groups`
 
-`groups`, when present, describes Clap argument groups that contain reflected arguments and materially affect invocation validity. Group references used by argument relationships resolve against this array. Unconstraining groups that are neither required, mutually exclusive, related to another target, nor referenced by a relationship are omitted.
+`groups`, when present, describes Clap argument groups that contain reflected arguments and materially affect invocation validity through requiredness or mutual-exclusion cardinality. Unconstraining groups are omitted.
 
 See [Argument groups](#argument-groups).
 
@@ -167,18 +167,16 @@ The `arguments` array order and `position` carry the same ordering intentionally
 ### `required`
 
 `required: true` means Clap's base required setting is enabled for the argument. This base
-requiredness is evaluated together with reflected conflicts and other relationship rules; for
-example, a conflict can make an otherwise-required argument inapplicable for a particular
-invocation.
+requiredness is evaluated together with reflected conflicts; for example, a conflict can make an
+otherwise-required argument inapplicable for a particular invocation.
 
-Absence is equivalent to `false`. Conditional requiredness is represented separately by
-`requiredIfAny`, `requiredIfAll`, `requiredUnlessAny`, and `requiredUnlessAll`.
+Absence is equivalent to `false`.
 
 ### `global`
 
 `global: true` means Clap propagates this argument to child commands. A global argument may be supplied at the command level where it is declared or at any descendant level accepted by Clap.
 
-In a complete nested command document, a propagated global argument is represented once at the highest command level where it appears and omitted from descendant levels. Consumers SHOULD emit it at that represented command level. This is the canonical placement because ancestor-local groups and relationships can depend on the global argument at that boundary even when Clap also recognizes the option after a descendant subcommand.
+In a complete nested command document, a propagated global argument is represented once at the highest command level where it appears and omitted from descendant levels. Consumers SHOULD emit it at that represented command level. This is the canonical placement because ancestor-local argument groups can constrain the global argument at that boundary even when Clap also recognizes the option after a descendant subcommand.
 
 Absence is equivalent to `false`.
 
@@ -196,64 +194,7 @@ A canonical consumer SHOULD repeat an argument only when `repeatable` is true.
 
 `conflictsWith` contains canonical argument names in argument-level conflict relationships with this argument. These relationships are normalized symmetrically, matching Clap's two-way conflict semantics.
 
-A consumer MUST NOT construct an invocation containing an argument together with a listed conflict. Conflicts owned by an argument group remain represented by that group's `conflictsWith` rule and are not duplicated onto every member argument.
-
-### `overrides`
-
-`overrides` contains argument or group targets configured as mutually overridable with this argument:
-
-```json
-{
-  "overrides": [
-    {"kind": "argument", "name": "--legacy"},
-    {"kind": "group", "name": "selector"}
-  ]
-}
-```
-
-Concrete argument-to-argument relationships are normalized symmetrically, matching Clap's last-one-wins behavior. Group targets are preserved as group references rather than expanded into inferred member-level overrides.
-
-Consumers SHOULD avoid supplying mutually overridable targets together unless the overriding behavior is intentional.
-
-### `requires`
-
-`requires` contains requirements introduced by this argument. Each entry has a `when` predicate and a `target`. `when` is either `present` or an equality predicate on this argument's lexical value. `target` identifies either a canonical argument or a named argument group.
-
-These predicates retain Clap's value-source semantics: values originating only from a
-default do not satisfy `present` or equality predicates.
-
-When a predicate matches, the referenced target MUST be satisfied. An argument target is satisfied by supplying that argument. A group target is satisfied by supplying a member in accordance with that group's cardinality rules.
-
-### `requiredIfAny` and `requiredIfAll`
-
-Each entry is an equality condition on another argument or argument group. Its `target` uses the same tagged `argument` / `group` representation as other relationship targets:
-
-```json
-{
-  "requiredIfAny": [
-    {"target": {"kind": "argument", "name": "--format"}, "equals": "json"},
-    {"target": {"kind": "group", "name": "selector"}, "equals": "mode"}
-  ]
-}
-```
-
-For an argument target, `equals` is the lexical argument value. For a group target, `equals` is the stable ID of a selected group member. Equality conditions retain Clap's predicate semantics, including that values originating only from a default do not satisfy the predicate. The array is one aggregate rule; consumers MUST preserve whether that rule uses `any` or `all`.
-
-For `requiredIfAny`, the argument is required when **at least one** listed condition matches. The listed conditions are therefore combined with logical OR.
-
-For `requiredIfAll`, the argument is required only when **every** listed condition matches. The listed conditions are therefore combined with logical AND.
-
-These rules are independent of unconditional `required`.
-
-### `requiredUnlessAny` and `requiredUnlessAll`
-
-Each entry identifies an argument or group whose presence can satisfy this required-unless rule. The array is one aggregate rule; consumers MUST preserve whether that rule uses `any` or `all`.
-
-For `requiredUnlessAny`, this rule requires the argument unless **at least one** listed target is present.
-
-For `requiredUnlessAll`, this rule requires the argument unless **every** listed target is present.
-
-Satisfying one of these rules does not by itself prove the argument is optional: another conditional-requiredness rule may still require it.
+A consumer MUST NOT construct an invocation containing an argument together with a listed conflict.
 
 ### `requireEquals`
 
@@ -334,14 +275,6 @@ A single default is a JSON string. Multiple defaults are an array of JSON string
 
 Clap's `hide_default_value` setting affects human help only and does not suppress the default from this machine-readable contract.
 
-### `defaultMissing`
-
-`defaultMissing`, when present, is the lexical value Clap supplies when the argument itself is present but no explicit value is supplied. This is distinct from `default`, which applies when the argument is omitted.
-
-### `defaultIf`
-
-`defaultIf` is an ordered array of conditional-default rules. Each rule identifies an argument or argument-group `target`, a presence or equality predicate, and a lexical default. Predicate evaluation retains Clap's value-source semantics: values originating only from a default do not satisfy the predicate. For a group target, an equality predicate compares against the stable ID of the selected group member. Rules are evaluated in declaration order; the first matching rule wins. A JSON `null` value represents a matching rule that suppresses the unconditional default.
-
 ### `delimiter`
 
 `delimiter`, when present, is the character used to split multiple values inside one command-line token.
@@ -360,7 +293,7 @@ Clap's `hide_default_value` setting affects human help only and does not suppres
 
 ### `ignoreCase`
 
-`ignoreCase: true` reflects Clap's case-insensitive matching for advertised possible values. Clap also applies this setting when the argument is the compared target of `required_if_eq`, `required_if_eq_any`, or `required_if_eq_all`, represented here by `requiredIfAny` / `requiredIfAll` on another argument. Consumers MUST NOT generalize this setting to other relationship predicates unless Clap defines that behavior.
+`ignoreCase: true` reflects Clap's case-insensitive matching for advertised possible values.
 
 ## Argument groups
 
@@ -371,19 +304,15 @@ A group document has the following semantic shape:
   "name": "input",
   "members": ["--stdin", "--file"],
   "required": true,
-  "multiple": false,
-  "requires": [{"kind": "argument", "name": "--format"}],
-  "conflictsWith": [{"kind": "argument", "name": "--legacy"}]
+  "multiple": false
 }
 ```
 
-`name` is the stable group identifier used by relationship references. `members` contains canonical argument names.
+`name` is the stable group identifier. `members` contains canonical argument names.
 
-`required: true` means Clap's base required setting is enabled for the group. As with argument requiredness, a reflected conflict can make that requirement inapplicable for a particular invocation. Absence is equivalent to `false`.
+`required: true` means Clap's base required setting is enabled for the group. Absence is equivalent to `false`.
 
 `multiple: true` means more than one member may be present. Absence is equivalent to `false`, so a group with multiple members is mutually exclusive by default. When the group requirement applies, combining `required: true` with `multiple: false` means exactly one member must be present.
-
-`requires` and `conflictsWith` apply when the group is present and may refer to either arguments or other groups. A group that would otherwise impose no constraint is still emitted when another reflected relationship targets it.
 
 ## Shallow subcommand summaries
 
@@ -425,11 +354,11 @@ Given the executable name separately and one complete command document, a consum
 3. After the final path token, construct the selected command's own represented options and positional values from the top-level command properties. Globals already represented by an ancestor are omitted here.
 4. For a selected option with `value`, supply a number of values within `minValues..=maxValues`. When `maxValues` is `null`, there is no finite upper bound.
 5. If `requireEquals` is true, attach the first option value with `=`.
-6. Respect `delimiter`, `terminator`, `repeatable`, `conflictsWith`, `overrides`, `requires`, conditional requiredness, `ignoreCase`, and `exclusive` when they are present.
-7. Satisfy every applicable argument-group cardinality, requirement, and conflict rule at each command level.
+6. Respect `delimiter`, `terminator`, `repeatable`, `conflictsWith`, `ignoreCase`, and `exclusive` when they are present.
+7. Satisfy every applicable argument-group cardinality rule at each command level.
 8. Append positional values at each command level according to their explicit `position`, respecting `allowMissingPositionals`. If any positional has `requiresDoubleDash: true`, insert `--` before that positional as required by that command level. Once a `trailingVarArg` positional begins consuming values, treat the remaining tokens as its values; when `dontDelimitTrailingValues` is true, do not split those trailing values by configured delimiters.
 9. When `values` is present, prefer one of the advertised values, but do not treat that list as exhaustive validation. Every supplied lexical value must still satisfy Clap's configured parser.
-10. When relying on defaults, distinguish omission (`default`) from selecting an option without an explicit value (`defaultMissing`) and apply ordered `defaultIf` rules before the unconditional default.
+10. When relying on defaults, use the reflected unconditional lexical `default` when it is present.
 
 The schema does not prescribe shell quoting or escaping. The caller is responsible for passing the resulting argument vector safely to the process. Agents and tools SHOULD prefer direct argv/process APIs over constructing a shell command string.
 
@@ -437,13 +366,13 @@ The schema does not prescribe shell quoting or escaping. The caller is responsib
 
 `clap_schema` 0.2 describes semantics that can be obtained reliably from Clap's public built-command reflection plus the registered Rust output type.
 
-The core contract includes canonical paths and option spellings, global argument scope, positional order, base and conditional requiredness, requirement and override relationships, argument-group rules, value arity, unconditional/missing/conditional defaults, advertised possible values, delimiters, value terminators, repeatability, conflicts, exclusive arguments, required `=` syntax, required `--` syntax, trailing variadic capture, case-insensitive value matching, missing-positional behavior, trailing-value delimiting, parent/subcommand routing semantics, and typed successful-output JSON Schema.
+The core contract includes canonical paths and option spellings, global argument scope, positional order, base requiredness, argument-group cardinality, value arity, unconditional defaults, advertised possible values, delimiters, value terminators, repeatability, conflicts, exclusive arguments, required `=` syntax, required `--` syntax, trailing variadic capture, case-insensitive value matching, missing-positional behavior, trailing-value delimiting, parent/subcommand routing semantics, and typed successful-output JSON Schema.
 
 Input values remain lexical command-line values. `clap_schema` does not infer Rust result types from Clap's erased value parser, and Clap remains authoritative for parser-specific validation.
 
 Parser configuration that is not exposed through Clap's built-command reflection is not inferred. This includes `args_override_self`; consumers should use the canonical argument occurrence semantics represented by the contract rather than treating every argv form accepted by Clap as discoverable.
 
-Only UTF-8 lexical relationship and default values can be represented directly by this JSON contract. A rule whose lexical predicate cannot be represented as UTF-8 is omitted rather than converted lossily. Consumers MUST interpret omission as “not stated by this contract”, not as proof that no application-specific constraint exists.
+Only UTF-8 lexical defaults can be represented directly by this JSON contract. A non-UTF-8 default is omitted rather than converted lossily. Consumers MUST interpret omission as “not stated by this contract”, not as proof that no application-specific default exists.
 
 The contract uses normal process-style argv framing at the root parser entrypoint, where the executable name is separate from the command path. `ContractBuilder::build` rejects root `no_binary_name` and `multicall` modes because they change the meaning of the beginning of argv. Equivalent settings on nested commands remain valid because they do not change root process framing. Runtime external-subcommand capture and parser control flow such as `arg_required_else_help` remain Clap-authoritative outside the structured contract.
 
@@ -486,7 +415,6 @@ Notable 0.2 changes include:
 - input value arity is explicit while values remain lexical;
 - global argument scope is explicit and propagated globals are represented once at their highest command level;
 - syntax-affecting details such as required `=`, required `--`, delimiters, terminators, repeatability, conflicts, and exclusivity are exposed directly;
-- conditional requirements, required-unless rules, overrides, missing/conditional defaults, and argument-group constraints are reflected as structured semantics.
 
 Within the 0.2 line, adding an optional field is compatible. Consumers MUST ignore unknown fields.
 

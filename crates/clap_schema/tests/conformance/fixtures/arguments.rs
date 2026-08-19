@@ -133,40 +133,16 @@ pub(in crate::tests) fn groups() -> Command {
 
 pub(in crate::tests) fn relationships() -> Command {
     Command::new("fixture")
-        .arg(
-            Arg::new("config")
-                .long("config")
-                .required_unless_present_any(["stdin", "file"])
-                .requires_if("special", "input"),
-        )
-        .arg(Arg::new("stdin").long("stdin").action(ArgAction::SetTrue))
-        .arg(Arg::new("file").long("file").action(ArgAction::SetTrue))
-        .arg(Arg::new("input").long("input"))
-        .arg(Arg::new("manifest").long("manifest").default_value("remote").requires("source"))
-        .arg(Arg::new("source").long("source"))
-        .arg(
-            Arg::new("credentials")
-                .long("credentials")
-                .required_unless_present_all(["host", "port"]),
-        )
-        .arg(Arg::new("host").long("host"))
-        .arg(Arg::new("port").long("port"))
-        .arg(Arg::new("publish").long("publish").action(ArgAction::SetTrue).requires("destination"))
-        .arg(Arg::new("local").long("local").action(ArgAction::SetTrue))
-        .arg(Arg::new("remote").long("remote").action(ArgAction::SetTrue))
         .arg(Arg::new("auth").long("auth").conflicts_with("legacy"))
         .arg(Arg::new("legacy").long("legacy"))
-        .arg(Arg::new("replacement").long("replacement").overrides_with_all(["config", "legacy"]))
-        .arg(Arg::new("group-replacement").long("group-replacement").overrides_with("automation"))
-        .arg(Arg::new("automatic").long("automatic").action(ArgAction::SetTrue))
-        .arg(Arg::new("assisted").long("assisted").action(ArgAction::SetTrue))
         .arg(
             Arg::new("manual")
                 .long("manual")
                 .action(ArgAction::SetTrue)
                 .conflicts_with("automation"),
         )
-        .group(ArgGroup::new("destination").args(["local", "remote"]).multiple(true))
+        .arg(Arg::new("automatic").long("automatic").action(ArgAction::SetTrue))
+        .arg(Arg::new("assisted").long("assisted").action(ArgAction::SetTrue))
         .group(ArgGroup::new("automation").args(["automatic", "assisted"]).multiple(true))
 }
 
@@ -174,74 +150,6 @@ pub(in crate::tests) fn required_conflict_precedence() -> Command {
     Command::new("fixture")
         .arg(Arg::new("config").long("config").required(true).conflicts_with("skip"))
         .arg(Arg::new("skip").long("skip").action(ArgAction::SetTrue))
-}
-
-pub(in crate::tests) fn required_unless_group_targets() -> Command {
-    Command::new("fixture")
-        .arg(Arg::new("local").long("local").action(ArgAction::SetTrue))
-        .arg(Arg::new("remote").long("remote").action(ArgAction::SetTrue))
-        .arg(Arg::new("token").long("token").action(ArgAction::SetTrue))
-        .arg(Arg::new("certificate").long("certificate").action(ArgAction::SetTrue))
-        .arg(
-            Arg::new("any").long("any").required_unless_present_any(["destination", "credentials"]),
-        )
-        .arg(
-            Arg::new("all").long("all").required_unless_present_all(["destination", "credentials"]),
-        )
-        .group(ArgGroup::new("destination").args(["local", "remote"]).multiple(true))
-        .group(ArgGroup::new("credentials").args(["token", "certificate"]).multiple(true))
-}
-
-pub(in crate::tests) fn conditional_requiredness() -> Command {
-    Command::new("fixture")
-        .arg(Arg::new("mode").long("mode").default_value("strict").ignore_case(true))
-        .arg(Arg::new("format").long("format"))
-        .arg(
-            Arg::new("any")
-                .long("any")
-                .required_if_eq_any([("mode", "strict"), ("format", "json")]),
-        )
-        .arg(
-            Arg::new("all")
-                .long("all")
-                .required_if_eq_all([("mode", "strict"), ("format", "json")]),
-        )
-        .arg(Arg::new("policy-mode").long("policy-mode").action(ArgAction::SetTrue))
-        .arg(Arg::new("policy-format").long("policy-format").action(ArgAction::SetTrue))
-        .arg(Arg::new("policy").long("policy").required_if_eq("selector", "policy-mode"))
-        .arg(
-            Arg::new("combined")
-                .long("combined")
-                .required_if_eq_all([("selector", "policy-mode"), ("format", "json")]),
-        )
-        .group(ArgGroup::new("selector").args(["policy-mode", "policy-format"]).multiple(true))
-}
-
-pub(in crate::tests) fn conditional_defaults() -> Command {
-    Command::new("fixture")
-        .arg(Arg::new("profile").long("profile").default_value("auto"))
-        .arg(Arg::new("trigger").long("trigger").action(ArgAction::SetTrue))
-        .arg(Arg::new("disable").long("disable").action(ArgAction::SetTrue))
-        .arg(Arg::new("output").long("output").default_value("fallback").default_value_ifs([
-            ("trigger", ClapArgPredicate::IsPresent, Some("triggered")),
-            ("profile", ClapArgPredicate::Equals("auto".into()), Some("generated")),
-        ]))
-        .arg(Arg::new("reset").long("reset").default_value("base").default_value_if(
-            "disable",
-            ClapArgPredicate::IsPresent,
-            None,
-        ))
-        .arg(
-            Arg::new("multi")
-                .long("multi")
-                .num_args(2)
-                .default_values(["base-a", "base-b"])
-                .default_values_if(
-                    "trigger",
-                    ClapArgPredicate::IsPresent,
-                    ["trigger-a", "trigger-b"],
-                ),
-        )
 }
 
 pub(in crate::tests) fn presentation_visibility() -> Command {
