@@ -72,11 +72,13 @@ impl CliContract {
     /// }
     ///
     /// #[derive(JsonSchema)]
+    /// #[schemars(rename_all = "camelCase")]
     /// struct PaginationMetadata {
     ///     cursor_argument: String,
     /// }
     ///
     /// #[derive(JsonSchema)]
+    /// #[schemars(rename_all = "camelCase")]
     /// struct Page {
     ///     next_cursor: Option<String>,
     /// }
