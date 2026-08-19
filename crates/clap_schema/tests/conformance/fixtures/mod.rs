@@ -11,9 +11,10 @@ mod arguments;
 mod commands;
 
 pub(super) use arguments::{
-    argument_shape, groups, multicall, no_binary_name, parser_control_flow,
-    parser_specific_validation, presentation_visibility, relationships,
-    required_conflict_precedence, token_syntax, value_semantics, wire_shape,
+    argument_shape, conditional_defaults, conditional_requiredness, groups, multicall,
+    no_binary_name, parser_control_flow, parser_specific_validation, presentation_visibility,
+    relationships, required_conflict_precedence, required_unless_group_targets, token_syntax,
+    value_semantics, wire_shape,
 };
 pub(super) use commands::{
     conflicts_with_subcommands, hierarchy, missing_positionals, negates_requirements, precedence,

@@ -51,7 +51,9 @@ unknown-registry = "deny"
 # Lint level for what to happen when a crate from a git repository that is not
 # in the allow list is encountered
 unknown-git = "deny"
-allow-git = []
+allow-git = [
+    "https://github.com/zerosnacks/clap", # Temporary for clap-rs/clap#6494
+]
 allow-registry = [
     "https://github.com/rust-lang/crates.io-index",
 ]

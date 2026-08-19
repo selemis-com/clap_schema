@@ -2,14 +2,15 @@
 
 use std::{any::TypeId, collections::HashSet};
 
-use clap::{Arg, ArgAction, Command, Id};
+use clap::{Arg, ArgAction, Command, Id, builder::ArgPredicate as ClapArgPredicate};
 use schemars::JsonSchema;
 use serde_json::Value;
 
 use crate::{
     model::{
-        ArgumentGroupInfo, ArgumentInfo, ArgumentSyntax, ArgumentValue, CliContract, CommandSyntax,
-        DiscoveryNode, ExecutableData, SubcommandRouting,
+        ArgumentGroupInfo, ArgumentInfo, ArgumentPredicate, ArgumentRequirement, ArgumentSyntax,
+        ArgumentTarget, ArgumentValue, ArgumentValueCondition, CliContract, CommandSyntax,
+        ConditionalDefault, DiscoveryNode, ExecutableData, SubcommandRouting,
     },
     schema::{
         ExtendedSchemaFactory, SchemaFactory, compose_extended_schemas, extended_schema_factory,
@@ -357,7 +358,7 @@ fn build_discovery_node(
 
     let arguments = reflected_positionals(command);
     let options = reflected_options(command);
-    let groups = reflected_groups(command);
+    let groups = reflected_groups(command, &arguments, &options);
 
     Ok(Some(DiscoveryNode {
         name: command.get_name().to_owned(),
@@ -419,8 +420,49 @@ fn reflected_argument(argument: &Arg) -> bool {
 fn argument_info(command: &Command, argument: &Arg) -> ArgumentInfo {
     let action = argument.get_action();
     let takes_values = action.takes_values();
-    let value = takes_values.then(|| argument_value(argument));
+    let value = takes_values.then(|| argument_value(command, argument));
     let conflicts_with = reflected_argument_conflicts(command, argument);
+    let overrides = reflected_argument_overrides(command, argument);
+    let requires = argument
+        .get_requires()
+        .iter()
+        .filter_map(|(predicate, target)| {
+            Some(ArgumentRequirement {
+                when: argument_predicate(predicate)?,
+                target: argument_target(command, target)?,
+            })
+        })
+        .collect();
+    let required_if_any = argument
+        .get_required_if_eq_any()
+        .iter()
+        .filter_map(|(id, value)| {
+            Some(ArgumentValueCondition {
+                target: argument_target(command, id)?,
+                equals: value.to_str()?.to_owned(),
+            })
+        })
+        .collect();
+    let required_if_all = argument
+        .get_required_if_eq_all()
+        .iter()
+        .filter_map(|(id, value)| {
+            Some(ArgumentValueCondition {
+                target: argument_target(command, id)?,
+                equals: value.to_str()?.to_owned(),
+            })
+        })
+        .collect();
+    let required_unless_any = argument
+        .get_required_unless_present_any()
+        .iter()
+        .filter_map(|id| argument_target(command, id))
+        .collect();
+    let required_unless_all = argument
+        .get_required_unless_present_all()
+        .iter()
+        .filter_map(|id| argument_target(command, id))
+        .collect();
 
     ArgumentInfo {
         name: canonical_argument_name(argument),
@@ -434,6 +476,12 @@ fn argument_info(command: &Command, argument: &Arg) -> ArgumentInfo {
         value,
         repeatable: matches!(action, ArgAction::Append | ArgAction::Count),
         conflicts_with,
+        overrides,
+        requires,
+        required_if_any,
+        required_if_all,
+        required_unless_any,
+        required_unless_all,
         syntax: ArgumentSyntax {
             require_equals: takes_values
                 && !argument.is_positional()
@@ -446,7 +494,7 @@ fn argument_info(command: &Command, argument: &Arg) -> ArgumentInfo {
 }
 
 /// Builds the value contract for one value-taking Clap argument.
-fn argument_value(argument: &Arg) -> ArgumentValue {
+fn argument_value(command: &Command, argument: &Arg) -> ArgumentValue {
     let (min_values, max_values) = argument.get_num_args().map_or((1, Some(1)), |range| {
         let max = range.max_values();
         (range.min_values(), (max != usize::MAX).then_some(max))
@@ -463,6 +511,8 @@ fn argument_value(argument: &Arg) -> ArgumentValue {
         max_values,
         values,
         default: argument_default(argument),
+        default_missing: lexical_values(argument.get_default_missing_values()),
+        default_if: conditional_defaults(command, argument),
         delimiter: argument.get_value_delimiter(),
         terminator: argument.get_value_terminator().map(ToString::to_string),
         allow_hyphen_values: argument.is_allow_hyphen_values_set(),
@@ -509,6 +559,33 @@ fn lexical_value_set(values: &[clap::builder::OsStr]) -> Option<Value> {
     }
 }
 
+/// Reflects ordered conditional defaults for one argument.
+fn conditional_defaults(command: &Command, argument: &Arg) -> Vec<ConditionalDefault> {
+    argument
+        .get_default_values_ifs()
+        .iter()
+        .filter_map(|(id, predicate, values)| {
+            let target = argument_target(command, id)?;
+            let when = argument_predicate(predicate)?;
+            let value = match values {
+                Some(values) => Some(lexical_value_set(values)?),
+                None => None,
+            };
+            Some(ConditionalDefault { target, when, value })
+        })
+        .collect()
+}
+
+/// Converts Clap's normalized relationship predicate to the wire representation.
+fn argument_predicate(predicate: &ClapArgPredicate) -> Option<ArgumentPredicate> {
+    match predicate {
+        ClapArgPredicate::IsPresent => Some(ArgumentPredicate::Present),
+        ClapArgPredicate::Equals(value) => {
+            Some(ArgumentPredicate::Equals { value: value.to_str()?.to_owned() })
+        }
+    }
+}
+
 /// Resolves a reflected ID to its canonical argument name.
 fn reflected_argument_name(command: &Command, id: &Id) -> Option<String> {
     command
@@ -518,6 +595,9 @@ fn reflected_argument_name(command: &Command, id: &Id) -> Option<String> {
 }
 
 /// Reflects argument-level conflicts as the mutual relationship Clap enforces at runtime.
+///
+/// Group-owned conflicts remain represented by [`ArgumentGroupInfo`] rather than being duplicated
+/// onto every member argument.
 fn reflected_argument_conflicts(command: &Command, argument: &Arg) -> Vec<String> {
     let mut conflicts = Vec::new();
 
@@ -548,9 +628,50 @@ fn reflected_argument_conflicts(command: &Command, argument: &Arg) -> Vec<String
     conflicts
 }
 
-/// Reflects argument groups that materially affect the machine-readable invocation contract.
-fn reflected_groups(command: &Command) -> Vec<ArgumentGroupInfo> {
+/// Reflects configured override targets and the reverse side of concrete argument overrides.
+///
+/// Clap treats argument-to-argument overrides as mutual. Group targets are preserved structurally
+/// without inferring member-level override relationships.
+fn reflected_argument_overrides(command: &Command, argument: &Arg) -> Vec<ArgumentTarget> {
+    let mut overrides = argument
+        .get_overrides()
+        .iter()
+        .filter_map(|id| argument_target(command, id))
+        .collect::<Vec<_>>();
+
+    for candidate in command.get_arguments().filter(|candidate| reflected_argument(candidate)) {
+        if candidate.get_id() == argument.get_id() {
+            continue;
+        }
+        if candidate.get_overrides().iter().any(|id| id == argument.get_id()) {
+            let target = ArgumentTarget::Argument { name: canonical_argument_name(candidate) };
+            if !overrides.contains(&target) {
+                overrides.push(target);
+            }
+        }
+    }
+
+    overrides
+}
+
+/// Resolves an ID used by a Clap relationship to an argument or group reference.
+fn argument_target(command: &Command, id: &Id) -> Option<ArgumentTarget> {
+    if let Some(name) = reflected_argument_name(command, id) {
+        return Some(ArgumentTarget::Argument { name });
+    }
     command
+        .get_groups()
+        .find(|group| group.get_id() == id)
+        .map(|group| ArgumentTarget::Group { name: group.get_id().to_string() })
+}
+
+/// Reflects argument groups that materially affect the machine-readable invocation contract.
+fn reflected_groups(
+    command: &Command,
+    arguments: &[ArgumentInfo],
+    options: &[ArgumentInfo],
+) -> Vec<ArgumentGroupInfo> {
+    let mut groups = command
         .get_groups()
         .filter_map(|group| {
             let members = group
@@ -564,18 +685,75 @@ fn reflected_groups(command: &Command) -> Vec<ArgumentGroupInfo> {
             // `ArgGroup::is_multiple` currently takes `&mut self`; clone only to reflect this
             // read-only property until clap-rs/clap#6411 lands.
             let mut owned_group = group.clone();
-            let group = ArgumentGroupInfo {
+            Some(ArgumentGroupInfo {
                 name: group.get_id().to_string(),
                 members,
                 required: group.is_required_set(),
                 multiple: owned_group.is_multiple(),
-            };
-
-            // Clap derive implicitly creates `multiple = true` groups for `Args` structs. Keep a
-            // group only when it changes invocation validity through cardinality.
-            (group.required || (!group.multiple && group.members.len() > 1)).then_some(group)
+                requires: group
+                    .get_requires()
+                    .filter_map(|id| argument_target(command, id))
+                    .collect(),
+                conflicts_with: group
+                    .get_conflicts()
+                    .filter_map(|id| argument_target(command, id))
+                    .collect(),
+            })
         })
-        .collect()
+        .collect::<Vec<_>>();
+    let referenced_groups = reflected_group_references(arguments, options, &groups);
+
+    groups.retain(|group| {
+        // Clap derive implicitly creates `multiple = true` groups for `Args` structs. Keep a group
+        // only when it changes invocation validity or another reflected relationship targets it.
+        let constrains_cardinality = group.required || (!group.multiple && group.members.len() > 1);
+        constrains_cardinality
+            || !group.requires.is_empty()
+            || !group.conflicts_with.is_empty()
+            || referenced_groups.contains(&group.name)
+    });
+    groups
+}
+
+/// Finds groups targeted by relationships already present in the reflected contract.
+fn reflected_group_references(
+    arguments: &[ArgumentInfo],
+    options: &[ArgumentInfo],
+    groups: &[ArgumentGroupInfo],
+) -> HashSet<String> {
+    let mut referenced = HashSet::new();
+    let mut record = |target: &ArgumentTarget| {
+        if let ArgumentTarget::Group { name } = target {
+            referenced.insert(name.clone());
+        }
+    };
+
+    for argument in arguments.iter().chain(options) {
+        for target in &argument.overrides {
+            record(target);
+        }
+        for requirement in &argument.requires {
+            record(&requirement.target);
+        }
+        for condition in argument.required_if_any.iter().chain(&argument.required_if_all) {
+            record(&condition.target);
+        }
+        for target in argument.required_unless_any.iter().chain(&argument.required_unless_all) {
+            record(target);
+        }
+        if let Some(value) = &argument.value {
+            for conditional in &value.default_if {
+                record(&conditional.target);
+            }
+        }
+    }
+    for group in groups {
+        for target in group.requires.iter().chain(&group.conflicts_with) {
+            record(target);
+        }
+    }
+
+    referenced
 }
 
 /// Formats a canonical command path for diagnostics.
