@@ -1,4 +1,4 @@
-# clap_schema Discovery Contract 0.2
+# Specification
 
 This document specifies the machine-readable discovery contract emitted by `clap_schema` 0.2.x.
 
