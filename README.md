@@ -97,9 +97,7 @@ required `--` syntax, and exclusivity are reflected from the built command model
 
 This gives agents a canonical process-style invocation contract without making rendered Clap help
 part of the wire format. Clap remains authoritative for parser-specific validation that cannot be
-reflected structurally, while Rust types remain authoritative for typed successful results. Root
-`no_binary_name` and `multicall` argv framing modes are rejected because they change process-style
-framing at the parser entrypoint; equivalent settings on nested commands do not.
+reflected structurally, while Rust types remain authoritative for typed successful results.
 
 The full wire contract and compatibility rules are documented in [`SPECIFICATION.md`](SPECIFICATION.md).
 
