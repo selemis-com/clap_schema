@@ -1,5 +1,7 @@
 //! Conformance tests for argument values, token syntax, and groups.
 
+use clap_schema::{ArgumentPredicate, ArgumentTarget};
+
 use super::fixtures::{
     argument_shape, assert_accepts, assert_rejects, build_contract, group, groups, option,
     positional, token_syntax, value_semantics,
@@ -139,6 +141,7 @@ fn value_contract_matches_clap_arity_defaults_and_lexical_metadata() {
     assert!(color_argument.syntax.require_equals);
     let color = color_argument.value.as_ref().expect("color value");
     assert_eq!((color.min_values, color.max_values), (0, Some(2)));
+    assert_eq!(color.default_missing, Some(serde_json::json!(["auto", "always"])));
 
     let hyphen = option(&command, "--hyphen").value.as_ref().expect("hyphen value");
     assert!(hyphen.allow_hyphen_values);
@@ -181,12 +184,37 @@ fn argument_token_syntax_matches_clap() {
 }
 
 #[test]
-fn group_contract_matches_clap_cardinality_semantics() {
+fn group_contract_matches_clap_cardinality_relationship_and_target_semantics() {
     assert_rejects(&groups(), &["fixture"]);
+    assert_rejects(&groups(), &["fixture", "--bypass"]);
+    assert_rejects(&groups(), &["fixture", "--bypass", "--format"]);
+    assert_rejects(&groups(), &["fixture", "--mode"]);
+    assert_accepts(&groups(), &["fixture", "--mode", "--policy", "strict"]);
     assert_accepts(&groups(), &["fixture", "--format"]);
     assert_rejects(&groups(), &["fixture", "--mode", "--format", "--policy", "strict"]);
-    assert_accepts(&groups(), &["fixture", "--format", "--user"]);
-    assert_rejects(&groups(), &["fixture", "--format", "--user", "--token"]);
+    assert_rejects(&groups(), &["fixture", "--format", "--stdin"]);
+    assert_rejects(&groups(), &["fixture", "--format", "--stdin", "--auth"]);
+    assert_accepts(&groups(), &["fixture", "--format", "--stdin", "--auth", "--user"]);
+    assert_accepts(&groups(), &["fixture", "--format", "--stdin", "--file", "--auth", "--user"]);
+    assert_rejects(&groups(), &["fixture", "--format", "--stdin", "--auth", "--user", "--token"]);
+    assert_rejects(&groups(), &["fixture", "--format", "--stdin", "--auth", "--user", "--legacy"]);
+    assert_rejects(&groups(), &["fixture", "--format", "--stdin", "--auth", "--user", "--compat"]);
+
+    let plain =
+        groups().try_get_matches_from(["fixture", "--format"]).expect("no output mode selected");
+    assert_eq!(plain.get_one::<String>("output").map(String::as_str), Some("plain"));
+    assert_eq!(plain.get_one::<String>("group-default").map(String::as_str), Some("plain"));
+    let mode_selected = groups()
+        .try_get_matches_from(["fixture", "--mode", "--policy", "strict"])
+        .expect("group equality conditional default");
+    assert_eq!(
+        mode_selected.get_one::<String>("group-default").map(String::as_str),
+        Some("mode-selected")
+    );
+    let selected = groups()
+        .try_get_matches_from(["fixture", "--format", "--json", "--yaml"])
+        .expect("multiple output group members selected");
+    assert_eq!(selected.get_one::<String>("output").map(String::as_str), Some("selected"));
 
     let contract = build_contract(groups(), &[]);
     let command = contract.command(&[]).expect("root command");
@@ -195,16 +223,77 @@ fn group_contract_matches_clap_cardinality_semantics() {
     assert_eq!(selector.members, ["--mode", "--format"]);
     assert!(selector.required);
     assert!(!selector.multiple);
+    assert!(selector.conflicts_with.iter().any(|target| matches!(
+        target,
+        ArgumentTarget::Argument { name } if name == "--bypass"
+    )));
+
+    let policy = option(&command, "--policy");
+    assert!(matches!(
+        policy.required_if_any.as_slice(),
+        [condition]
+            if matches!(
+                &condition.target,
+                ArgumentTarget::Group { name } if name == "selector"
+            ) && condition.equals == "mode"
+    ));
+
+    let transport = group(&command, "transport");
+    assert!(transport.multiple);
+    let stdin = option(&command, "--stdin");
+    assert!(stdin.requires.is_empty());
+    assert!(stdin.conflicts_with.is_empty());
+    assert!(option(&command, "--legacy").conflicts_with.is_empty());
+    assert!(option(&command, "--compat").conflicts_with.is_empty());
+    assert!(transport.requires.iter().any(|target| matches!(
+        target,
+        ArgumentTarget::Argument { name } if name == "--auth"
+    )));
+    assert!(transport.requires.iter().any(|target| matches!(
+        target,
+        ArgumentTarget::Group { name } if name == "credentials"
+    )));
+    assert!(transport.conflicts_with.iter().any(|target| matches!(
+        target,
+        ArgumentTarget::Argument { name } if name == "--legacy"
+    )));
+    assert!(transport.conflicts_with.iter().any(|target| matches!(
+        target,
+        ArgumentTarget::Group { name } if name == "legacy-mode"
+    )));
 
     let credentials = group(&command, "credentials");
     assert_eq!(credentials.members, ["--user", "--token"]);
-    assert!(!credentials.required);
     assert!(!credentials.multiple);
+    assert!(command.groups.iter().all(|group| group.name != "metadata"));
+    assert!(command.groups.iter().all(|group| group.name != "single-label"));
+    assert_eq!(group(&command, "legacy-mode").members, ["--compat"]);
 
-    for omitted in ["transport", "legacy-mode", "metadata", "single-label", "output-mode"] {
-        assert!(
-            command.groups.iter().all(|group| group.name != omitted),
-            "unconstraining group must be omitted: {omitted}"
-        );
-    }
+    let output_mode = group(&command, "output-mode");
+    assert_eq!(output_mode.members, ["--json", "--yaml"]);
+    assert!(output_mode.multiple);
+
+    let output = option(&command, "--output").value.as_ref().expect("output value");
+    assert!(matches!(
+        output.default_if.as_slice(),
+        [conditional]
+            if matches!(
+                &conditional.target,
+                ArgumentTarget::Group { name } if name == "output-mode"
+            ) && matches!(&conditional.when, ArgumentPredicate::Present)
+    ));
+
+    let group_default =
+        option(&command, "--group-default").value.as_ref().expect("group default value");
+    assert!(matches!(
+        group_default.default_if.as_slice(),
+        [conditional]
+            if matches!(
+                &conditional.target,
+                ArgumentTarget::Group { name } if name == "selector"
+            ) && matches!(
+                &conditional.when,
+                ArgumentPredicate::Equals { value } if value == "mode"
+            )
+    ));
 }

@@ -4,9 +4,10 @@ use clap_schema::ContractBuilder;
 use serde_json::Value;
 
 use super::fixtures::{
-    Operation, argument_shape, assert_accepts, assert_rejects, build_contract, groups, hierarchy,
-    multicall, no_binary_name, option, parser_control_flow, parser_specific_validation,
-    presentation_visibility, relationships, token_syntax, value_semantics, wire_shape,
+    Operation, argument_shape, assert_accepts, assert_rejects, build_contract,
+    conditional_defaults, conditional_requiredness, groups, hierarchy, multicall, no_binary_name,
+    option, parser_control_flow, parser_specific_validation, presentation_visibility,
+    relationships, token_syntax, value_semantics, wire_shape,
 };
 
 #[test]
@@ -128,6 +129,18 @@ fn wire_shape_uses_only_the_canonical_contract_vocabulary() {
         )
         .expect("serialize relationship contract"),
         serde_json::to_value(
+            build_contract(conditional_requiredness(), &[])
+                .command(&[])
+                .expect("conditional requiredness contract"),
+        )
+        .expect("serialize conditional requiredness contract"),
+        serde_json::to_value(
+            build_contract(conditional_defaults(), &[])
+                .command(&[])
+                .expect("conditional default contract"),
+        )
+        .expect("serialize conditional default contract"),
+        serde_json::to_value(
             build_contract(hierarchy(), &["objects", "get"])
                 .command(&["objects", "get"])
                 .expect("hierarchy contract"),
@@ -175,6 +188,12 @@ fn wire_shape_uses_only_the_canonical_contract_vocabulary() {
         "global",
         "repeatable",
         "conflictsWith",
+        "overrides",
+        "requires",
+        "requiredIfAny",
+        "requiredIfAll",
+        "requiredUnlessAny",
+        "requiredUnlessAll",
         "requireEquals",
         "requiresDoubleDash",
         "trailingVarArg",
@@ -191,6 +210,8 @@ fn wire_shape_uses_only_the_canonical_contract_vocabulary() {
     for omitted in [
         "values",
         "default",
+        "defaultMissing",
+        "defaultIf",
         "delimiter",
         "terminator",
         "allowHyphenValues",
@@ -209,12 +230,63 @@ fn wire_shape_uses_only_the_canonical_contract_vocabulary() {
         .expect("serialized global option");
     assert_eq!(global["global"], true);
 
+    let config = serialized["options"]
+        .as_array()
+        .and_then(|options| options.iter().find(|argument| argument["name"] == "--config"))
+        .expect("serialized config option");
+    assert_eq!(
+        config["requiredIfAny"],
+        serde_json::json!([{
+            "target": {"kind": "argument", "name": "--mode"},
+            "equals": "strict"
+        }])
+    );
+    assert_eq!(config["value"]["defaultMissing"], "auto");
+    assert!(config["value"].get("defaultIf").is_some());
+    let conditional = &config["value"]["defaultIf"][0];
+    assert_eq!(conditional["target"], serde_json::json!({"kind": "argument", "name": "--mode"}));
+    assert_eq!(conditional["when"], serde_json::json!({"kind": "equals", "value": "auto"}));
+    assert_eq!(conditional["value"], "generated");
+    assert!(conditional.get("argument").is_none());
+
+    let publish = serialized["options"]
+        .as_array()
+        .and_then(|options| options.iter().find(|argument| argument["name"] == "--publish"))
+        .expect("serialized publish option");
+    assert_eq!(
+        publish["requires"],
+        serde_json::json!([{
+            "when": {"kind": "present"},
+            "target": {"kind": "group", "name": "choice"}
+        }])
+    );
+
+    let legacy = serialized["options"]
+        .as_array()
+        .and_then(|options| options.iter().find(|argument| argument["name"] == "--legacy"))
+        .expect("serialized legacy option");
+    let replacement = serialized["options"]
+        .as_array()
+        .and_then(|options| options.iter().find(|argument| argument["name"] == "--replacement"))
+        .expect("serialized replacement option");
+    assert_eq!(
+        legacy["overrides"],
+        serde_json::json!([{"kind": "argument", "name": "--replacement"}])
+    );
+    assert_eq!(
+        replacement["overrides"],
+        serde_json::json!([{"kind": "argument", "name": "--legacy"}])
+    );
+
     let choice = serialized["groups"]
         .as_array()
         .and_then(|groups| groups.iter().find(|group| group["name"] == "choice"))
         .expect("serialized choice group");
-    assert_eq!(choice["members"], serde_json::json!(["--left", "--right"]));
-    for omitted in ["required", "multiple"] {
+    assert_eq!(
+        choice["conflictsWith"],
+        serde_json::json!([{"kind": "argument", "name": "--config"}])
+    );
+    for omitted in ["required", "multiple", "requires"] {
         assert!(choice.get(omitted).is_none(), "default group field must be omitted: {omitted}");
     }
 }
