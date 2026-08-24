@@ -5,7 +5,7 @@
 </picture>
 
 <p align="center">
-  JSON Schema generation for Clap
+  JSON Schema generation for Clap with typed Rust results
 </p>
 
 <br/>
