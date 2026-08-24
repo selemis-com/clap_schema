@@ -4,7 +4,7 @@ This page lists the licenses of the projects used in `clap_schema`.
 
 ## Overview of licenses
 
-- [Apache License 2.0](#Apache-2.0) (49)
+- [Apache License 2.0](#Apache-2.0) (48)
 - [MIT License](#MIT) (6)
 - [Unicode License v3](#Unicode-3.0) (1)
 
@@ -1108,7 +1108,6 @@ Apache License 2.0
 - [serde_derive]( https://github.com/serde-rs/serde ) 1.0.229
 - [serde_derive_internals]( https://github.com/serde-rs/serde ) 0.30.0
 - [serde_json]( https://github.com/serde-rs/json ) 1.0.151
-- [syn]( https://github.com/dtolnay/syn ) 2.0.119
 - [syn]( https://github.com/dtolnay/syn ) 3.0.3
 - [thiserror-impl]( https://github.com/dtolnay/thiserror ) 2.0.20
 - [thiserror]( https://github.com/dtolnay/thiserror ) 2.0.20
