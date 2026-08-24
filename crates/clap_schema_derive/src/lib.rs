@@ -231,7 +231,7 @@ fn validate_handler_signature(signature: &syn::Signature, allow_receiver: bool) 
             "#[schema_handler(Type)] free-function handlers cannot use a receiver; annotate the enclosing inherent impl with #[schema_handler(method)] instead",
         ));
     }
-    if signature.unsafety.is_some()
+    if matches!(&signature.safety, syn::Safety::Unsafe(_))
         || signature.abi.is_some()
         || signature.variadic.is_some()
         || !signature.generics.params.is_empty()
