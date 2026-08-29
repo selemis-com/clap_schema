@@ -18,7 +18,7 @@
 ---
 
 > [!IMPORTANT]
-> `clap_schema` is deprecated in favor of [Argx](https://github.com/selemis-com/argx) ([crates.io](https://crates.io/crates/argx)).
+> `clap_schema` is deprecated in favor of [Argx](https://github.com/selemis-com/argx) ([crates.io](https://crates.io/crates/argx)). This repository is archived.
 >
 > Argx includes schema discovery as part of a broader derive-first command-line parsing and configuration framework. `clap_schema` will no longer receive new features, bug fixes, or security fixes. New projects should use Argx instead.
 
