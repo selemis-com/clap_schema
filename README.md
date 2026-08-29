@@ -15,6 +15,11 @@
   <a href="#license"><picture><source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/crates/l/clap_schema?colorA=21262d&colorB=21262d&style=flat"><img src="https://img.shields.io/crates/l/clap_schema?colorA=f6f8fa&colorB=f6f8fa&style=flat" alt="MIT OR Apache-2.0"></picture></a>
 </p>
 
+> [!IMPORTANT]
+> `clap_schema` is deprecated in favor of [Argx](https://github.com/selemis-com/argx).
+>
+> Argx includes schema discovery as part of a broader derive-first command-line parsing and configuration framework. `clap_schema` will no longer receive feature development.
+
 `clap_schema` turns Clap commands and typed Rust results into machine-readable contracts, with command registration and output types checked at compile time.
 
 It builds on the types your application already defines: Clap describes the command interface, Rust types describe the result, and `clap_schema` connects the two into a discoverable contract without introducing a separate command or type system.
